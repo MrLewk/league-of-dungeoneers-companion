@@ -1032,6 +1032,7 @@ function AttachedItemList({ label, names, dataset, color, onRemove, groupKey }) 
 function HeroCard({ hero, update, remove, addLog }) {
   const [open, setOpen] = useState(true);
   const [sanityEvent, setSanityEvent] = useState(SANITY_EVENTS[0].label);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const set = (patch) => update({ ...hero, ...patch });
   const setStat = (k, v) => update({ ...hero, stats: { ...hero.stats, [k]: v } });
@@ -1179,9 +1180,24 @@ function HeroCard({ hero, update, remove, addLog }) {
           <button onClick={() => setOpen(!open)} className="p-1 rounded" style={{ color: palette.inkSoft }}>
             {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           </button>
-          <button onClick={remove} className="p-1 rounded" style={{ color: palette.crimson }}>
-            <Trash2 size={16} />
-          </button>
+          {confirmDelete ? (
+            <>
+              <button
+                onClick={remove}
+                className="px-2 py-1 rounded text-xs font-bold"
+                style={{ background: palette.crimsonDark, color: palette.parchment }}
+              >
+                Delete?
+              </button>
+              <button onClick={() => setConfirmDelete(false)} className="p-1 rounded" style={{ color: palette.inkSoft }}>
+                <X size={16} />
+              </button>
+            </>
+          ) : (
+            <button onClick={() => setConfirmDelete(true)} className="p-1 rounded" style={{ color: palette.crimson }}>
+              <Trash2 size={16} />
+            </button>
+          )}
         </div>
       </div>
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Plus, Minus, Trash2, Flame, Heart, Zap, Brain, Sparkles, Dice5,
   Swords, Shield, BookOpen, Users, Skull, ChevronDown, ChevronUp,
-  RotateCcw, Coins, Wheat, ScrollText, Pencil, Check, X, FolderOpen, Loader2
+  RotateCcw, Coins, Wheat, ScrollText, Pencil, Check, X, FolderOpen, Loader2, Map
 } from "lucide-react";
 
 // ---------- Palette / tokens (inline, no Tailwind arbitrary values) ----------
@@ -246,6 +246,104 @@ const LOOT_TABLES = {
     { roll: "8–10", result: "500 c" },
   ],
 };
+
+// ---------- Quest generator (Generating a Quest reference) ----------
+const QUEST_SILVER_CITY = [
+  { roll: 1, name: "Preventing a Disaster", book: "I", page: 245 },
+  { roll: 2, name: "The Pleasure House", book: "I", page: 249 },
+  { roll: 3, name: "Cleansing the Water", book: "I", page: 251 },
+  { roll: 4, name: "Closing the Portal", book: "I", page: 255 },
+  { roll: 5, name: "Stopping the Necromancer", book: "I", page: 259 },
+  { roll: 6, name: "A Hell of a Night", book: "II", page: 65 },
+  { roll: 7, name: "A Beast for Every Occasion", book: "II", page: 81 },
+  { roll: 8, name: "Tomb Raiders", book: "I", page: 260 },
+  { roll: 9, name: "Black Acanthus", book: "II", page: 72 },
+  { roll: 10, name: "Not Even in Death Do We Part", book: "II", page: 77 },
+];
+
+const QUEST_OUTPOST = [
+  { roll: 1, name: "The Pyramid of Xanthu", book: "I", page: 262 },
+  { roll: 2, name: "Tomb of the Hierophant", book: "I", page: 264 },
+  { roll: 3, name: "Temple of Despair", book: "I", page: 266 },
+  { roll: 4, name: "Halls of Amenhotep", book: "I", page: 268 },
+  { roll: 5, name: "Crypt of Khaba", book: "I", page: 269 },
+];
+
+const QUEST_VILLAGE_A = [
+  { roll: 1, name: "Stop the Heretics!", book: "I", page: 242 },
+  { roll: 2, name: "The Master Alchemist", book: "I", page: 244 },
+  { roll: 3, name: "Rescuing the Prisoners", book: "I", page: 247 },
+  { roll: 4, name: "Baptising", book: "I", page: 252 },
+  { roll: 5, name: "Returning the Relic", book: "I", page: 253 },
+  { roll: 6, name: "Slaying the Fiend", book: "I", page: 254 },
+  { roll: 7, name: "Runes to Ruin", book: "II", page: 68 },
+  { roll: 8, name: "At the Bat", book: "II", page: 70 },
+  { roll: 9, name: "Saving the Nordman", book: "II", page: 88 },
+  { roll: 10, name: "Life in Death", book: "II", page: 86 },
+  { roll: 11, name: "Retrieving the Family Heirloom", book: "I", page: 257 },
+  { roll: 12, name: "Tower of the Troll King (Windfair)", book: "II", page: 84 },
+];
+
+const QUEST_VILLAGE_B = [
+  { roll: 1, name: "The Lost Prayer", book: "II", page: 55 },
+  { roll: 2, name: "A Kingdom Gone", book: "II", page: 58 },
+  { roll: 3, name: "The Toad", book: "II", page: 59 },
+  { roll: 4, name: "Corsairs (Whiteport)", book: "II", page: 60 },
+  { roll: 5, name: "Giant Slayer", book: "II", page: 62 },
+  { roll: 6, name: "Rescue Operation", book: "II", page: 90 },
+  { roll: 7, name: "By Rose and Anchor", book: "II", page: 91 },
+  { roll: 8, name: "And Out Come The Wolves…", book: "II", page: 64 },
+  { roll: 9, name: "The Grey Lady", book: "II", page: 67 },
+  { roll: 10, name: "The Ghost of a King", book: "II", page: 57 },
+  { roll: 11, name: "The Medallion", book: "III", page: 21 },
+  { roll: 12, name: "It's just an egg!", book: "III", page: 24 },
+];
+
+const QUEST_VILLAGE_C = [
+  { roll: 1, name: "A Small Expedition", book: "III", page: 26 },
+  { roll: 2, name: "Reclaiming a Mine", book: "III", page: 27 },
+  { roll: 3, name: "Samplers", book: "III", page: 28 },
+  { roll: 4, name: "The Abomination", book: "III", page: 30 },
+  { roll: 5, name: "The Ghoul Hive", book: "III", page: 31 },
+  { roll: 6, name: "The Medusa's Lair", book: "III", page: 33 },
+  { roll: 7, name: "The Miller (Not in Silver City)", book: "III", page: 35 },
+  { roll: 8, name: "Troll Slayer", book: "III", page: 38 },
+  { roll: 9, name: "The Fallen Knight", book: "III", page: 40 },
+  { roll: 10, name: "Sceptre of the Serpent", book: "III", page: 42 },
+  { roll: 11, name: "The Shroom Queen", book: "III", page: 44 },
+  { roll: 12, name: "To Kill a Goddess", book: "III", page: 46 },
+];
+
+function rollVillageQuest() {
+  const col = rollDie(6);
+  const table = col <= 2 ? QUEST_VILLAGE_A : col <= 4 ? QUEST_VILLAGE_B : QUEST_VILLAGE_C;
+  const tableLabel = col <= 2 ? "1–2 (A)" : col <= 4 ? "3–4 (B)" : "5–6 (C)";
+  const row = rollDie(12);
+  const entry = table.find((e) => e.roll === row);
+  return { steps: [`Column: ${col} → table ${tableLabel}`, `Quest: ${row}`], entry };
+}
+
+function rollSilverCityQuest() {
+  const d6 = rollDie(6);
+  if (d6 <= 3) {
+    const v = rollVillageQuest();
+    return { steps: [`Where: ${d6} → Village table`, ...v.steps], entry: v.entry };
+  }
+  const d10 = rollDie(10);
+  const entry = QUEST_SILVER_CITY.find((e) => e.roll === d10);
+  return { steps: [`Where: ${d6} → Silver City table`, `Quest: ${d10}`], entry };
+}
+
+function rollOutpostQuest() {
+  let d6 = rollDie(6);
+  let rerolled = false;
+  while (d6 === 6) {
+    d6 = rollDie(6);
+    rerolled = true;
+  }
+  const entry = QUEST_OUTPOST.find((e) => e.roll === d6);
+  return { steps: [`Quest: ${d6}${rerolled ? " (after reroll)" : ""}`], entry };
+}
 
 // ---------- Compendium data (from official reference pages) ----------
 const PRAYERS = [
@@ -1771,6 +1869,55 @@ function DiceTray() {
   );
 }
 
+function QuestRollerPanel() {
+  const [result, setResult] = useState(null);
+
+  const roll = (origin) => {
+    let r;
+    if (origin === "silverCity") r = rollSilverCityQuest();
+    else if (origin === "outpost") r = rollOutpostQuest();
+    else r = rollVillageQuest();
+    setResult({ origin, ...r });
+  };
+
+  const originLabel = { silverCity: "Silver City", outpost: "The Outpost", village: "Village" };
+
+  return (
+    <Panel>
+      <SectionTitle icon={ScrollText}>Quest Generator</SectionTitle>
+      <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
+        You must be in the quest's location to start it — random-location quests may be started anywhere, including Silver City. If a village name appears in brackets, your party must be in that village; re-roll if not.
+      </p>
+      <div className="flex flex-wrap gap-2 mb-3">
+        <button onClick={() => roll("silverCity")} className="px-3 py-2 rounded font-bold text-sm" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+          In Silver City
+        </button>
+        <button onClick={() => roll("village")} className="px-3 py-2 rounded font-bold text-sm" style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+          In a Village
+        </button>
+        <button onClick={() => roll("outpost")} className="px-3 py-2 rounded font-bold text-sm" style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}>
+          At The Outpost
+        </button>
+      </div>
+      {result && (
+        <div className="rounded p-3" style={{ background: palette.charcoal }}>
+          <p className="text-xs mb-1" style={{ color: "#B8A78A", fontFamily: "JetBrains Mono, monospace" }}>
+            {originLabel[result.origin]} · {result.steps.join(" · ")}
+          </p>
+          {result.entry ? (
+            <>
+              <p className="text-lg font-bold" style={{ color: palette.parchment, fontFamily: "Cinzel, serif" }}>{result.entry.name}</p>
+              <p className="text-sm" style={{ color: palette.goldSoft, fontFamily: "JetBrains Mono, monospace" }}>Book {result.entry.book}, page {result.entry.page}</p>
+            </>
+          ) : (
+            <p className="text-sm" style={{ color: palette.parchment }}>No matching quest found.</p>
+          )}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 // ---------- Reference ----------
 function Reference() {
   return (
@@ -2205,6 +2352,7 @@ export default function App() {
     ["heroes", "Heroes", Users],
     ["combat", "Combat", Swords],
     ["dice", "Dice", Dice5],
+    ["quest", "Quest", Map],
     ["compendium", "Compendium", ScrollText],
     ["campaigns", "Campaigns", FolderOpen],
     ["reference", "Reference", BookOpen],
@@ -2269,6 +2417,7 @@ export default function App() {
         )}
         {tab === "combat" && <CombatCalc heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
         {tab === "dice" && <DiceTray />}
+        {tab === "quest" && <QuestRollerPanel />}
         {tab === "compendium" && <CompendiumTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
         {tab === "campaigns" && (
           <CampaignsTab

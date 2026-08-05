@@ -1,92 +1,95 @@
 # League of Dungeoneers — Companion & Ledger
 
-An unofficial companion web app for **League of Dungeoneers** (von Braus
-Publishing) — a stat tracker, combat calculator, and rules reference built to
-take the bookkeeping and maths off your plate mid-session so you can focus on
-playing.
-
-Live demo: _add your Vercel URL here once deployed_
-
-## Features
-
-- **Party tracker** — Threat Level and Party Morale with one-tap buttons for
-  every trigger in the rules, plus food and coin tracking and a running
-  session log.
-- **Hero sheets** — HP, Energy, Sanity, Mana, the full skill list, weapon and
-  per-location armour (with durability), and chips for every Talent, Perk,
-  Spell, Prayer, and Special Rule attached to that hero.
-- **Combat calculator** — tick the modifiers that apply (height advantage,
-  attacking from behind, shields, defensive stance, etc.) and it totals the
-  effective CS/RS for you, rolls, and tells you Success / Fail / Perfect. A
-  separate panel handles the damage formula (Weapon DMG + DB − NA − Armour).
-- **Cast spells & say prayers** — pick a hero, pick from what they know, and
-  the app deducts the Mana or Energy cost and logs it automatically.
-- **Compendium** — every Talent, Perk, Prayer, Spell, and monster Special
-  Rule in the game, searchable, with a one-tap "Add" to attach any of them to
-  a hero.
-- **Dice tray & loot roller** — d4/d6/d10/d20/d100, a hit-location roller,
-  and the T1–T5 loot tables so you don't need to flip pages mid-battle.
-- **Multiple campaigns** — save, load, rename, and delete separate
-  campaigns, and start a fresh one any time without losing the others.
-
-## This is a fan project
-
-This app is unofficial and isn't affiliated with or endorsed by von Braus
-Publishing. *League of Dungeoneers* and all associated game content —
-rules text, spell/talent/perk/prayer/special-rule names and descriptions,
-setting details, etc. — are the property of von Braus Publishing. This
-repository's code (the app itself) is MIT-licensed; the game content it
-references is not, and reproducing it elsewhere is subject to von Braus
-Publishing's own rights. If you own the game, this tool is meant to sit
-alongside your physical copy, not replace it.
+A campaign companion app for the *League of Dungeoneers* board game (von Braus
+Publishing): party/threat/morale tracking, a combat calculator, spell &
+prayer casting, a searchable talents/perks/spells/prayers/special-rules
+compendium, dice, loot rolls, and multi-campaign save/load.
 
 ## Running it locally
 
-Requires [Node.js](https://nodejs.org) 18 or later.
+You'll need [Node.js](https://nodejs.org) 18 or later installed.
 
 ```bash
-git clone https://github.com/<your-username>/league-of-dungeoneers-companion.git
-cd league-of-dungeoneers-companion
 npm install
 npm run dev
 ```
 
-Vite will print a local URL (usually `http://localhost:5173`) with hot-reload.
+This starts a local dev server (Vite will print the URL, usually
+`http://localhost:5173`) with hot-reload.
 
-To build a production bundle:
+To build the production version:
 
 ```bash
 npm run build
-npm run preview   # serve the built dist/ folder locally
+npm run preview   # serves the built dist/ folder locally, to sanity-check it
 ```
 
-## Deploying your own copy
+## Data & storage
 
-The app is a static site (Vite + React), so any static host works — these
-steps are for [Vercel](https://vercel.com), which requires no configuration:
+This app started life as a Claude.ai artifact, which persists data through
+Anthropic's own storage API. Running it standalone like this, `src/storage.js`
+swaps that for the browser's `localStorage` instead — same shape, so the app
+code didn't need to change. That means:
 
-1. Push this repo to your own GitHub account.
-2. Go to [vercel.com/new](https://vercel.com/new) and import the repo.
-3. Vercel auto-detects the Vite build (`npm run build`, output `dist`) — a
-   `vercel.json` in this repo makes that explicit. Click **Deploy**.
-4. Every push to `main` redeploys automatically.
+- Data is saved **per browser, per device**. Clearing site data/cookies for
+  this domain will wipe your campaigns.
+- There's no sync between devices — a campaign started on your phone won't
+  show up on your laptop unless you export/import manually (not built yet).
 
-## Data & privacy
+## Deploying — GitHub + Vercel
 
-There's no backend or account system. Campaign data is stored entirely in
-your browser's `localStorage` — nothing is sent to a server. That means:
+### 1. Push this project to GitHub
 
-- Data stays on the device/browser you used to create it; there's no sync
-  between devices.
-- Clearing your browser's site data for this domain will erase your saved
-  campaigns.
+From inside this folder:
 
-## Tech stack
+```bash
+git init
+git add .
+git commit -m "Initial commit"
+```
 
-React + Vite, Tailwind CSS, [lucide-react](https://lucide.dev) for icons.
-Everything lives in `src/App.jsx` as a single file.
+Create a new empty repository on GitHub (no README/gitignore, since you
+already have them), then:
 
-## License
+```bash
+git remote add origin https://github.com/<your-username>/<your-repo-name>.git
+git branch -M main
+git push -u origin main
+```
 
-The code in this repository is licensed under the [MIT License](LICENSE).
-See the note above regarding the game content it references.
+### 2. Import into Vercel
+
+1. Go to [vercel.com/new](https://vercel.com/new) and sign in (you can sign
+   in directly with your GitHub account).
+2. Click **Import** next to the repository you just pushed.
+3. Vercel auto-detects this as a Vite project (Build Command
+   `npm run build`, Output Directory `dist`) — you shouldn't need to change
+   anything. There's also a `vercel.json` in this repo making that explicit.
+4. Click **Deploy**. After a minute or two you'll get a live URL like
+   `your-repo-name.vercel.app`.
+
+From then on, every push to `main` automatically redeploys.
+
+### Custom domain (optional)
+
+In the Vercel project → **Settings → Domains**, add your own domain and
+follow the DNS instructions it gives you.
+
+## Project structure
+
+```
+├── index.html          # HTML entry point
+├── src/
+│   ├── main.jsx         # Mounts the app, wires up the storage shim
+│   ├── App.jsx           # The entire app (all tabs, components, game data)
+│   ├── storage.js        # localStorage-backed persistence shim
+│   └── index.css         # Tailwind entry point
+├── tailwind.config.js
+├── postcss.config.js
+├── vite.config.js
+└── vercel.json
+```
+
+Everything lives in `App.jsx` as a single file, matching how it was
+originally built as a Claude artifact — feel free to split it into
+multiple files if you keep developing it further.

@@ -42,6 +42,10 @@ const defaultHero = () => ({
   xp: 0,
   stats: { STR: 5, CON: 5, DEX: 5, WIS: 5, RES: 5 },
   luck: 0,
+  background: "",
+  improvementPoints: 0,
+  creationPoints: 15,
+  freeSkill: "",
   hp: { cur: 10, max: 10 },
   energy: { cur: 1, max: 1 },
   sanity: { cur: 10, max: 10 },
@@ -64,10 +68,37 @@ const defaultHero = () => ({
   spells: [],
   prayers: [],
   specialRules: [],
+  conditions: [],
+  backpackSize: 0,
+  backpack: [],
   notes: "",
 });
 
-const SPECIES = ["Human", "Elf", "Halfling", "Dwarf"];
+// Starting stats per species — base + dice roll, from the official character-creation
+// tool (base game + Frogling/Pale expansions). Basic stats and HP are rolled the same
+// way: base + dice. Note text is condensed from that tool's per-species creation rules.
+const SPECIES_DATA = [
+  { name: "Human", hp: { base: 7, count: 1, size: 6 }, stats: { STR: 30, CON: 30, DEX: 30, WIS: 30, RES: 30 }, note: "Jack of All Trades: roll a random Talent from a chosen category at creation." },
+  { name: "Elf", hp: { base: 6, count: 1, size: 6 }, stats: { STR: 25, CON: 20, DEX: 40, WIS: 35, RES: 30 }, note: "" },
+  { name: "Halfling", hp: { base: 5, count: 1, size: 6 }, stats: { STR: 20, CON: 20, DEX: 40, WIS: 30, RES: 40 }, note: "Cannot use Longbows or Elvin bows (height). May buy Cooking Gear for 50c at the start of the game." },
+  { name: "Dwarf", hp: { base: 8, count: 1, size: 6 }, stats: { STR: 40, CON: 30, DEX: 25, WIS: 25, RES: 30 }, note: "Cannot use Longbows or Elvin bows (height)." },
+  { name: "Gnome", hp: { base: 4, count: 1, size: 6 }, stats: { STR: 20, CON: 20, DEX: 30, WIS: 40, RES: 40 }, note: "Cannot use Longbows or Elvin bows (height). Artificer: once specialised, pays half cost for blacksmithing/crafting services." },
+  { name: "Duckfolk", hp: { base: 6, count: 1, size: 6 }, stats: { STR: 25, CON: 25, DEX: 30, WIS: 30, RES: 40 }, max: { STR: 55, CON: 60, DEX: 70, WIS: 70, RES: 80 }, note: "Short arms — cannot use Longbows or Elvin bows." },
+  { name: "Frogling", hp: { base: 4, count: 1, size: 6 }, stats: { STR: 20, CON: 35, DEX: 40, WIS: 30, RES: 25 }, note: "Cannot use Longbows or Elvin bows (height)." },
+  { name: "Half-Ogre", hp: { base: 10, count: 2, size: 6 }, stats: { STR: 50, CON: 40, DEX: 25, WIS: 15, RES: 40 }, max: { STR: 80, CON: 60, DEX: 60, WIS: 60, RES: 60 }, note: "+2 Sanity. May only take the Warrior, Barbarian, or Rogue profession." },
+  { name: "Pale Goblin", hp: { base: 5, count: 1, size: 6 }, stats: { STR: 25, CON: 20, DEX: 40, WIS: 30, RES: 35 }, note: "Cannot use Longbows or Elvin bows (height)." },
+  { name: "Pale Orc", hp: { base: 8, count: 1, size: 6 }, stats: { STR: 40, CON: 35, DEX: 25, WIS: 20, RES: 30 }, note: "Cannot use Longbows or Elvin bows (height)." },
+];
+const SPECIES = SPECIES_DATA.map((s) => s.name);
+
+// Background flavour table (roll 1d20) — names only; no mechanical stat effect found
+// in either the rulebook excerpt or the character-creation tool.
+const BACKGROUNDS = [
+  "Wanderlust", "The Well", "Fables", "The Heirloom", "Arachnophobia",
+  "The Lost Brother", "Revenge", "Bad Tempered", "Poverty", "Proving Your Worth",
+  "The Fraud", "The Noble", "Sworn Enemy", "The Family Keep", "Troll Slayer",
+  "Revenge", "A New Home", "The Apprentice", "Weak", "Afraid of Heights",
+];
 
 const PROFESSIONS = [
   { name: "Warrior", desc: "Balanced melee fighter with solid defence and attack." },
@@ -78,10 +109,12 @@ const PROFESSIONS = [
   { name: "Thief", desc: "Lockpicking and perception specialist, weaker in direct combat." },
   { name: "Warrior Priest", desc: "Melee combat combined with healing and battle prayers." },
   { name: "Wizard", desc: "Magic attacks and spells — fragile but powerful at range." },
+  { name: "Knight", desc: "Heavy melee tank with a squire — never uses ranged weapons or steals." },
+  { name: "Druid", desc: "Nature caster — invocations and beastforms, fragile but shapeshifts into combat forms." },
 ];
 
 // Which extra (RES/WIS-caster) skills a profession's sheet includes, per the official character sheets
-const CASTER_SKILL = { "Wizard": "arcaneArts" };
+const CASTER_SKILL = { "Wizard": "arcaneArts", "Druid": "arcaneArts" };
 const PRAYER_SKILL = { "Warrior Priest": "battlePrayers" };
 
 const SKILL_LABELS = {
@@ -933,6 +966,8 @@ function normalizeHero(h) {
     spells: h.spells || base.spells,
     prayers: h.prayers || base.prayers,
     specialRules: h.specialRules || base.specialRules,
+    conditions: h.conditions || base.conditions,
+    backpack: h.backpack || base.backpack,
     armour: {
       head: armourPiece("head"),
       arms: armourPiece("arms"),
@@ -944,7 +979,62 @@ function normalizeHero(h) {
 }
 
 // ---------- Hero Card ----------
-function HeroCard({ hero, update, remove }) {
+// Shows a hero's attached talents/perks/spells/prayers/special-rules as small
+// cards with name + description, instead of bare pills, with a remove button.
+function AttachedItemList({ label, names, dataset, color, onRemove, groupKey }) {
+  if (!names || names.length === 0) return null;
+  const resolved = names.map((name) => ({ name, item: dataset.find((d) => d.name === name) }));
+  const groups = {};
+  resolved.forEach((entry) => {
+    const g = groupKey && entry.item ? (groupKey(entry.item) || "Other") : "";
+    if (!groups[g]) groups[g] = [];
+    groups[g].push(entry);
+  });
+  const groupNames = Object.keys(groups).sort();
+
+  const renderCard = ({ name, item }) => (
+    <div key={name} className="rounded p-1.5 flex items-start justify-between gap-2" style={{ background: "#00000008", borderLeft: `3px solid ${color}` }}>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs font-bold" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>{name}</span>
+          {item && item.lvl != null && (
+            <span className="text-xs px-1.5 rounded-full font-bold" style={{ background: palette.gold, color: palette.charcoal, fontFamily: "JetBrains Mono, monospace" }}>Lvl {item.lvl}</span>
+          )}
+          {item && item.school && (
+            <span className="text-xs px-1.5 rounded-full" style={{ background: "#5B6FA8", color: palette.parchment, fontFamily: "JetBrains Mono, monospace" }}>{item.school}</span>
+          )}
+        </div>
+        {item && item.cv != null && (
+          <p className="text-xs" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.inkSoft }}>
+            CV {item.cv}{item.mana != null ? ` · Mana ${item.mana}` : ""}
+          </p>
+        )}
+        <p className="text-xs mt-0.5" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>{item ? item.effect : "(details not found)"}</p>
+      </div>
+      <button onClick={() => onRemove(name)} className="shrink-0" style={{ color: palette.crimson }}><X size={13} /></button>
+    </div>
+  );
+
+  return (
+    <div className="mb-2">
+      <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">{label}</div>
+      {groupNames.map((g) => (
+        <div key={g} className="mb-1.5">
+          {g && (
+            <div className="text-xs font-bold uppercase mb-0.5 px-1.5 py-0.5 rounded inline-block" style={{ background: color, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+              {g}
+            </div>
+          )}
+          <div className="space-y-1">
+            {groups[g].map(renderCard)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function HeroCard({ hero, update, remove, addLog }) {
   const [open, setOpen] = useState(true);
   const [sanityEvent, setSanityEvent] = useState(SANITY_EVENTS[0].label);
 
@@ -969,6 +1059,48 @@ function HeroCard({ hero, update, remove }) {
     const cur = clamp(hero.sanity.cur + d, 0, hero.sanity.max);
     set({ sanity: { ...hero.sanity, cur } });
   };
+
+  const speciesData = SPECIES_DATA.find((s) => s.name === hero.species);
+
+  const rollStartingStats = () => {
+    if (!speciesData) return;
+    const hpRoll = speciesData.hp.base + Array.from({ length: speciesData.hp.count }, () => rollDie(speciesData.hp.size)).reduce((a, b) => a + b, 0);
+    const newStats = {};
+    Object.entries(speciesData.stats).forEach(([k, base]) => {
+      newStats[k] = base + rollDie(10);
+    });
+    update({ ...hero, stats: newStats, hp: { cur: hpRoll, max: hpRoll }, creationPoints: 15 });
+  };
+
+  const rollBackground = () => set({ background: BACKGROUNDS[rollDie(BACKGROUNDS.length) - 1] });
+
+  const setFreeSkill = (newKey) => {
+    const skills = { ...hero.skills };
+    if (hero.freeSkill && skills[hero.freeSkill] !== undefined) skills[hero.freeSkill] = skills[hero.freeSkill] - 10;
+    if (newKey && skills[newKey] !== undefined) skills[newKey] = skills[newKey] + 10;
+    update({ ...hero, freeSkill: newKey, skills });
+  };
+
+  const levelUp = () => {
+    update({ ...hero, level: hero.level + 1, improvementPoints: hero.improvementPoints + 15 });
+    addLog && addLog(`${hero.name} leveled up to ${hero.level + 1} (+15 Improvement Points)`);
+  };
+
+  const addBackpackItem = () => {
+    if (hero.backpackSize > 0 && hero.backpack.length >= hero.backpackSize) return;
+    set({ backpack: [...hero.backpack, { id: uid(), name: "", value: "", enc: "", dur: "" }] });
+  };
+  const updateBackpackItem = (id, patch) => set({ backpack: hero.backpack.map((it) => (it.id === id ? { ...it, ...patch } : it)) });
+  const removeBackpackItem = (id) => set({ backpack: hero.backpack.filter((it) => it.id !== id) });
+
+  const [conditionInput, setConditionInput] = useState("");
+  const addCondition = () => {
+    const v = conditionInput.trim();
+    if (!v || hero.conditions.includes(v)) return;
+    set({ conditions: [...hero.conditions, v] });
+    setConditionInput("");
+  };
+  const removeCondition = (c) => set({ conditions: hero.conditions.filter((x) => x !== c) });
 
   return (
     <Panel className="mb-3">
@@ -1009,11 +1141,43 @@ function HeroCard({ hero, update, remove }) {
                 style={{ background: "#fff", border: `1px solid ${palette.line}` }}
               />
             </div>
+            <div className="flex items-center gap-1 text-xs" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.inkSoft }}>
+              XP
+              <input
+                type="number"
+                value={hero.xp}
+                onChange={(e) => set({ xp: Number(e.target.value) || 0 })}
+                className="w-14 rounded px-1"
+                style={{ background: "#fff", border: `1px solid ${palette.line}` }}
+              />
+            </div>
+            <button
+              onClick={levelUp}
+              className="text-xs px-2 py-1 rounded font-semibold"
+              style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Crimson Pro, serif" }}
+              title="Level +1, and +15 Improvement Points"
+            >
+              Level Up
+            </button>
           </div>
           {hero.profession && (
             <p className="text-xs mt-1" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
               {PROFESSIONS.find((p) => p.name === hero.profession)?.desc}
             </p>
+          )}
+          {speciesData && speciesData.note && (
+            <p className="text-xs mt-1" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+              {speciesData.note}
+            </p>
+          )}
+          {speciesData && (
+            <button
+              onClick={rollStartingStats}
+              className="text-xs mt-1.5 px-2 py-1 rounded font-semibold flex items-center gap-1"
+              style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Crimson Pro, serif" }}
+            >
+              <Dice5 size={12} /> Roll Starting Stats & HP ({speciesData.name})
+            </button>
           )}
         </div>
         <div className="flex gap-1">
@@ -1054,46 +1218,138 @@ function HeroCard({ hero, update, remove }) {
             </button>
           </div>
 
-          {/* Basic stats */}
-          <div className="grid grid-cols-5 gap-1.5 mb-3">
-            {Object.entries(hero.stats).map(([k, v]) => (
-              <div key={k} className="text-center rounded p-1.5" style={{ background: "#00000008" }}>
-                <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }}>{k}</div>
-                <input
-                  type="number"
-                  value={v}
-                  onChange={(e) => setStat(k, Number(e.target.value) || 0)}
-                  className="w-full text-center bg-transparent font-bold outline-none"
-                  style={{ fontFamily: "JetBrains Mono, monospace", color: palette.ink }}
-                />
-              </div>
+          {/* Conditions */}
+          <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">Conditions</div>
+          <div className="flex flex-wrap gap-1 mb-1.5">
+            {hero.conditions.map((c) => (
+              <span key={c} className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Crimson Pro, serif" }}>
+                {c}
+                <button onClick={() => removeCondition(c)} style={{ lineHeight: 0 }}><X size={11} /></button>
+              </span>
             ))}
-            <div className="text-center rounded p-1.5" style={{ background: "#00000008" }}>
-              <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }}>LUCK</div>
-              <input
-                type="number"
-                value={hero.luck}
-                onChange={(e) => set({ luck: Number(e.target.value) || 0 })}
-                className="w-full text-center bg-transparent font-bold outline-none"
-                style={{ fontFamily: "JetBrains Mono, monospace", color: palette.ink }}
-              />
+            {hero.conditions.length === 0 && (
+              <span className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>None</span>
+            )}
+          </div>
+          <div className="flex gap-1.5 mb-3">
+            <input
+              value={conditionInput}
+              onChange={(e) => setConditionInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addCondition()}
+              placeholder="e.g. Poisoned, Diseased, Bleeding Out…"
+              className="flex-1 text-xs rounded px-2 py-1"
+              style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+            />
+            <button onClick={addCondition} className="px-2 rounded text-xs font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>
+              Add
+            </button>
+          </div>
+
+          {/* Basic stats */}
+          <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">Stats</div>
+          <div className="grid grid-cols-5 gap-1.5 mb-3">
+            {Object.entries(hero.stats).map(([k, v]) => {
+              const max = speciesData && speciesData.max ? speciesData.max[k] : null;
+              const overMax = max != null && v > max;
+              return (
+                <div key={k} className="text-center rounded p-1.5" style={{ background: "#00000008" }}>
+                  <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }}>{k}</div>
+                  <input
+                    type="number"
+                    value={v}
+                    onChange={(e) => setStat(k, Number(e.target.value) || 0)}
+                    className="w-full text-center bg-transparent font-bold outline-none"
+                    style={{ fontFamily: "JetBrains Mono, monospace", color: overMax ? palette.crimson : palette.ink }}
+                  />
+                  {max != null && (
+                    <div className="text-[9px]" style={{ fontFamily: "JetBrains Mono, monospace", color: overMax ? palette.crimson : palette.inkSoft }}>
+                      max {max}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Background, Improvement Points, Free Skill, Luck */}
+          <div className="grid grid-cols-2 gap-1.5 mb-3">
+            <label className="text-xs col-span-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+              Background
+              <div className="flex gap-1.5 mt-0.5">
+                <select
+                  value={hero.background}
+                  onChange={(e) => set({ background: e.target.value })}
+                  className="flex-1 text-xs rounded px-2 py-1"
+                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                >
+                  <option value="">None…</option>
+                  {BACKGROUNDS.map((b) => <option key={b} value={b}>{b}</option>)}
+                </select>
+                <button onClick={rollBackground} className="px-2 rounded" style={{ background: palette.gold, color: palette.charcoal }}>
+                  <Dice5 size={13} />
+                </button>
+              </div>
+            </label>
+
+            <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+              Free Skill (+10)
+              <select
+                value={hero.freeSkill}
+                onChange={(e) => setFreeSkill(e.target.value)}
+                className="w-full text-xs rounded px-2 py-1 mt-0.5"
+                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+              >
+                <option value="">None…</option>
+                {visibleSkills.map((k) => <option key={k} value={k}>{SKILL_LABELS[k]}</option>)}
+              </select>
+            </label>
+
+            <div className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+              Creation Points
+              <div className="mt-0.5">
+                <Stepper value={hero.creationPoints} onChange={(v) => set({ creationPoints: v })} min={0} max={15} />
+              </div>
             </div>
+
+            <div className="text-xs col-span-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+              Improvement Points (from levelling)
+              <div className="mt-0.5">
+                <Stepper value={hero.improvementPoints} onChange={(v) => set({ improvementPoints: v })} min={0} max={999} />
+              </div>
+            </div>
+          </div>
+          <p className="text-[10px] mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
+            Creation Points: 15 to spend on the rolled stats/HP above at creation, no more than 10 into any single one. Improvement Points: +15 each level-up, spent via the stat/skill cost table (p54) — max +5 per stat/skill per level, +2 HP per level, skill cap 80 (cost doubles past 80). Both are just counters here — apply the actual increases to the fields above yourself.
+          </p>
+
+          <div className="rounded p-2 mb-3 flex items-center justify-between" style={{ background: "#00000008" }}>
+            <div>
+              <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }}>LUCK</div>
+              <p className="text-[10px]" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>Spend 1 to reroll a dice roll that directly affects you.</p>
+            </div>
+            <Stepper value={hero.luck} onChange={(v) => set({ luck: v })} min={0} max={999} />
           </div>
 
           {/* Skills */}
+          <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">Skills</div>
           <div className="grid grid-cols-3 gap-1.5 mb-3">
-            {visibleSkills.map((k) => (
-              <div key={k} className="text-center rounded p-1.5" style={{ background: "#00000008" }}>
-                <div style={{ fontFamily: "Cinzel, serif", fontSize: 9, color: palette.inkSoft }}>{SKILL_LABELS[k]}</div>
-                <input
-                  type="number"
-                  value={hero.skills[k]}
-                  onChange={(e) => setSkill(k, Number(e.target.value) || 0)}
-                  className="w-full text-center bg-transparent font-bold outline-none"
-                  style={{ fontFamily: "JetBrains Mono, monospace", color: palette.ink }}
-                />
-              </div>
-            ))}
+            {visibleSkills.map((k) => {
+              const isFree = hero.freeSkill === k;
+              return (
+                <div key={k} className="text-center rounded p-1.5 relative" style={{ background: isFree ? "#00000015" : "#00000008", border: isFree ? `1.5px solid ${palette.gold}` : "1.5px solid transparent" }}>
+                  <div style={{ fontFamily: "Cinzel, serif", fontSize: 9, color: palette.inkSoft }}>
+                    {SKILL_LABELS[k]}{isFree && <span style={{ color: palette.gold, fontWeight: "bold" }}> (+10)</span>}
+                  </div>
+                  <input
+                    type="number"
+                    value={hero.skills[k]}
+                    onChange={(e) => setSkill(k, Number(e.target.value) || 0)}
+                    className="w-full text-center bg-transparent font-bold outline-none"
+                    style={{ fontFamily: "JetBrains Mono, monospace", color: palette.ink }}
+                  />
+                </div>
+              );
+            })}
           </div>
 
           {/* Weapon */}
@@ -1146,67 +1402,94 @@ function HeroCard({ hero, update, remove }) {
             </div>
           </div>
 
+          {/* Backpack */}
+          <div className="flex items-center justify-between mb-1">
+            <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase">Backpack</div>
+            <label className="flex items-center gap-1 text-[10px]" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+              Size
+              <input
+                type="number"
+                value={hero.backpackSize}
+                onChange={(e) => set({ backpackSize: Number(e.target.value) || 0 })}
+                className="w-10 rounded px-1"
+                style={{ border: `1px solid ${palette.line}` }}
+              />
+            </label>
+          </div>
+          <div className="rounded overflow-hidden mb-1.5" style={{ border: `1px solid ${palette.line}` }}>
+            <div className="flex gap-1 px-1.5 py-1 text-xs font-bold uppercase" style={{ background: palette.charcoal, color: palette.goldSoft, fontFamily: "Cinzel, serif" }}>
+              <span className="flex-1 min-w-0">Item</span>
+              <span className="w-14 shrink-0">Value</span>
+              <span className="w-12 shrink-0">ENC</span>
+              <span className="w-12 shrink-0">Dur</span>
+              <span className="w-6 shrink-0"></span>
+            </div>
+            {hero.backpack.length === 0 && (
+              <p className="text-xs px-2 py-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>Empty.</p>
+            )}
+            {hero.backpack.map((item, idx) => (
+              <div key={item.id} className="flex gap-1 px-1.5 py-1 items-center" style={{ background: idx % 2 ? "#00000006" : "transparent", borderTop: `1px solid ${palette.line}55` }}>
+                <input
+                  value={item.name}
+                  onChange={(e) => updateBackpackItem(item.id, { name: e.target.value })}
+                  placeholder="Item name"
+                  className="flex-1 min-w-0 text-xs rounded px-1 py-0.5"
+                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                />
+                <input
+                  value={item.value}
+                  onChange={(e) => updateBackpackItem(item.id, { value: e.target.value })}
+                  className="w-14 shrink-0 text-xs rounded px-1 py-0.5"
+                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+                />
+                <input
+                  value={item.enc}
+                  onChange={(e) => updateBackpackItem(item.id, { enc: e.target.value })}
+                  className="w-12 shrink-0 text-xs rounded px-1 py-0.5"
+                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+                />
+                <input
+                  value={item.dur}
+                  onChange={(e) => updateBackpackItem(item.id, { dur: e.target.value })}
+                  className="w-12 shrink-0 text-xs rounded px-1 py-0.5"
+                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+                />
+                <button onClick={() => removeBackpackItem(item.id)} className="w-6 shrink-0 flex justify-center" style={{ color: palette.crimson }}>
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={addBackpackItem}
+            disabled={hero.backpackSize > 0 && hero.backpack.length >= hero.backpackSize}
+            className="w-full flex items-center justify-center gap-1.5 text-xs py-1.5 rounded font-semibold mb-3"
+            style={{
+              background: (hero.backpackSize > 0 && hero.backpack.length >= hero.backpackSize) ? "#00000015" : palette.forestDark,
+              color: (hero.backpackSize > 0 && hero.backpack.length >= hero.backpackSize) ? palette.inkSoft : palette.parchment,
+              fontFamily: "Cinzel, serif",
+            }}
+          >
+            <Plus size={13} /> Add Backpack Item{hero.backpackSize > 0 ? ` (${hero.backpack.length}/${hero.backpackSize})` : ""}
+          </button>
+
+          <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">Comments</div>
           <textarea
             value={hero.notes}
             onChange={(e) => set({ notes: e.target.value })}
-            placeholder="Backpack, conditions, quick notes…"
+            placeholder="Quick notes…"
             className="w-full text-xs rounded px-2 py-1 mt-1"
             rows={2}
             style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
           />
 
           {(hero.talents.length > 0 || hero.perks.length > 0 || hero.spells.length > 0 || hero.prayers.length > 0 || hero.specialRules.length > 0) && (
-            <div className="mt-2 space-y-1.5">
-              {hero.talents.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {hero.talents.map((t) => (
-                    <span key={t} className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Crimson Pro, serif" }}>
-                      {t}
-                      <button onClick={() => set({ talents: hero.talents.filter((x) => x !== t) })} style={{ lineHeight: 0 }}><X size={11} /></button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              {hero.perks.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {hero.perks.map((t) => (
-                    <span key={t} className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Crimson Pro, serif" }}>
-                      {t}
-                      <button onClick={() => set({ perks: hero.perks.filter((x) => x !== t) })} style={{ lineHeight: 0 }}><X size={11} /></button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              {hero.spells.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {hero.spells.map((t) => (
-                    <span key={t} className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ background: "#5B6FA8", color: palette.parchment, fontFamily: "Crimson Pro, serif" }}>
-                      {t}
-                      <button onClick={() => set({ spells: hero.spells.filter((x) => x !== t) })} style={{ lineHeight: 0 }}><X size={11} /></button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              {hero.prayers.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {hero.prayers.map((t) => (
-                    <span key={t} className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ background: palette.crimson, color: palette.parchment, fontFamily: "Crimson Pro, serif" }}>
-                      {t}
-                      <button onClick={() => set({ prayers: hero.prayers.filter((x) => x !== t) })} style={{ lineHeight: 0 }}><X size={11} /></button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              {hero.specialRules.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {hero.specialRules.map((t) => (
-                    <span key={t} className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ background: palette.ember, color: palette.parchment, fontFamily: "Crimson Pro, serif" }}>
-                      {t}
-                      <button onClick={() => set({ specialRules: hero.specialRules.filter((x) => x !== t) })} style={{ lineHeight: 0 }}><X size={11} /></button>
-                    </span>
-                  ))}
-                </div>
-              )}
+            <div className="mt-2">
+              <AttachedItemList label="Talents" names={hero.talents} dataset={TALENTS} color={palette.forestDark} groupKey={(i) => i.type} onRemove={(t) => set({ talents: hero.talents.filter((x) => x !== t) })} />
+              <AttachedItemList label="Perks" names={hero.perks} dataset={PERKS} color={palette.gold} groupKey={(i) => i.type} onRemove={(t) => set({ perks: hero.perks.filter((x) => x !== t) })} />
+              <AttachedItemList label="Spells" names={hero.spells} dataset={SPELLS} color="#5B6FA8" groupKey={(i) => i.school} onRemove={(t) => set({ spells: hero.spells.filter((x) => x !== t) })} />
+              <AttachedItemList label="Prayers" names={hero.prayers} dataset={PRAYERS} color={palette.crimson} groupKey={(i) => `Level ${i.lvl}`} onRemove={(t) => set({ prayers: hero.prayers.filter((x) => x !== t) })} />
+              <AttachedItemList label="Special Rules" names={hero.specialRules} dataset={SPECIAL_RULES} color={palette.ember} groupKey={(i) => i.type} onRemove={(t) => set({ specialRules: hero.specialRules.filter((x) => x !== t) })} />
             </div>
           )}
         </div>
@@ -1216,8 +1499,9 @@ function HeroCard({ hero, update, remove }) {
 }
 
 // ---------- Party Panel (Threat / Morale / Food / Coins) ----------
-function PartyPanel({ party, setParty, log, addLog }) {
+function PartyPanel({ party, setParty, log, addLog, heroes, updateHero }) {
   const [moraleEvent, setMoraleEvent] = useState(MORALE_EVENTS[0].label);
+  const [xpAmount, setXpAmount] = useState(50);
 
   const threatColor = (t) => {
     if (t <= 4) return palette.forest;
@@ -1241,6 +1525,12 @@ function PartyPanel({ party, setParty, log, addLog }) {
   };
 
   const halfRes = Math.floor(party.morale / 2); // rough visual only; real threshold is PM<half of starting total
+
+  const awardXP = () => {
+    if (!heroes || heroes.length === 0 || !xpAmount) return;
+    heroes.forEach((h) => updateHero(h.id, { ...h, xp: h.xp + Number(xpAmount) }));
+    addLog(`Awarded ${xpAmount} XP to all ${heroes.length} hero${heroes.length === 1 ? "" : "es"}`);
+  };
 
   return (
     <div>
@@ -1323,6 +1613,30 @@ function PartyPanel({ party, setParty, log, addLog }) {
           </select>
           <button onClick={applyMorale} className="text-xs px-2 py-1 rounded font-semibold" style={{ background: palette.forestDark, color: palette.parchment }}>
             Apply
+          </button>
+        </div>
+      </Panel>
+
+      <Panel className="mb-4">
+        <SectionTitle icon={Sparkles}>Award Experience</SectionTitle>
+        <p className="text-xs mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
+          All heroes gain the same amount of XP. Level-ups happen manually, back in a settlement — use the Level Up button on each hero's card when your table agrees they've earned it.
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="number"
+            value={xpAmount}
+            onChange={(e) => setXpAmount(Number(e.target.value) || 0)}
+            className="w-24 rounded px-2 py-1.5 font-bold"
+            style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+          />
+          <button
+            onClick={awardXP}
+            disabled={!heroes || heroes.length === 0}
+            className="flex-1 px-3 py-1.5 rounded font-bold text-sm"
+            style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif", opacity: (!heroes || heroes.length === 0) ? 0.5 : 1 }}
+          >
+            Give to All Heroes {heroes && heroes.length ? `(${heroes.length})` : ""}
           </button>
         </div>
       </Panel>
@@ -2404,11 +2718,11 @@ export default function App() {
       </nav>
 
       <main className="max-w-2xl mx-auto px-4 pb-16 pt-2">
-        {tab === "party" && <PartyPanel party={party} setParty={setParty} log={log} addLog={addLog} />}
+        {tab === "party" && <PartyPanel party={party} setParty={setParty} log={log} addLog={addLog} heroes={heroes} updateHero={updateHero} />}
         {tab === "heroes" && (
           <div>
             {heroes.map((h) => (
-              <HeroCard key={h.id} hero={h} update={(next) => updateHero(h.id, next)} remove={() => removeHero(h.id)} />
+              <HeroCard key={h.id} hero={h} update={(next) => updateHero(h.id, next)} remove={() => removeHero(h.id)} addLog={addLog} />
             ))}
             <button
               onClick={addHero}

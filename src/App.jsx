@@ -794,10 +794,14 @@ function BuyMeACoffeeButton() {
 
 function Footer() {
   return (
-    <footer className="max-w-2xl mx-auto px-4 py-8 flex flex-col items-center gap-3">
+    <footer className="max-w-2xl mx-auto px-4 py-8 flex flex-col items-center gap-2">
       <BuyMeACoffeeButton />
       <p className="text-xs text-center" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
         © 2026 Luke Wilson. Designed by Luke Wilson.
+      </p>
+      <p className="text-[11px] text-center max-w-md" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic", opacity: 0.8 }}>
+        League of Dungeoneers and all associated game content © 2026 von Braus Publishing. All rights reserved.
+        This is an unofficial fan-made companion tool, not affiliated with or endorsed by von Braus Publishing.
       </p>
     </footer>
   );

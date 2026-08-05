@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Plus, Minus, Trash2, Flame, Heart, Zap, Brain, Sparkles, Dice5,
   Swords, Shield, BookOpen, Users, Skull, ChevronDown, ChevronUp,
@@ -805,24 +805,19 @@ function CompendiumTab({ heroes, updateHero }) {
 
 // ---------- Footer ----------
 function BuyMeACoffeeButton() {
-  const ref = useRef(null);
-  useEffect(() => {
-    if (!ref.current || ref.current.dataset.loaded) return;
-    const script = document.createElement("script");
-    script.src = "https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js";
-    script.setAttribute("data-name", "bmc-button");
-    script.setAttribute("data-slug", "mrlewk");
-    script.setAttribute("data-color", "#FFDD00");
-    script.setAttribute("data-emoji", "");
-    script.setAttribute("data-font", "Cookie");
-    script.setAttribute("data-text", "Buy me a coffee");
-    script.setAttribute("data-outline-color", "#000000");
-    script.setAttribute("data-font-color", "#000000");
-    script.setAttribute("data-coffee-color", "#ffffff");
-    ref.current.appendChild(script);
-    ref.current.dataset.loaded = "true";
-  }, []);
-  return <div ref={ref} />;
+  // BMC's JS widget (button.prod.min.js) calls document.write() internally, which
+  // browsers block for scripts injected after the page has loaded — exactly what
+  // happens in a React app. Their static button avoids that entirely: it's just a
+  // link + image, same destination, no script.
+  return (
+    <a href="https://www.buymeacoffee.com/mrlewk" target="_blank" rel="noopener noreferrer">
+      <img
+        src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png"
+        alt="Buy Me A Coffee"
+        style={{ height: 48, width: "auto" }}
+      />
+    </a>
+  );
 }
 
 function Footer() {

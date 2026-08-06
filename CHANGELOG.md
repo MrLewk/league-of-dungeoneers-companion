@@ -3,7 +3,21 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
-## [1.0.0] — Initial public release
+## [1.1.0] — 2026-08-06
+
+### Added
+- Class skills now auto-calculate from profession + stats (skill = source stat + a per-profession modifier), with a Recalculate button to resync at any time without losing the Free Skill bonus
+- Wizard/Druid starting Mana auto-fills from WIS, per the rulebook
+- Encumbrance now shows a red "eff" value on every stat and skill when a hero is overloaded, and automatically applies the −10 penalty when autofilling the Combat calculator or Stat/Skill Check tool from a hero
+- ENC is now tracked on weapons and armour, not just backpack items
+- Campaign export/import — download a campaign as a JSON file for backup, import it back in (here or on another device) as a new campaign
+- In-app changelog viewer, linked from the footer
+
+### Fixed
+- Hero delete now requires a two-step confirm, matching the existing campaign-delete pattern
+- Buy Me a Coffee button switched from their JS widget (which calls `document.write()` and breaks in React apps) to their static link+image button
+
+## [1.0.0] — 2026-08-05
 
 ### Added
 

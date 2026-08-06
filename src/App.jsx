@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Plus, Minus, Trash2, Flame, Heart, Zap, Brain, Sparkles, Dice5,
   Swords, Shield, BookOpen, Users, Skull, ChevronDown, ChevronUp,
-  RotateCcw, Coins, Wheat, ScrollText, Pencil, Check, X, FolderOpen, Loader2, Map
+  RotateCcw, Coins, Wheat, ScrollText, Pencil, Check, X, FolderOpen, Loader2, Map, Download, Upload
 } from "lucide-react";
 
 // ---------- Palette / tokens (inline, no Tailwind arbitrary values) ----------
@@ -55,13 +55,13 @@ const defaultHero = () => ({
     heal: 20, alchemy: 20, perception: 20, foraging: 20,
     arcaneArts: 0, battlePrayers: 0,
   },
-  weapon: { name: "", dmg: "", dur: { cur: 6, max: 6 } },
+  weapon: { name: "", dmg: "", enc: 0, dur: { cur: 6, max: 6 } },
   armour: {
-    head: { def: 0, dur: { cur: 0, max: 0 } },
-    arms: { def: 0, dur: { cur: 0, max: 0 } },
-    torso: { def: 0, dur: { cur: 0, max: 0 } },
-    legs: { def: 0, dur: { cur: 0, max: 0 } },
-    shield: { def: 0, dur: { cur: 0, max: 0 } },
+    head: { def: 0, enc: 0, dur: { cur: 0, max: 0 } },
+    arms: { def: 0, enc: 0, dur: { cur: 0, max: 0 } },
+    torso: { def: 0, enc: 0, dur: { cur: 0, max: 0 } },
+    legs: { def: 0, enc: 0, dur: { cur: 0, max: 0 } },
+    shield: { def: 0, enc: 0, dur: { cur: 0, max: 0 } },
   },
   talents: [],
   perks: [],
@@ -123,6 +123,58 @@ const SKILL_LABELS = {
   perception: "Perception (WIS)", foraging: "Foraging (CON)",
   arcaneArts: "Arcane Arts (WIS)", battlePrayers: "Battle Prayers (RES)",
 };
+
+// Which base stat each skill derives from. Battle Prayers is set to RES here to match
+// the official character sheet's explicit "(RES)" column — the source app this data
+// came from had it keyed to WIS instead, which looks like a bug on their end.
+const SKILL_SOURCE_STAT = {
+  cs: "DEX", rs: "DEX", dodge: "DEX", pickLocks: "DEX",
+  barter: "WIS", heal: "WIS", alchemy: "WIS", perception: "WIS",
+  foraging: "CON", arcaneArts: "WIS", battlePrayers: "RES",
+};
+
+// Per-profession skill modifiers (skill value = source stat + this modifier), from the
+// character-creation tool. Skills a profession doesn't list (e.g. Knight has no RS —
+// they never use ranged weapons) are left alone rather than zeroed out.
+const PROFESSION_SKILLS = {
+  Warrior: { cs: 10, rs: 5, dodge: 0, pickLocks: -20, barter: -15, heal: -10, alchemy: -25, perception: -10, foraging: -15 },
+  Barbarian: { cs: 15, rs: -10, dodge: 5, pickLocks: -20, barter: -15, heal: -10, alchemy: -25, perception: -5, foraging: -15 },
+  Alchemist: { cs: -5, rs: -5, dodge: -10, pickLocks: -20, barter: 0, heal: 5, alchemy: 10, perception: -10, foraging: -20 },
+  Ranger: { cs: -5, rs: 15, dodge: -5, pickLocks: -25, barter: -20, heal: -10, alchemy: -20, perception: 0, foraging: 15 },
+  Rogue: { cs: 0, rs: 0, dodge: 0, pickLocks: 0, barter: 5, heal: -10, alchemy: -25, perception: 0, foraging: 0 },
+  Thief: { cs: -5, rs: 5, dodge: 5, pickLocks: 10, barter: 0, heal: -20, alchemy: -30, perception: 10, foraging: -20 },
+  "Warrior Priest": { cs: 5, rs: -5, dodge: -5, pickLocks: -20, barter: -10, heal: 5, alchemy: -15, perception: -10, foraging: -20, battlePrayers: 15 },
+  Wizard: { cs: -5, rs: -10, dodge: -10, pickLocks: -20, barter: 5, heal: -5, alchemy: -20, perception: -10, foraging: -20, arcaneArts: 10 },
+  Knight: { cs: 10, dodge: 0, pickLocks: -25, barter: 5, heal: -15, alchemy: -20, perception: -10, foraging: -25 },
+  Druid: { cs: -5, rs: 0, dodge: -10, pickLocks: -20, barter: 0, heal: 5, alchemy: 0, perception: -5, foraging: 0, arcaneArts: 5 },
+};
+
+// Recomputes a hero's skills from their profession's modifiers + current stats,
+// re-applying the Free Skill +10 on top so it's never lost on recalculation.
+// Skills the profession doesn't define are left untouched.
+function computeProfessionSkills(hero) {
+  const mods = PROFESSION_SKILLS[hero.profession];
+  if (!mods) return hero.skills;
+  const next = { ...hero.skills };
+  Object.entries(mods).forEach(([skillKey, modifier]) => {
+    const statKey = SKILL_SOURCE_STAT[skillKey];
+    const statVal = Number(hero.stats[statKey]) || 0;
+    let val = statVal + modifier;
+    if (hero.freeSkill === skillKey) val += 10;
+    next[skillKey] = val;
+  });
+  return next;
+}
+
+// Encumbrance penalty per the rulebook: total ENC (weapon + armour + backpack) over
+// STR gives -10 to all skills and stats.
+function encumbranceOver(hero) {
+  const totalEnc =
+    (Number(hero.weapon.enc) || 0) +
+    Object.values(hero.armour).reduce((s, p) => s + (Number(p.enc) || 0), 0) +
+    hero.backpack.reduce((s, i) => s + (Number(i.enc) || 0), 0);
+  return totalEnc > (Number(hero.stats.STR) || 0);
+}
 
 const defaultParty = () => ({ threat: 2, threatFloor: 2, morale: 0, food: 4, coins: 150 });
 
@@ -820,17 +872,101 @@ function BuyMeACoffeeButton() {
   );
 }
 
+// ---------- Changelog ----------
+const CHANGELOG_DATA = [
+  {
+    version: "1.1.0",
+    date: "2026-08-06",
+    sections: {
+      "Added": [
+        "Class skills now auto-calculate from profession + stats, with a Recalculate button to resync any time",
+        "Wizard/Druid starting Mana auto-fills from WIS",
+        "Encumbrance shows a red \"eff\" value on every stat/skill when overloaded, and auto-applies the −10 penalty when autofilling the Combat and Stat/Skill Check tools",
+        "ENC now tracked on weapons and armour, not just backpack items",
+        "Campaign export/import (download a campaign as a file, import it back in) for backup and cross-device restore",
+        "In-app changelog viewer",
+      ],
+      "Fixed": [
+        "Hero delete now requires a two-step confirm, matching campaign delete",
+        "Buy Me a Coffee button switched to a static link — the old JS widget broke in React apps",
+      ],
+    },
+  },
+  {
+    version: "1.0.0",
+    date: "2026-08-05",
+    sections: {
+      "Added": [
+        "Party tracker: Threat Level, Party Morale, food/coins, Award Experience, session log",
+        "Full hero sheets: stats, skills, species (10) with starting-stat rolls, profession (10) including Knight & Druid, Background, Free Skill, Luck, Creation/Improvement Points, Level Up, weapon & armour with durability, Backpack table, Conditions, and Talents/Perks/Spells/Prayers/Special Rules shown as description cards grouped by type",
+        "Combat calculator: Close Combat & Ranged to-hit, Damage, Stat/Skill Check, Cast Spell, and Say Prayer",
+        "Compendium: 99 Talents, 43 Perks, 18 Prayers, 54 Spells, 64 Special Rules, all searchable",
+        "Dice tray, Loot Roller, and a dedicated Quest Generator",
+        "Condensed rules Reference tab",
+        "Multiple campaigns: save, load, rename, delete, start fresh",
+        "Buy Me a Coffee button, copyright footer, MIT license, public README",
+      ],
+    },
+  },
+];
+
+function ChangelogModal({ onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{ background: "#00000088" }} onClick={onClose}>
+      <div
+        className="w-full sm:max-w-lg overflow-y-auto rounded-t-2xl sm:rounded-2xl p-5"
+        style={{ background: palette.parchment, border: `1px solid ${palette.line}`, maxHeight: "85vh" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <h2 style={{ fontFamily: "Cinzel, serif", color: palette.crimson }} className="text-lg font-bold">Changelog</h2>
+          <button onClick={onClose} className="p-1 rounded" style={{ color: palette.inkSoft }}><X size={20} /></button>
+        </div>
+        <div className="space-y-4">
+          {CHANGELOG_DATA.map((entry) => (
+            <div key={entry.version}>
+              <div className="flex items-baseline gap-2 mb-1.5">
+                <span style={{ fontFamily: "Cinzel, serif", color: palette.ink }} className="font-bold">v{entry.version}</span>
+                <span style={{ fontFamily: "JetBrains Mono, monospace", color: palette.inkSoft }} className="text-xs">{entry.date}</span>
+              </div>
+              {Object.entries(entry.sections).map(([section, items]) => (
+                <div key={section} className="mb-2">
+                  <div className="text-xs font-bold uppercase mb-0.5" style={{ color: palette.forestDark, fontFamily: "Cinzel, serif" }}>{section}</div>
+                  <ul className="list-disc pl-4 space-y-0.5">
+                    {items.map((item) => (
+                      <li key={item} className="text-xs" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Footer() {
+  const [showChangelog, setShowChangelog] = useState(false);
   return (
     <footer className="max-w-2xl mx-auto px-4 py-8 flex flex-col items-center gap-2">
       <BuyMeACoffeeButton />
       <p className="text-xs text-center" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
         © 2026 Luke Wilson. Designed by Luke Wilson.
       </p>
+      <button
+        onClick={() => setShowChangelog(true)}
+        className="text-xs underline"
+        style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}
+      >
+        Changelog
+      </button>
       <p className="text-[11px] text-center max-w-md" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic", opacity: 0.8 }}>
         League of Dungeoneers and all associated game content © 2026 von Braus Publishing. All rights reserved.
         This is an unofficial fan-made companion tool, not affiliated with or endorsed by von Braus Publishing.
       </p>
+      {showChangelog && <ChangelogModal onClose={() => setShowChangelog(false)} />}
     </footer>
   );
 }
@@ -1065,8 +1201,13 @@ function HeroCard({ hero, update, remove, addLog }) {
     Object.entries(speciesData.stats).forEach(([k, base]) => {
       newStats[k] = base + rollDie(10);
     });
-    update({ ...hero, stats: newStats, hp: { cur: hpRoll, max: hpRoll }, creationPoints: 15 });
+    const nextSkills = hero.profession ? computeProfessionSkills({ ...hero, stats: newStats }) : hero.skills;
+    const isCaster = !!CASTER_SKILL[hero.profession];
+    const manaPatch = isCaster ? { mana: { cur: newStats.WIS, max: newStats.WIS } } : {};
+    update({ ...hero, stats: newStats, skills: nextSkills, hp: { cur: hpRoll, max: hpRoll }, creationPoints: 15, ...manaPatch });
   };
+
+  const recalcSkills = () => set({ skills: computeProfessionSkills(hero) });
 
   const rollBackground = () => set({ background: BACKGROUNDS[rollDie(BACKGROUNDS.length) - 1] });
 
@@ -1098,6 +1239,12 @@ function HeroCard({ hero, update, remove, addLog }) {
   };
   const removeCondition = (c) => set({ conditions: hero.conditions.filter((x) => x !== c) });
 
+  const totalEnc =
+    (Number(hero.weapon.enc) || 0) +
+    Object.values(hero.armour).reduce((sum, piece) => sum + (Number(piece.enc) || 0), 0) +
+    hero.backpack.reduce((sum, item) => sum + (Number(item.enc) || 0), 0);
+  const isEncumbered = totalEnc > (Number(hero.stats.STR) || 0);
+
   return (
     <Panel className="mb-3">
       <div className="flex items-start justify-between gap-2">
@@ -1120,7 +1267,13 @@ function HeroCard({ hero, update, remove, addLog }) {
             </select>
             <select
               value={hero.profession}
-              onChange={(e) => set({ profession: e.target.value })}
+              onChange={(e) => {
+                const profession = e.target.value;
+                const nextSkills = computeProfessionSkills({ ...hero, profession });
+                const isCaster = !!CASTER_SKILL[profession];
+                const manaPatch = isCaster ? { mana: { cur: hero.stats.WIS, max: hero.stats.WIS } } : {};
+                update({ ...hero, profession, skills: nextSkills, ...manaPatch });
+              }}
               className="text-xs rounded px-2 py-1 flex-1 min-w-[110px]"
               style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", color: hero.profession ? palette.ink : palette.inkSoft }}
             >
@@ -1277,6 +1430,11 @@ function HeroCard({ hero, update, remove, addLog }) {
                       max {max}
                     </div>
                   )}
+                  {isEncumbered && (
+                    <div className="text-[10px] font-bold" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.crimson }}>
+                      eff {v - 10}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -1342,7 +1500,19 @@ function HeroCard({ hero, update, remove, addLog }) {
           </div>
 
           {/* Skills */}
-          <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">Skills</div>
+          <div className="flex items-center justify-between mb-1">
+            <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase">Skills</div>
+            {hero.profession && (
+              <button
+                onClick={recalcSkills}
+                className="text-xs px-2 py-0.5 rounded font-semibold flex items-center gap-1"
+                style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Crimson Pro, serif" }}
+                title="Recompute all skills from profession + current stats (keeps your Free Skill bonus)"
+              >
+                <RotateCcw size={11} /> Recalculate
+              </button>
+            )}
+          </div>
           <div className="grid grid-cols-3 gap-1.5 mb-3">
             {visibleSkills.map((k) => {
               const isFree = hero.freeSkill === k;
@@ -1358,6 +1528,11 @@ function HeroCard({ hero, update, remove, addLog }) {
                     className="w-full text-center bg-transparent font-bold outline-none"
                     style={{ fontFamily: "JetBrains Mono, monospace", color: palette.ink }}
                   />
+                  {isEncumbered && (
+                    <div className="text-[10px] font-bold" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.crimson }}>
+                      eff {hero.skills[k] - 10}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -1366,12 +1541,12 @@ function HeroCard({ hero, update, remove, addLog }) {
           {/* Weapon */}
           <div className="mb-2">
             <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">Weapon</div>
-            <div className="flex gap-1.5">
+            <div className="flex gap-1.5 flex-wrap">
               <input
                 value={hero.weapon.name}
                 onChange={(e) => setWeapon({ name: e.target.value })}
                 placeholder="Name"
-                className="flex-1 text-xs rounded px-2 py-1"
+                className="flex-1 text-xs rounded px-2 py-1 min-w-0"
                 style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
               />
               <input
@@ -1381,6 +1556,11 @@ function HeroCard({ hero, update, remove, addLog }) {
                 className="w-16 text-xs rounded px-2 py-1"
                 style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
               />
+              <div className="flex items-center gap-1 text-xs" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+                ENC
+                <input type="number" value={hero.weapon.enc} onChange={(e) => setWeapon({ enc: Number(e.target.value) || 0 })}
+                  className="w-9 rounded px-1" style={{ border: `1px solid ${palette.line}` }} />
+              </div>
               <div className="flex items-center gap-1 text-xs" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
                 DUR
                 <input type="number" value={hero.weapon.dur.cur} onChange={(e) => setWeapon({ dur: { ...hero.weapon.dur, cur: Number(e.target.value) || 0 } })}
@@ -1393,15 +1573,18 @@ function HeroCard({ hero, update, remove, addLog }) {
           </div>
 
           {/* Armour */}
-          <div className="mb-3">
+          <div className="mb-2">
             <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">Armour</div>
             <div className="space-y-1">
               {[["head", "Head"], ["arms", "Arms"], ["torso", "Torso"], ["legs", "Legs"], ["shield", "Shield"]].map(([loc, label]) => (
-                <div key={loc} className="flex items-center gap-1.5 text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+                <div key={loc} className="flex items-center gap-1.5 text-xs flex-wrap" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
                   <span className="w-12 shrink-0">{label}</span>
                   <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>DEF</span>
                   <input type="number" value={hero.armour[loc].def} onChange={(e) => setArmourPiece(loc, { def: Number(e.target.value) || 0 })}
                     className="w-10 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                  <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>ENC</span>
+                  <input type="number" value={hero.armour[loc].enc} onChange={(e) => setArmourPiece(loc, { enc: Number(e.target.value) || 0 })}
+                    className="w-9 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
                   <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>DUR</span>
                   <input type="number" value={hero.armour[loc].dur.cur} onChange={(e) => setArmourPiece(loc, { dur: { ...hero.armour[loc].dur, cur: Number(e.target.value) || 0 } })}
                     className="w-9 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
@@ -1411,6 +1594,21 @@ function HeroCard({ hero, update, remove, addLog }) {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Encumbrance */}
+          <div className="rounded p-2 mb-3" style={{ background: isEncumbered ? "#7A1F2B22" : "#00000008" }}>
+            <div className="flex items-center justify-between">
+              <span style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase">Encumbrance</span>
+              <span className="text-sm font-bold" style={{ fontFamily: "JetBrains Mono, monospace", color: isEncumbered ? palette.crimson : palette.ink }}>
+                {totalEnc} / {hero.stats.STR} <span style={{ color: palette.inkSoft, fontWeight: "normal" }}>(max {hero.stats.STR + 15})</span>
+              </span>
+            </div>
+            {isEncumbered && (
+              <p className="text-xs mt-1" style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif", fontWeight: "bold" }}>
+                Overloaded — all skills and stats are at −10 (shown as "eff" above) until ENC drops to {hero.stats.STR} or below.
+              </p>
+            )}
           </div>
 
           {/* Backpack */}
@@ -1707,7 +1905,8 @@ function CombatCalc({ heroes, updateHero, addLog }) {
     setHeroPick(heroId);
     const h = heroes.find((x) => x.id === heroId);
     if (!h) return;
-    setBase(mode === "cc" ? h.skills.cs : h.skills.rs);
+    const penalty = encumbranceOver(h) ? -10 : 0;
+    setBase((mode === "cc" ? h.skills.cs : h.skills.rs) + penalty);
   };
 
   const roll = () => {
@@ -1733,7 +1932,10 @@ function CombatCalc({ heroes, updateHero, addLog }) {
   const [checkResult, setCheckResult] = useState(null);
   const applyCheckSkill = (heroId, skillKey) => {
     const h = heroes.find((x) => x.id === heroId);
-    if (h && skillKey && h.skills[skillKey] !== undefined) setCheckValue(h.skills[skillKey]);
+    if (h && skillKey && h.skills[skillKey] !== undefined) {
+      const penalty = encumbranceOver(h) ? -10 : 0;
+      setCheckValue(h.skills[skillKey] + penalty);
+    }
   };
   const doCheck = () => {
     const r = rollPercent();
@@ -1812,7 +2014,11 @@ function CombatCalc({ heroes, updateHero, addLog }) {
               style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
             >
               <option value="">Fill from hero…</option>
-              {heroes.map((h) => <option key={h.id} value={h.id}>{h.name} ({mode === "cc" ? h.skills.cs : h.skills.rs})</option>)}
+              {heroes.map((h) => {
+                const raw = mode === "cc" ? h.skills.cs : h.skills.rs;
+                const over = encumbranceOver(h);
+                return <option key={h.id} value={h.id}>{h.name} ({over ? `${raw - 10} — encumbered` : raw})</option>;
+              })}
             </select>
           )}
           <div className="flex items-center gap-3 mb-3">
@@ -2374,13 +2580,16 @@ function Reference() {
 }
 
 // ---------- Campaigns ----------
-function CampaignsTab({ campaigns, activeId, onNew, onLoad, onRename, onDelete, disabled }) {
+function CampaignsTab({ campaigns, activeId, onNew, onLoad, onRename, onDelete, onExport, onImport, disabled }) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [exportingId, setExportingId] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef(null);
 
   const sorted = [...campaigns].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 
@@ -2398,6 +2607,27 @@ function CampaignsTab({ campaigns, activeId, onNew, onLoad, onRename, onDelete, 
     } finally {
       setDeletingId(null);
       setConfirmDeleteId(null);
+    }
+  };
+
+  const doExport = async (id) => {
+    setExportingId(id);
+    try {
+      await onExport(id);
+    } finally {
+      setExportingId(null);
+    }
+  };
+
+  const handleFileChosen = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ""; // allow re-selecting the same file next time
+    if (!file) return;
+    setImporting(true);
+    try {
+      await onImport(file);
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -2435,6 +2665,23 @@ function CampaignsTab({ campaigns, activeId, onNew, onLoad, onRename, onDelete, 
         <p className="text-xs mt-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
           Starting a new campaign resets heroes, threat, morale and the log to a fresh start. Your other campaigns stay saved below.
         </p>
+      </Panel>
+
+      <Panel className="mb-4">
+        <SectionTitle icon={Upload}>Backup & Restore</SectionTitle>
+        <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+          Campaign data lives in this browser only — clearing site data or switching devices will lose it. Export a campaign to a file you can keep safe, and import it back in (here or on another device) any time.
+        </p>
+        <input ref={fileInputRef} type="file" accept="application/json,.json" onChange={handleFileChosen} className="hidden" />
+        <button
+          onClick={() => fileInputRef.current && fileInputRef.current.click()}
+          disabled={importing || disabled}
+          className="w-full flex items-center justify-center gap-2 py-2 rounded-lg font-bold text-sm"
+          style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif", opacity: (importing || disabled) ? 0.6 : 1 }}
+        >
+          {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+          {importing ? "Importing…" : "Import Campaign from File"}
+        </button>
       </Panel>
 
       <div className="space-y-2">
@@ -2484,6 +2731,9 @@ function CampaignsTab({ campaigns, activeId, onNew, onLoad, onRename, onDelete, 
                   )}
                   <button onClick={() => { setEditingId(c.id); setEditName(c.name); }} disabled={disabled} className="p-1.5 rounded" style={{ color: palette.inkSoft, opacity: disabled ? 0.5 : 1 }}>
                     <Pencil size={14} />
+                  </button>
+                  <button onClick={() => doExport(c.id)} disabled={exportingId === c.id || disabled} className="p-1.5 rounded" style={{ color: palette.inkSoft, opacity: (exportingId === c.id || disabled) ? 0.5 : 1 }}>
+                    {exportingId === c.id ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
                   </button>
                   {isConfirming ? (
                     <button
@@ -2611,12 +2861,18 @@ export default function App() {
   const removeHero = (id) => setHeroes((prev) => prev.filter((h) => h.id !== id));
 
   // ---- Campaign management ----
-  const newCampaign = async (name) => {
-    setSwitchingLabel("Starting new campaign…");
+  const newCampaign = async (name, importedData) => {
+    setSwitchingLabel(importedData ? "Importing campaign…" : "Starting new campaign…");
     setSwitching(true);
     try {
       const id = uid();
-      const data = { heroes: [defaultHero()], party: defaultParty(), log: [] };
+      const data = importedData
+        ? {
+            heroes: (importedData.heroes || [defaultHero()]).map(normalizeHero),
+            party: { ...defaultParty(), ...(importedData.party || {}) },
+            log: importedData.log || [],
+          }
+        : { heroes: [defaultHero()], party: defaultParty(), log: [] };
       await window.storage.set(campaignKey(id), JSON.stringify(data), false);
       const idx = await readIndex();
       const entry = { id, name, updatedAt: Date.now(), threat: data.party.threat, morale: data.party.morale, heroCount: data.heroes.length };
@@ -2673,6 +2929,46 @@ export default function App() {
       }
     } finally {
       setSwitching(false);
+    }
+  };
+
+  const exportCampaign = async (id) => {
+    const idx = await readIndex();
+    const entry = idx.find((c) => c.id === id);
+    let data;
+    if (id === campaignId) {
+      data = { heroes, party, log };
+    } else {
+      const res = await window.storage.get(campaignKey(id), false);
+      data = res && res.value ? JSON.parse(res.value) : { heroes: [], party: defaultParty(), log: [] };
+    }
+    const payload = {
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      name: entry ? entry.name : "Campaign",
+      ...data,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safeName = (entry ? entry.name : "campaign").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    a.href = url;
+    a.download = `lod-campaign-${safeName || "export"}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const importCampaign = async (file) => {
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (!parsed || (!parsed.heroes && !parsed.party)) throw new Error("Not a recognised campaign file");
+      const name = (parsed.name ? `${parsed.name} (imported)` : "Imported Campaign");
+      await newCampaign(name, parsed);
+    } catch (e) {
+      window.alert("Couldn't import that file — it doesn't look like a campaign export.");
     }
   };
 
@@ -2756,6 +3052,8 @@ export default function App() {
             onLoad={loadCampaign}
             onRename={renameCampaign}
             onDelete={deleteCampaign}
+            onExport={exportCampaign}
+            onImport={importCampaign}
             disabled={switching}
           />
         )}

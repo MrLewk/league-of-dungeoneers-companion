@@ -5,7 +5,7 @@ Publishing) — a stat tracker, combat calculator, and rules reference built to
 take the bookkeeping and maths off your plate mid-session so you can focus on
 playing.
 
-Live demo: _add your Vercel URL here once deployed_
+Live app: [https://league-of-dungeoneers-companion.vercel.app/](https://league-of-dungeoneers-companion.vercel.app/)
 
 ## Features
 

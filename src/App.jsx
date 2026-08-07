@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Plus, Minus, Trash2, Flame, Heart, Zap, Brain, Sparkles, Dice5,
-  Swords, Shield, BookOpen, Users, Skull, ChevronDown, ChevronUp,
+  Swords, Shield, BookOpen, Users, Skull,
   RotateCcw, Coins, Wheat, ScrollText, Pencil, Check, X, FolderOpen, Loader2, Map, Download, Upload
 } from "lucide-react";
 
@@ -875,6 +875,19 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.2.0",
+    date: "2026-08-07",
+    sections: {
+      "Added": [
+        "Heroes tab now shows one hero at a time via sub-tabs (name pills, horizontally scrollable), with Add Hero as a fixed + button beside them, instead of stacking every hero's full card in one long scroll",
+        "Adding a hero automatically switches to its new tab",
+      ],
+      "Removed": [
+        "The per-hero collapse/expand toggle — redundant now that only one hero is shown at a time",
+      ],
+    },
+  },
+  {
     version: "1.1.0",
     date: "2026-08-06",
     sections: {
@@ -1166,7 +1179,6 @@ function AttachedItemList({ label, names, dataset, color, onRemove, groupKey }) 
 }
 
 function HeroCard({ hero, update, remove, addLog }) {
-  const [open, setOpen] = useState(true);
   const [sanityEvent, setSanityEvent] = useState(SANITY_EVENTS[0].label);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -1330,9 +1342,6 @@ function HeroCard({ hero, update, remove, addLog }) {
           )}
         </div>
         <div className="flex gap-1">
-          <button onClick={() => setOpen(!open)} className="p-1 rounded" style={{ color: palette.inkSoft }}>
-            {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-          </button>
           {confirmDelete ? (
             <>
               <button
@@ -1354,8 +1363,7 @@ function HeroCard({ hero, update, remove, addLog }) {
         </div>
       </div>
 
-      {open && (
-        <div className="mt-3">
+      <div className="mt-3">
           <StatBar label="HP" icon={Heart} cur={hero.hp.cur} max={hero.hp.max} color={palette.crimson}
             onChange={(v) => set({ hp: { ...hero.hp, cur: v } })} onMaxChange={(v) => set({ hp: { ...hero.hp, max: v } })} />
           <StatBar label="Energy" icon={Zap} cur={hero.energy.cur} max={hero.energy.max} color={palette.gold}
@@ -1702,7 +1710,6 @@ function HeroCard({ hero, update, remove, addLog }) {
             </div>
           )}
         </div>
-      )}
     </Panel>
   );
 }
@@ -2760,6 +2767,77 @@ function CampaignsTab({ campaigns, activeId, onNew, onLoad, onRename, onDelete, 
   );
 }
 
+// ---------- Heroes Tab (per-hero sub-tabs) ----------
+function HeroesTab({ heroes, updateHero, removeHero, addHero, addLog }) {
+  const [selectedId, setSelectedId] = useState(heroes[0] ? heroes[0].id : null);
+
+  useEffect(() => {
+    if (heroes.length === 0) {
+      if (selectedId !== null) setSelectedId(null);
+      return;
+    }
+    if (!heroes.find((h) => h.id === selectedId)) setSelectedId(heroes[0].id);
+  }, [heroes, selectedId]);
+
+  const handleAdd = () => {
+    const newHero = defaultHero();
+    addHero(newHero);
+    setSelectedId(newHero.id);
+  };
+
+  const selectedHero = heroes.find((h) => h.id === selectedId);
+
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 mb-3">
+        <button
+          onClick={handleAdd}
+          className="shrink-0 flex items-center justify-center p-2 rounded-lg font-bold"
+          style={{ background: palette.forestDark, color: palette.parchment }}
+          title="Add Hero"
+        >
+          <Plus size={16} />
+        </button>
+        <div className="flex-1 flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: "thin" }}>
+          {heroes.map((h) => (
+            <button
+              key={h.id}
+              onClick={() => setSelectedId(h.id)}
+              className="shrink-0 px-3 py-2 rounded-lg text-sm font-bold whitespace-nowrap"
+              style={{
+                background: selectedId === h.id ? palette.crimson : "#00000010",
+                color: selectedId === h.id ? palette.parchment : palette.ink,
+                fontFamily: "Cinzel, serif",
+                maxWidth: 140,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {h.name || "New Hero"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {selectedHero ? (
+        <HeroCard
+          key={selectedHero.id}
+          hero={selectedHero}
+          update={(next) => updateHero(selectedHero.id, next)}
+          remove={() => removeHero(selectedHero.id)}
+          addLog={addLog}
+        />
+      ) : (
+        <Panel>
+          <p className="text-sm text-center py-4" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            No heroes yet — tap the + button to add one.
+          </p>
+        </Panel>
+      )}
+    </div>
+  );
+}
+
 // ---------- Main App ----------
 const IDX_KEY = "lod-campaigns-index";
 const ACTIVE_KEY = "lod-active-campaign";
@@ -2856,7 +2934,7 @@ export default function App() {
     return () => clearTimeout(t);
   }, [heroes, party, log, loaded, campaignId]);
 
-  const addHero = () => setHeroes((prev) => [...prev, defaultHero()]);
+  const addHero = (hero) => setHeroes((prev) => [...prev, hero || defaultHero()]);
   const updateHero = (id, next) => setHeroes((prev) => prev.map((h) => (h.id === id ? next : h)));
   const removeHero = (id) => setHeroes((prev) => prev.filter((h) => h.id !== id));
 
@@ -3027,18 +3105,7 @@ export default function App() {
       <main className="max-w-2xl mx-auto px-4 pb-16 pt-2">
         {tab === "party" && <PartyPanel party={party} setParty={setParty} log={log} addLog={addLog} heroes={heroes} updateHero={updateHero} />}
         {tab === "heroes" && (
-          <div>
-            {heroes.map((h) => (
-              <HeroCard key={h.id} hero={h} update={(next) => updateHero(h.id, next)} remove={() => removeHero(h.id)} addLog={addLog} />
-            ))}
-            <button
-              onClick={addHero}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-lg font-bold text-sm"
-              style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
-            >
-              <Plus size={16} /> Add Hero
-            </button>
-          </div>
+          <HeroesTab heroes={heroes} updateHero={updateHero} removeHero={removeHero} addHero={addHero} addLog={addLog} />
         )}
         {tab === "combat" && <CombatCalc heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
         {tab === "dice" && <DiceTray />}

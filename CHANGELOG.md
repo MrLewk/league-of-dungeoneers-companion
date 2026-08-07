@@ -3,6 +3,15 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.2.0] — 2026-08-07
+
+### Added
+- Heroes tab now shows one hero at a time via sub-tabs (name pills, horizontally scrollable), with Add Hero as a fixed + button beside them, instead of stacking every hero's full card in one long scroll
+- Adding a hero automatically switches to its new tab
+
+### Removed
+- The per-hero collapse/expand toggle — redundant now that only one hero is shown at a time
+
 ## [1.1.0] — 2026-08-06
 
 ### Added

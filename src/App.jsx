@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Plus, Minus, Trash2, Flame, Heart, Zap, Brain, Sparkles, Dice5,
   Swords, Shield, BookOpen, Users, Skull,
-  RotateCcw, Coins, Wheat, ScrollText, Pencil, Check, X, FolderOpen, Loader2, Map, Download, Upload
+  RotateCcw, Coins, Wheat, ScrollText, Pencil, Check, X, FolderOpen, Loader2, Map, Download, Upload,
+  Landmark, Bed, ClipboardList
 } from "lucide-react";
 
 // ---------- Palette / tokens (inline, no Tailwind arbitrary values) ----------
@@ -176,7 +177,17 @@ function encumbranceOver(hero) {
   return totalEnc > (Number(hero.stats.STR) || 0);
 }
 
-const defaultParty = () => ({ threat: 2, threatFloor: 2, morale: 0, food: 4, coins: 150 });
+const defaultParty = () => ({
+  threat: 2, threatFloor: 2, morale: 0, food: 4, coins: 150,
+  settlementName: "",
+  settlementAP: {}, // heroId -> { spent: number, log: [{label, cost}] }
+  innCostPerNight: 0,
+});
+
+// Fills in any fields missing from a party saved before this update.
+function normalizeParty(p) {
+  return { ...defaultParty(), ...(p || {}) };
+}
 
 const SANITY_EVENTS = [
   { label: "Failed a terror test", delta: -2 },
@@ -216,6 +227,81 @@ const THREAT_UPS = [
   { label: "Threat roll exceeded current level", delta: 1 },
   { label: "Forced open a door/chest (crowbar)", delta: 1 },
   { label: "Forced open a door/chest (no crowbar)", delta: 2 },
+];
+
+// Settlements — quest dice/colour from the Settlements chapter, event-roll threshold
+// (roll 1d12 on entering; a result inside this range triggers a Settlement Event).
+// Birnheim and Durburim are Dwarven settlements with no quest dice listed in the book.
+const SETTLEMENTS = [
+  { name: "Birnheim", questDice: "", colour: "", eventOn: [11, 12] },
+  { name: "Caelkirk", questDice: "1d4", colour: "Red", eventOn: [10, 12] },
+  { name: "Coalfell", questDice: "1d6", colour: "Green", eventOn: [11, 12] },
+  { name: "Durburim", questDice: "", colour: "", eventOn: [11, 12] },
+  { name: "Freyfell", questDice: "1d6", colour: "Pink", eventOn: [10, 12] },
+  { name: "Irondale", questDice: "1d6", colour: "Turqoise", eventOn: [11, 12] },
+  { name: "Rochdale", questDice: "1d6", colour: "Purple", eventOn: [11, 12] },
+  { name: "Silver City", questDice: "2d20", colour: "White", eventOn: [8, 12] },
+  { name: "The Outpost", questDice: "1d12", colour: "Yellow", eventOn: [9, 12] },
+  { name: "Whiteport", questDice: "1d6", colour: "Black", eventOn: [9, 12] },
+  { name: "Windfair", questDice: "1d6", colour: "Blue", eventOn: [11, 12] },
+];
+
+// Settlement Events (1d12) — full table from the Settlements chapter.
+const SETTLEMENT_EVENTS = [
+  { roll: 1, title: "Stray Dog", text: "A stray dog follows the party through the streets. After a small treat from a hero, you now own it. Randomise the kind of dog (Companions' Compendium), or if you already have one, treat as 'Nothing special happens'." },
+  { roll: 2, title: "Scrolls Salesman", text: "A man approaches selling magic scrolls. Randomise three available spells. Each scroll costs 100c." },
+  { roll: 3, title: "Potion Salesman", text: "A man in purple robes sells premium potions. Use the Potions Table with an availability of 4 for every potion regardless of class, and -20c as a price modifier." },
+  { roll: 4, title: "Trinket Salesman", text: "An old man sells magic trinkets, 100c each, max 1 per hero. Roll 1d12 per trinket: 1-5 magic, 5-11 useless (cannot be sold), 12 cursed (roll on Curses Table). Decide ring or necklace." },
+  { roll: 5, title: "Sale!", text: "A settlement-wide sale — all stores sell items at a 20% discount." },
+  { roll: 6, title: "Fresh Stocks", text: "All stores just restocked. All availabilities are modified by +2 (a result of 6 is automatically in stock)." },
+  { roll: 7, title: "Settlement Feast", text: "A celebration boosts Party Morale by +2 (temporarily, can exceed max) if you stay the night. On 1d12 of 9-12, no beds are available and the party must continue travel without business (quest reward may still be claimed)." },
+  { roll: 8, title: "Side Quest", text: "A citizen urgently requests help. Roll on the Side Quest Table and decide whether to add it to the current quest." },
+  { roll: 9, title: "Shortage of Goods", text: "No trade caravans for weeks. All availabilities modified by -2 (0 = automatically out of stock). Prices up +10%." },
+  { roll: 10, title: "Thief", text: "A pickpocket gets too close. 1d100 coins are stolen from the party." },
+  { roll: 11, title: "Assassination Attempt", text: "Someone holds a grudge. Randomise one hero attacked by 1d4 bandits (randomise weapons; ranged bandits also carry daggers). Fight on the city tile; heroes are nursed to 1 HP instead of dying. Bandits may be searched afterward." },
+  { roll: 12, title: "Curse!", text: "An old woman curses the party. Roll on the Curses Table once and apply to all heroes until they exit the next dungeon." },
+];
+
+// Available Quests roll (1d6) — quest count by settlement type, per the Settlements chapter.
+const QUEST_AVAILABILITY = [
+  { roll: [1, 1], settlement: "2 quests", silverCity: "3 quests" },
+  { roll: [2, 4], settlement: "1 quest", silverCity: "2 quests" },
+  { roll: [5, 5], settlement: "-", silverCity: "1 quest" },
+  { roll: [6, 6], settlement: "-", silverCity: "-" },
+];
+
+// Settlement activities — Activity Point cost per the Settlements chapter. AP cost of
+// 0 with "requires stay at inn" still takes the whole day, it just doesn't cost the point.
+const SETTLEMENT_ACTIVITIES = [
+  { name: "Arena Fighting", where: "Arena", ap: 1 },
+  { name: "Banking", where: "Banks", ap: 1 },
+  { name: "Buy a Dog", where: "Kennel", ap: 1 },
+  { name: "Buy a Familiar", where: "Alberta's Magnificent Animals", ap: 1 },
+  { name: "Buy or Sell Armour", where: "Blacksmith", ap: 1 },
+  { name: "Buy or Sell Equipment", where: "General Store, The Magic Brewery", ap: 1 },
+  { name: "Buy Ingredients", where: "Herbalist, Alchemists' Guild", ap: 1 },
+  { name: "Buy or Sell Weapons", where: "Blacksmith", ap: 1 },
+  { name: "Charge a Magic Item", where: "Wizards' Guild", ap: 1 },
+  { name: "Collect Quest Reward", where: "Start Settlement of Quest", ap: 0 },
+  { name: "Create a Scroll", where: "Inn", ap: 1, note: "per scroll, max 2" },
+  { name: "Cure Disease", where: "Sick Wards or Temple of Metheia", ap: 1 },
+  { name: "Cure Poison", where: "Sick Wards", ap: 1 },
+  { name: "Enchant Objects", where: "Inn", ap: 1, note: "max once" },
+  { name: "Gamble", where: "Inn", ap: 0, note: "requires stay at inn" },
+  { name: "Guild Business", where: "Guilds", ap: 1 },
+  { name: "Horse Racing", where: "Horse tracks", ap: 1 },
+  { name: "Identify a Magic Item", where: "Scryer or Wizards' Guild", ap: 1 },
+  { name: "Identify a Potion", where: "Alchemist Guild, The Magic Brewery, General Store", ap: 1 },
+  { name: "Learn a Prayer", where: "Temple Grounds", ap: 1 },
+  { name: "Learn a Spell", where: "Wizards' Guild", ap: 3 },
+  { name: "Level Up", where: "Any Settlement", ap: 0 },
+  { name: "Pray", where: "Temple", ap: 1 },
+  { name: "Read your Fortune", where: "Fortune Teller", ap: 1 },
+  { name: "Repair Equipment", where: "Blacksmith", ap: 1 },
+  { name: "Rest and Recuperation", where: "Inn", ap: 0, note: "requires stay at inn" },
+  { name: "Skill Training", where: "Guilds", ap: 1 },
+  { name: "Tend to those Memories", where: "Inn", ap: 0, note: "requires stay at inn" },
+  { name: "Treat Mental Conditions", where: "The Asylum", ap: 5 },
 ];
 
 const CC_ATTACK_MODS = [
@@ -874,6 +960,20 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.4.0",
+    date: "2026-08-07",
+    sections: {
+      "Added": [
+        "New Settlement tab — pick from all 11 settlements (correct quest dice/colour per the QRS), roll the 1d12 settlement-entry event with the full event table, roll available quests (1d6, or 2d20 for Silver City) plus the 1d8 side-quest check",
+        "Per-hero Activity Point ledger — the full settlement action list (blacksmith, temple, guilds, etc.) with AP costs, logged per hero with undo and a one-tap ledger reset for a new visit",
+        "Rest at Inn — select which heroes stay, rolls 2d6 HP recovery per hero and refills Mana/Energy, with an editable whole-party inn cost that deducts coins",
+      ],
+      "Notes": [
+        "Luck has no tracked maximum in this app, so Inn rest doesn't auto-refill it — adjust manually if your table restores Luck at the inn",
+      ],
+    },
+  },
   {
     version: "1.3.2",
     date: "2026-08-07",
@@ -1844,6 +1944,285 @@ function HeroCard({ hero, update, remove, addLog }) {
 }
 
 // ---------- Party Panel (Threat / Morale / Food / Coins) ----------
+function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
+  const [eventResult, setEventResult] = useState(null);
+  const [questResult, setQuestResult] = useState(null);
+  const [activityHero, setActivityHero] = useState(heroes[0]?.id || "");
+  const [activityChoice, setActivityChoice] = useState(SETTLEMENT_ACTIVITIES[0].name);
+  // Tracks opted-OUT heroes rather than opted-in, so heroes added later still default to selected.
+  const [restExcluded, setRestExcluded] = useState(() => new Set());
+
+  const settlement = SETTLEMENTS.find((s) => s.name === party.settlementName);
+  const isSilverCity = party.settlementName === "Silver City";
+  const currentActivityHero = heroes.some((h) => h.id === activityHero) ? activityHero : (heroes[0]?.id || "");
+
+  const setSettlementName = (name) => {
+    setParty({ ...party, settlementName: name });
+    setEventResult(null);
+    setQuestResult(null);
+  };
+
+  const rollEvent = () => {
+    if (!settlement) return;
+    const roll = rollDie(12);
+    const [lo, hi] = settlement.eventOn;
+    const triggered = roll >= lo && roll <= hi;
+    if (triggered) {
+      const roll2 = rollDie(12);
+      const event = SETTLEMENT_EVENTS[roll2 - 1];
+      setEventResult({ roll, triggered, roll2, event });
+      addLog(`${settlement.name}: entry roll ${roll} (needs ${lo}-${hi}) → Event! (${roll2}) ${event.title} — ${event.text}`);
+    } else {
+      setEventResult({ roll, triggered, roll2: null, event: null });
+      addLog(`${settlement.name}: entry roll ${roll} (needs ${lo}-${hi}) → quiet, no event.`);
+    }
+  };
+
+  const rollQuests = () => {
+    if (!settlement) return;
+    const roll = rollDie(6);
+    const row = QUEST_AVAILABILITY.find((r) => roll >= r.roll[0] && roll <= r.roll[1]);
+    const text = isSilverCity ? row.silverCity : row.settlement;
+    let side = null;
+    if (text !== "-") {
+      const roll8 = rollDie(8);
+      side = roll8 <= 2;
+      setQuestResult({ roll, text, roll8, side });
+      addLog(`${settlement.name}: quests roll ${roll} → ${text}. Side-quest check (${roll8}) → ${side ? "side quest also available" : "no side quest"}.`);
+    } else {
+      setQuestResult({ roll, text, roll8: null, side: null });
+      addLog(`${settlement.name}: quests roll ${roll} → no quests available here.`);
+    }
+  };
+
+  const heroAP = (heroId) => party.settlementAP?.[heroId] || { spent: 0, log: [] };
+
+  const addActivity = () => {
+    if (!currentActivityHero) return;
+    const activity = SETTLEMENT_ACTIVITIES.find((a) => a.name === activityChoice);
+    const hero = heroes.find((h) => h.id === currentActivityHero);
+    if (!activity || !hero) return;
+    const cur = heroAP(currentActivityHero);
+    const nextAP = {
+      ...(party.settlementAP || {}),
+      [currentActivityHero]: { spent: cur.spent + activity.ap, log: [...cur.log, { name: activity.name, ap: activity.ap }] },
+    };
+    setParty({ ...party, settlementAP: nextAP });
+    addLog(`${hero.name}: ${activity.name} (${activity.ap} AP)${activity.note ? ` — ${activity.note}` : ""}`);
+  };
+
+  const undoLastActivity = (heroId) => {
+    const cur = heroAP(heroId);
+    if (cur.log.length === 0) return;
+    const removed = cur.log[cur.log.length - 1];
+    const nextAP = {
+      ...(party.settlementAP || {}),
+      [heroId]: { spent: cur.spent - removed.ap, log: cur.log.slice(0, -1) },
+    };
+    setParty({ ...party, settlementAP: nextAP });
+  };
+
+  const clearVisit = () => {
+    setParty({ ...party, settlementAP: {} });
+    setEventResult(null);
+    setQuestResult(null);
+    addLog(`${party.settlementName || "Settlement"}: AP ledger cleared for a fresh visit.`);
+  };
+
+  const toggleRestHero = (id) => {
+    setRestExcluded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const restAtInn = () => {
+    const selected = heroes.filter((h) => !restExcluded.has(h.id));
+    if (selected.length === 0) return;
+    selected.forEach((hero) => {
+      const roll = rollDie(6) + rollDie(6);
+      const newHp = Math.min(hero.hp.max, hero.hp.cur + roll);
+      const next = {
+        ...hero,
+        hp: { ...hero.hp, cur: newHp },
+        mana: { ...hero.mana, cur: hero.mana.max },
+        energy: { ...hero.energy, cur: hero.energy.max },
+      };
+      updateHero(hero.id, next);
+      addLog(`${hero.name} rests at the inn: +${roll} HP (${newHp}/${hero.hp.max}), Mana & Energy refilled.`);
+    });
+    if (party.innCostPerNight > 0) {
+      setParty((prev) => ({ ...prev, coins: Math.max(0, prev.coins - prev.innCostPerNight) }));
+      addLog(`Paid ${party.innCostPerNight}c for the inn (whole party).`);
+    }
+  };
+
+  return (
+    <div>
+      <Panel className="mb-4">
+        <SectionTitle icon={Landmark}>Settlement</SectionTitle>
+        <select
+          value={party.settlementName}
+          onChange={(e) => setSettlementName(e.target.value)}
+          className="w-full text-sm rounded px-2 py-2 mb-2"
+          style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+        >
+          <option value="">— Choose a settlement —</option>
+          {SETTLEMENTS.map((s) => (
+            <option key={s.name} value={s.name}>{s.name}</option>
+          ))}
+        </select>
+        {settlement && (
+          <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            Quest dice: {settlement.questDice || "— (no quests here)"} {settlement.colour && `(${settlement.colour})`} · Event on {settlement.eventOn[0]}
+            {settlement.eventOn[0] !== settlement.eventOn[1] ? `-${settlement.eventOn[1]}` : ""} (1d12)
+          </p>
+        )}
+
+        <div className="flex gap-2 mb-2">
+          <button
+            onClick={rollEvent}
+            disabled={!settlement}
+            className="flex-1 text-xs px-2 py-2 rounded font-semibold"
+            style={{ background: settlement ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: settlement ? 1 : 0.5 }}
+          >
+            Enter Settlement (roll event)
+          </button>
+          <button
+            onClick={rollQuests}
+            disabled={!settlement || !settlement.questDice}
+            className="flex-1 text-xs px-2 py-2 rounded font-semibold"
+            style={{ background: settlement && settlement.questDice ? palette.forestDark : "#00000020", color: palette.parchment, opacity: settlement && settlement.questDice ? 1 : 0.5 }}
+          >
+            Roll Available Quests
+          </button>
+        </div>
+
+        {eventResult && (
+          <div className="rounded p-2 mb-2 text-xs" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+            <span className="font-bold" style={{ color: palette.ink }}>Entry roll: {eventResult.roll}</span>{" "}
+            {eventResult.triggered ? (
+              <>
+                <span style={{ color: palette.crimson }}>→ Event ({eventResult.roll2}): {eventResult.event.title}</span>
+                <p className="mt-1" style={{ color: palette.inkSoft }}>{eventResult.event.text}</p>
+              </>
+            ) : (
+              <span style={{ color: palette.inkSoft }}>→ Nothing happens.</span>
+            )}
+          </div>
+        )}
+
+        {questResult && (
+          <div className="rounded p-2 text-xs" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+            <span className="font-bold" style={{ color: palette.ink }}>Quests roll: {questResult.roll} → {questResult.text}</span>
+            {questResult.roll8 != null && (
+              <p className="mt-1" style={{ color: palette.inkSoft }}>
+                Side-quest check ({questResult.roll8}): {questResult.side ? "a side quest is also available." : "no side quest."}
+              </p>
+            )}
+          </div>
+        )}
+      </Panel>
+
+      <Panel className="mb-4">
+        <SectionTitle icon={ClipboardList}>Activities (1 AP / hero / day)</SectionTitle>
+        <div className="flex gap-2 mb-2">
+          <select
+            value={currentActivityHero}
+            onChange={(e) => setActivityHero(e.target.value)}
+            className="text-xs rounded px-2 py-1"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+          </select>
+          <select
+            value={activityChoice}
+            onChange={(e) => setActivityChoice(e.target.value)}
+            className="flex-1 text-xs rounded px-2 py-1"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            {SETTLEMENT_ACTIVITIES.map((a) => (
+              <option key={a.name} value={a.name}>{a.name} — {a.ap} AP ({a.where})</option>
+            ))}
+          </select>
+          <button onClick={addActivity} className="text-xs px-2 py-1 rounded font-semibold" style={{ background: palette.crimson, color: palette.parchment }}>
+            <Plus size={14} />
+          </button>
+        </div>
+
+        {heroes.map((h) => {
+          const ap = heroAP(h.id);
+          return (
+            <div key={h.id} className="rounded p-2 mb-2" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-bold" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>{h.name}</span>
+                <span className="text-xs" style={{ fontFamily: "JetBrains Mono, monospace", color: ap.spent > 1 ? palette.crimson : palette.inkSoft }}>
+                  {ap.spent} AP spent
+                </span>
+              </div>
+              {ap.log.length === 0 ? (
+                <p className="text-xs italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>No activities logged yet.</p>
+              ) : (
+                <ul className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                  {ap.log.map((entry, i) => (
+                    <li key={i}>• {entry.name} ({entry.ap} AP)</li>
+                  ))}
+                </ul>
+              )}
+              {ap.log.length > 0 && (
+                <button onClick={() => undoLastActivity(h.id)} className="text-xs mt-1" style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif" }}>
+                  Undo last
+                </button>
+              )}
+            </div>
+          );
+        })}
+        <button onClick={clearVisit} className="text-xs px-2 py-1 rounded font-semibold flex items-center gap-1" style={{ background: palette.inkSoft, color: palette.parchment }}>
+          <RotateCcw size={11} /> Clear AP ledger (new visit)
+        </button>
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={Bed}>Rest at Inn</SectionTitle>
+        <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+          Each resting hero regains 2d6 HP and refills Mana and Energy. Note: Luck isn't tracked with a max here, so it isn't auto-refilled — adjust it manually if your table restores it at the inn.
+        </p>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {heroes.map((h) => (
+            <button
+              key={h.id}
+              onClick={() => toggleRestHero(h.id)}
+              className="text-xs px-2 py-1 rounded"
+              style={{
+                background: !restExcluded.has(h.id) ? palette.forestDark : "#00000010",
+                color: !restExcluded.has(h.id) ? palette.parchment : palette.ink,
+                fontFamily: "Crimson Pro, serif",
+              }}
+            >
+              {h.name}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>Inn cost (whole party):</span>
+          <input
+            type="number"
+            value={party.innCostPerNight}
+            onChange={(e) => setParty({ ...party, innCostPerNight: Number(e.target.value) || 0 })}
+            className="w-16 text-xs rounded px-1"
+            style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+          />
+          <span className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>c</span>
+        </div>
+        <button onClick={restAtInn} className="text-xs px-3 py-2 rounded font-semibold w-full" style={{ background: palette.crimson, color: palette.parchment }}>
+          Rest Selected Heroes
+        </button>
+      </Panel>
+    </div>
+  );
+}
+
 function PartyPanel({ party, setParty, log, addLog, heroes, updateHero }) {
   const [moraleEvent, setMoraleEvent] = useState(MORALE_EVENTS[0].label);
   const [xpAmount, setXpAmount] = useState(50);
@@ -3029,7 +3408,7 @@ export default function App() {
           const cRes = await window.storage.get(campaignKey(activeId), false);
           const data = cRes && cRes.value ? JSON.parse(cRes.value) : { heroes: [defaultHero()], party: defaultParty(), log: [] };
           setHeroes((data.heroes || [defaultHero()]).map(normalizeHero));
-          setParty(data.party || defaultParty());
+          setParty(normalizeParty(data.party));
           setLog(data.log || []);
           setCampaignId(activeId);
           if (!activeIdRes) await window.storage.set(ACTIVE_KEY, activeId, false);
@@ -3076,7 +3455,7 @@ export default function App() {
       const data = importedData
         ? {
             heroes: (importedData.heroes || [defaultHero()]).map(normalizeHero),
-            party: { ...defaultParty(), ...(importedData.party || {}) },
+            party: normalizeParty(importedData.party),
             log: importedData.log || [],
           }
         : { heroes: [defaultHero()], party: defaultParty(), log: [] };
@@ -3104,7 +3483,7 @@ export default function App() {
       await window.storage.set(ACTIVE_KEY, id, false);
       setCampaignId(id);
       setHeroes((data.heroes || [defaultHero()]).map(normalizeHero));
-      setParty(data.party || defaultParty());
+      setParty(normalizeParty(data.party));
       setLog(data.log || []);
       setTab("party");
     } catch (e) {
@@ -3181,6 +3560,7 @@ export default function App() {
 
   const tabs = [
     ["party", "Party", Flame],
+    ["settlement", "Settlement", Landmark],
     ["heroes", "Heroes", Users],
     ["combat", "Combat", Swords],
     ["dice", "Dice", Dice5],
@@ -3234,6 +3614,9 @@ export default function App() {
 
       <main className="max-w-2xl mx-auto px-4 pb-16 pt-2">
         {tab === "party" && <PartyPanel party={party} setParty={setParty} log={log} addLog={addLog} heroes={heroes} updateHero={updateHero} />}
+        {tab === "settlement" && (
+          <SettlementTab party={party} setParty={setParty} heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />
+        )}
         {tab === "heroes" && (
           <HeroesTab heroes={heroes} updateHero={updateHero} removeHero={removeHero} addHero={addHero} addLog={addLog} />
         )}

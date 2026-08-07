@@ -961,6 +961,20 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.4.1",
+    date: "2026-08-07",
+    sections: {
+      "Fixed": [
+        "Mobile layout — the tab bar now scrolls horizontally as pill buttons instead of wrapping into a tall stack of rows",
+        "The Settlement activity picker (hero + activity dropdowns) no longer overflows the screen width on narrow phones — it stacks vertically now, with the location note shown below instead of crammed into the dropdown text",
+        "Added a site-wide safeguard so no element can force horizontal page scroll again",
+      ],
+      "Added": [
+        "Maps section on the Settlement tab — The Known World and the Silver City Area, tap to open full-screen with pinch-to-zoom and +/- zoom buttons",
+      ],
+    },
+  },
+  {
     version: "1.4.0",
     date: "2026-08-07",
     sections: {
@@ -1944,17 +1958,77 @@ function HeroCard({ hero, update, remove, addLog }) {
 }
 
 // ---------- Party Panel (Threat / Morale / Food / Coins) ----------
+const MAPS = [
+  { key: "known-world", title: "The Known World", src: "/maps/known-world.jpg" },
+  { key: "silver-city-area", title: "Silver City Area", src: "/maps/silver-city-area.jpg" },
+];
+
+// Full-screen map viewer. Native pinch-zoom works here (the app's viewport meta doesn't
+// disable it), and the +/- buttons give a reliable fallback: they resize the image inside
+// a scrollable container, so panning is just native touch/drag scrolling.
+function MapViewer({ map, onClose }) {
+  const [zoom, setZoom] = useState(100);
+  if (!map) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "#0A0806" }}>
+      <div className="flex items-center justify-between px-4 py-3 shrink-0" style={{ background: palette.charcoal, borderBottom: `2px solid ${palette.gold}` }}>
+        <span style={{ fontFamily: "Cinzel, serif", color: palette.goldSoft }} className="text-sm font-bold">
+          {map.title}
+        </span>
+        <button onClick={onClose} className="p-1 rounded" style={{ color: palette.parchment }}>
+          <X size={22} />
+        </button>
+      </div>
+      <div className="flex-1 overflow-auto" style={{ WebkitOverflowScrolling: "touch" }}>
+        <img
+          src={map.src}
+          alt={map.title}
+          style={{ width: `${zoom}%`, maxWidth: "none", display: "block" }}
+        />
+      </div>
+      <div className="flex items-center justify-center gap-3 px-4 py-3 shrink-0" style={{ background: palette.charcoal, borderTop: `1px solid ${palette.gold}` }}>
+        <button
+          onClick={() => setZoom((z) => Math.max(50, z - 50))}
+          className="px-3 py-2 rounded font-bold text-sm"
+          style={{ background: palette.panel, color: palette.ink }}
+        >
+          <Minus size={16} />
+        </button>
+        <span className="text-xs w-12 text-center" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.parchment }}>
+          {zoom}%
+        </span>
+        <button
+          onClick={() => setZoom((z) => Math.min(400, z + 50))}
+          className="px-3 py-2 rounded font-bold text-sm"
+          style={{ background: palette.panel, color: palette.ink }}
+        >
+          <Plus size={16} />
+        </button>
+        <button
+          onClick={() => setZoom(100)}
+          className="px-3 py-2 rounded text-xs font-semibold ml-2"
+          style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Crimson Pro, serif" }}
+        >
+          Reset
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const [eventResult, setEventResult] = useState(null);
   const [questResult, setQuestResult] = useState(null);
   const [activityHero, setActivityHero] = useState(heroes[0]?.id || "");
   const [activityChoice, setActivityChoice] = useState(SETTLEMENT_ACTIVITIES[0].name);
+  const [openMap, setOpenMap] = useState(null);
   // Tracks opted-OUT heroes rather than opted-in, so heroes added later still default to selected.
   const [restExcluded, setRestExcluded] = useState(() => new Set());
 
   const settlement = SETTLEMENTS.find((s) => s.name === party.settlementName);
   const isSilverCity = party.settlementName === "Silver City";
   const currentActivityHero = heroes.some((h) => h.id === activityHero) ? activityHero : (heroes[0]?.id || "");
+  const selectedActivity = SETTLEMENT_ACTIVITIES.find((a) => a.name === activityChoice);
 
   const setSettlementName = (name) => {
     setParty({ ...party, settlementName: name });
@@ -2080,7 +2154,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
           </p>
         )}
 
-        <div className="flex gap-2 mb-2">
+        <div className="flex flex-col sm:flex-row gap-2 mb-2">
           <button
             onClick={rollEvent}
             disabled={!settlement}
@@ -2126,30 +2200,58 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       </Panel>
 
       <Panel className="mb-4">
-        <SectionTitle icon={ClipboardList}>Activities (1 AP / hero / day)</SectionTitle>
-        <div className="flex gap-2 mb-2">
-          <select
-            value={currentActivityHero}
-            onChange={(e) => setActivityHero(e.target.value)}
-            className="text-xs rounded px-2 py-1"
-            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-          >
-            {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
-          </select>
-          <select
-            value={activityChoice}
-            onChange={(e) => setActivityChoice(e.target.value)}
-            className="flex-1 text-xs rounded px-2 py-1"
-            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-          >
-            {SETTLEMENT_ACTIVITIES.map((a) => (
-              <option key={a.name} value={a.name}>{a.name} — {a.ap} AP ({a.where})</option>
-            ))}
-          </select>
-          <button onClick={addActivity} className="text-xs px-2 py-1 rounded font-semibold" style={{ background: palette.crimson, color: palette.parchment }}>
-            <Plus size={14} />
-          </button>
+        <SectionTitle icon={Map}>Maps</SectionTitle>
+        <div className="grid grid-cols-2 gap-2">
+          {MAPS.map((m) => (
+            <button
+              key={m.key}
+              onClick={() => setOpenMap(m)}
+              className="rounded-lg overflow-hidden text-left"
+              style={{ border: `1px solid ${palette.line}`, background: "#fff" }}
+            >
+              <img src={m.src} alt={m.title} className="w-full h-24 object-cover" />
+              <span className="block text-xs px-2 py-1.5 font-semibold" style={{ fontFamily: "Cinzel, serif", color: palette.crimson }}>
+                {m.title}
+              </span>
+            </button>
+          ))}
         </div>
+      </Panel>
+
+      {openMap && <MapViewer map={openMap} onClose={() => setOpenMap(null)} />}
+
+      <Panel className="mb-4">
+        <SectionTitle icon={ClipboardList}>Activities (1 AP / hero / day)</SectionTitle>
+        <select
+          value={currentActivityHero}
+          onChange={(e) => setActivityHero(e.target.value)}
+          className="w-full text-xs rounded px-2 py-2 mb-2"
+          style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+        >
+          {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+        </select>
+        <select
+          value={activityChoice}
+          onChange={(e) => setActivityChoice(e.target.value)}
+          className="w-full text-xs rounded px-2 py-2 mb-1"
+          style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+        >
+          {SETTLEMENT_ACTIVITIES.map((a) => (
+            <option key={a.name} value={a.name}>{a.name} — {a.ap} AP</option>
+          ))}
+        </select>
+        {selectedActivity && (
+          <p className="text-xs mb-2 truncate" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            {selectedActivity.where}{selectedActivity.note ? ` · ${selectedActivity.note}` : ""}
+          </p>
+        )}
+        <button
+          onClick={addActivity}
+          className="w-full flex items-center justify-center gap-1 text-xs px-2 py-2 rounded font-semibold mb-2"
+          style={{ background: palette.crimson, color: palette.parchment }}
+        >
+          <Plus size={14} /> Log Activity
+        </button>
 
         {heroes.map((h) => {
           const ap = heroAP(h.id);
@@ -3592,19 +3694,21 @@ export default function App() {
         </div>
       </header>
 
-      <nav className="max-w-2xl mx-auto flex gap-1 px-4 pt-4 flex-wrap">
+      <nav
+        className="max-w-2xl mx-auto flex gap-2 px-4 pt-3 pb-2 overflow-x-auto scroll-hide"
+        style={{ scrollSnapType: "x proximity" }}
+      >
         {tabs.map(([key, label, Icon]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-t-lg text-sm font-semibold"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold shrink-0"
             style={{
-              background: tab === key ? palette.panel : "transparent",
-              color: tab === key ? palette.crimson : palette.inkSoft,
+              scrollSnapAlign: "start",
+              background: tab === key ? palette.crimson : palette.panel,
+              color: tab === key ? palette.parchment : palette.inkSoft,
               fontFamily: "Cinzel, serif",
-              border: tab === key ? `1px solid ${palette.line}` : "1px solid transparent",
-              borderBottom: tab === key ? `1px solid ${palette.panel}` : "1px solid transparent",
-              marginBottom: -1,
+              border: `1px solid ${tab === key ? palette.crimson : palette.line}`,
             }}
           >
             <Icon size={14} /> {label}

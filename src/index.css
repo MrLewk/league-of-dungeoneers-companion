@@ -9,3 +9,27 @@ html, body, #root {
 body {
   margin: 0;
 }
+
+/* Mobile-first safety net: nothing should ever force horizontal page scroll.
+   The real fix for each case is proper flex-wrap/min-width below, but this
+   guarantees a stray element can never drag the whole layout sideways. */
+html, body, #root {
+  overflow-x: hidden;
+  width: 100%;
+}
+
+/* Flex children (selects/inputs/buttons especially) default to min-width:auto,
+   which stops them shrinking below their content width and is the #1 cause of
+   horizontal overflow in flex rows on narrow screens. */
+select, input, textarea, button {
+  min-width: 0;
+}
+
+/* Hide scrollbar on the horizontally-scrolling tab bar, while keeping it functional. */
+.scroll-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scroll-hide::-webkit-scrollbar {
+  display: none;
+}

@@ -3,6 +3,16 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.4.1] — 2026-08-07
+
+### Fixed
+- Mobile layout — the tab bar now scrolls horizontally as pill buttons instead of wrapping into a tall stack of rows
+- The Settlement activity picker (hero + activity dropdowns) no longer overflows the screen width on narrow phones — it stacks vertically now, with the location note shown below instead of crammed into the dropdown text
+- Added a site-wide safeguard so no element can force horizontal page scroll again
+
+### Added
+- Maps section on the Settlement tab — The Known World and the Silver City Area, tap to open full-screen with pinch-to-zoom and +/- zoom buttons
+
 ## [1.4.0] — 2026-08-07
 
 ### Added

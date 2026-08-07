@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>League of Dungeoneers Companion: Streamline Your Campaign</title>
     <meta name="description" content="Manage heroes, combat, and dice rolls — no download required. Try the ultimate free-to-use web app companion for League of Dungeoneers now." />
+    <link rel="canonical" href="https://league-of-dungeoneers-companion.vercel.app/" />
 
     <!-- Favicon & PWA icons -->
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
@@ -12,6 +13,8 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#1C1712" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="LoD Companion" />
 
     <!-- Open Graph meta tags for Facebook and LinkedIn -->
     <meta property="og:title" content="League of Dungeoneers Companion: Streamline Your Campaign" />
@@ -25,6 +28,32 @@
     <meta name="twitter:title" content="League of Dungeoneers Companion: Streamline Your Campaign" />
     <meta name="twitter:description" content="Manage heroes, combat, and dice rolls with this free-to-use web app." />
     <meta name="twitter:image" content="https://league-of-dungeoneers-companion.vercel.app/share-image.jpg" />
+
+    <!-- Structured data for search engines -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "League of Dungeoneers Companion",
+      "alternateName": "LoD Companion",
+      "description": "An unofficial, free companion web app for the League of Dungeoneers tabletop board game (von Braus Publishing). Tracks party stats, threat level, morale, hero sheets, combat maths, spellcasting, and a searchable rules compendium.",
+      "url": "https://league-of-dungeoneers-companion.vercel.app/",
+      "applicationCategory": "UtilitiesApplication",
+      "operatingSystem": "Any",
+      "browserRequirements": "Requires JavaScript",
+      "isAccessibleForFree": true,
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "Luke Wilson"
+      },
+      "image": "https://league-of-dungeoneers-companion.vercel.app/share-image.jpg"
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>

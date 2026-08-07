@@ -875,6 +875,18 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.3.2",
+    date: "2026-08-07",
+    sections: {
+      "Added": [
+        "JSON-LD structured data (schema.org WebApplication) for search engines",
+        "robots.txt, sitemap.xml, and a canonical URL tag",
+        "llms.txt with a plain-text app summary for AI assistants that check for it (an informal, unofficial convention — not a guarantee any given AI reads it)",
+        "iOS home-screen app title and web-app-capable meta tags",
+      ],
+    },
+  },
+  {
     version: "1.3.1",
     date: "2026-08-07",
     sections: {

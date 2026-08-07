@@ -3,6 +3,17 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.3.2] — 2026-08-07
+
+### Added
+- JSON-LD structured data (schema.org `WebApplication`) in `index.html` for search engines
+- `robots.txt`, `sitemap.xml`, and a canonical URL tag
+- `llms.txt` with a plain-text app summary — an informal, unofficial convention some AI tools check when browsing; not a guarantee any given assistant reads it
+- iOS `apple-mobile-web-app-capable` / `apple-mobile-web-app-title` meta tags, so the home-screen icon gets a short title instead of the full page `<title>`
+
+### Notes
+- This is a client-rendered SPA with no server-side rendering, so individual app content (compendium entries, etc.) isn't indexable as separate pages by search engines — the realistic SEO value here is a well-described single landing page, not per-feature indexing
+
 ## [1.3.1] — 2026-08-07
 
 ### Added

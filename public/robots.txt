@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://league-of-dungeoneers-companion.vercel.app/sitemap.xml

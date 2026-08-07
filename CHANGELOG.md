@@ -3,6 +3,12 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.3.0] — 2026-08-07
+
+### Added
+- The app is now a full PWA — installable to your home screen/desktop with an offline-capable service worker, its own icon, and a proper app name instead of just a browser tab (via `vite-plugin-pwa`)
+- Favicon added (was missing before) — same icon used across favicon, home-screen icon, and Apple touch icon
+
 ## [1.2.0] — 2026-08-07
 
 ### Added

@@ -875,6 +875,16 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.3.0",
+    date: "2026-08-07",
+    sections: {
+      "Added": [
+        "The app is now a full PWA — installable to your home screen/desktop with an offline-capable service worker, its own icon, and a proper app name instead of just a browser tab",
+        "Favicon added (was missing before) — same icon used across favicon, home-screen icon, and Apple touch icon",
+      ],
+    },
+  },
+  {
     version: "1.2.0",
     date: "2026-08-07",
     sections: {

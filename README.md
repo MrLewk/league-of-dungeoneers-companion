@@ -7,6 +7,11 @@ playing.
 
 Live app: [https://league-of-dungeoneers-companion.vercel.app/](https://league-of-dungeoneers-companion.vercel.app/)
 
+Installable as an app on your phone, tablet, or desktop straight from that
+link — open it in your browser, then use "Add to Home Screen" (iOS/Android)
+or the install icon in the address bar (Chrome/Edge desktop). No app store
+needed.
+
 ## Features
 
 - **Party tracker** — Threat Level and Party Morale with one-tap buttons for
@@ -84,10 +89,11 @@ your browser's `localStorage` — nothing is sent to a server. That means:
 ## Tech stack
 
 React + Vite, Tailwind CSS, [lucide-react](https://lucide.dev) for icons,
-and [Vercel Analytics](https://vercel.com/docs/analytics) for privacy-
-friendly usage stats (only active once deployed on Vercel — it's a no-op
-locally and on other hosts). Everything lives in `src/App.jsx` as a single
-file.
+[vite-plugin-pwa](https://vite-pwa-org.netlify.app/) for installability and
+offline support, and [Vercel Analytics](https://vercel.com/docs/analytics)
+for privacy-friendly usage stats (only active once deployed on Vercel — it's
+a no-op locally and on other hosts). Everything lives in `src/App.jsx` as a
+single file.
 
 ## License
 

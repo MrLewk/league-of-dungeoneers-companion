@@ -875,6 +875,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.3.1",
+    date: "2026-08-07",
+    sections: {
+      "Added": [
+        "Floating install banner — prompts visitors to install the app (with a working Install button on Android/desktop; Share → Add to Home Screen instructions on iOS, since Safari has no install API). Dismissing it is remembered so it won't nag again",
+      ],
+    },
+  },
+  {
     version: "1.3.0",
     date: "2026-08-07",
     sections: {
@@ -965,6 +974,104 @@ function ChangelogModal({ onClose }) {
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Install banner (PWA) ----------
+const INSTALL_DISMISS_KEY = "lod-install-banner-dismissed";
+
+function InstallBanner() {
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [visible, setVisible] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [installing, setInstalling] = useState(false);
+
+  useEffect(() => {
+    const standalone =
+      (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+      window.navigator.standalone === true;
+    setIsStandalone(!!standalone);
+
+    const ua = window.navigator.userAgent || "";
+    setIsIOS(/iPad|iPhone|iPod/.test(ua) && !window.MSStream);
+
+    (async () => {
+      try {
+        const res = await window.storage.get(INSTALL_DISMISS_KEY, false);
+        setVisible(!(res && res.value === "true"));
+      } catch (e) {
+        setVisible(true);
+      } finally {
+        setReady(true);
+      }
+    })();
+
+    const handler = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const dismiss = async () => {
+    setVisible(false);
+    try {
+      await window.storage.set(INSTALL_DISMISS_KEY, "true", false);
+    } catch (e) {}
+  };
+
+  const install = async () => {
+    if (!deferredPrompt) return;
+    setInstalling(true);
+    deferredPrompt.prompt();
+    try {
+      await deferredPrompt.userChoice;
+    } catch (e) {}
+    setInstalling(false);
+    setDeferredPrompt(null);
+    dismiss();
+  };
+
+  if (!ready || !visible || isStandalone) return null;
+  if (!isIOS && !deferredPrompt) return null; // Android/desktop: wait for the browser's own install signal
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-40 px-3 pb-3">
+      <div
+        className="max-w-md mx-auto rounded-xl p-3 flex items-center gap-3"
+        style={{ background: palette.charcoal, border: `1px solid ${palette.gold}`, boxShadow: "0 4px 16px rgba(0,0,0,0.4)" }}
+      >
+        <div className="shrink-0 rounded-lg p-2" style={{ background: palette.crimsonDark }}>
+          <Download size={18} color={palette.parchment} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold" style={{ color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+            Install LoD Companion
+          </p>
+          <p className="text-xs" style={{ color: "#B8A78A", fontFamily: "Crimson Pro, serif" }}>
+            {isIOS
+              ? "Tap the Share icon, then \"Add to Home Screen\"."
+              : "Add it to your home screen for quick, full-screen access."}
+          </p>
+        </div>
+        {!isIOS && (
+          <button
+            onClick={install}
+            disabled={installing}
+            className="shrink-0 px-3 py-1.5 rounded-lg text-sm font-bold"
+            style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif", opacity: installing ? 0.6 : 1 }}
+          >
+            {installing ? "…" : "Install"}
+          </button>
+        )}
+        <button onClick={dismiss} className="shrink-0 p-1 rounded" style={{ color: "#B8A78A" }} title="Don't show again">
+          <X size={16} />
+        </button>
       </div>
     </div>
   );
@@ -3075,6 +3182,7 @@ export default function App() {
     <div style={{ minHeight: "100vh", background: palette.parchment, fontFamily: "Crimson Pro, serif" }}>
       <style>{fontImport}</style>
       {(!loaded || switching) && <LoadingOverlay label={!loaded ? "Opening the ledger…" : switchingLabel} />}
+      <InstallBanner />
 
       <header style={{ background: palette.charcoal, borderBottom: `4px solid ${palette.crimson}` }} className="px-4 py-4">
         <div className="max-w-2xl mx-auto flex items-center justify-between">

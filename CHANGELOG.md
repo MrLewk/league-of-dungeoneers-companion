@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.3.1] — 2026-08-07
+
+### Added
+- Floating install banner — prompts visitors to install the app, with a working Install button on Android/desktop (via the `beforeinstallprompt` API) and Share → Add to Home Screen instructions on iOS, since Safari doesn't expose an install API. Dismissing it is remembered (stored per-browser) so it won't show again for that visitor
+
 ## [1.3.0] — 2026-08-07
 
 ### Added

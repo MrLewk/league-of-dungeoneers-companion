@@ -61,11 +61,11 @@ const defaultHero = () => ({
   },
   weapon: { name: "", dmg: "", enc: 0, dur: { cur: 6, max: 6 } },
   armour: {
-    head: { def: 0, enc: 0, dur: { cur: 0, max: 0 } },
-    arms: { def: 0, enc: 0, dur: { cur: 0, max: 0 } },
-    torso: { def: 0, enc: 0, dur: { cur: 0, max: 0 } },
-    legs: { def: 0, enc: 0, dur: { cur: 0, max: 0 } },
-    shield: { def: 0, enc: 0, dur: { cur: 0, max: 0 } },
+    head: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 } },
+    arms: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 } },
+    torso: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 } },
+    legs: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 } },
+    shield: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 } },
   },
   talents: [],
   perks: [],
@@ -441,6 +441,39 @@ const WEAPON_CLASS_STR_REQ = {
   5: { twoH: 55, oneH: null },
   6: { twoH: 20, oneH: null },
 };
+
+// Armour & Shields table (Equipment Appendix) — Def, ENC, which hero.armour location(s)
+// it covers, Special rules, Cost, Availability. All default to Durability 6/6 like
+// weapons ("all armour and shields have a Durability of 6, unless otherwise noted" —
+// none of these are noted otherwise). Pieces that cover more than one location (e.g. a
+// Padded Coat covering arms/torso/legs) are the same physical item worn once — if you
+// pick one for more than one slot, only count its ENC on one of them.
+const ARMOUR_AND_SHIELDS = [
+  { name: "Padded Cap", tier: 1, def: 2, enc: 1, covers: ["head"], special: "", cost: 30, avail: 4 },
+  { name: "Padded Vest", tier: 1, def: 2, enc: 3, covers: ["torso"], special: "", cost: 60, avail: 4 },
+  { name: "Padded Jacket", tier: 1, def: 2, enc: 5, covers: ["arms", "torso"], special: "Stackable", cost: 120, avail: 4 },
+  { name: "Padded Pants", tier: 1, def: 2, enc: 4, covers: ["legs"], special: "Stackable", cost: 100, avail: 4 },
+  { name: "Padded Coat", tier: 1, def: 2, enc: 6, covers: ["arms", "torso", "legs"], special: "", cost: 200, avail: 3 },
+  { name: "Cloak", tier: 1, def: 1, enc: 1, covers: ["torso"], special: "Stackable (back only)", cost: 50, avail: 4 },
+  { name: "Leather Cap", tier: 2, def: 3, enc: 1, covers: ["head"], special: "", cost: 50, avail: 4 },
+  { name: "Leather Vest", tier: 2, def: 3, enc: 3, covers: ["torso"], special: "", cost: 80, avail: 4 },
+  { name: "Leather Jacket", tier: 2, def: 3, enc: 4, covers: ["arms", "torso"], special: "", cost: 140, avail: 4 },
+  { name: "Leather Leggings", tier: 2, def: 3, enc: 3, covers: ["legs"], special: "", cost: 120, avail: 4 },
+  { name: "Leather Bracers", tier: 2, def: 3, enc: 3, covers: ["arms"], special: "Stackable", cost: 120, avail: 3 },
+  { name: "Mail Coif", tier: 3, def: 4, enc: 4, covers: ["head"], special: "Stackable", cost: 200, avail: 3 },
+  { name: "Mail Shirt", tier: 3, def: 4, enc: 6, covers: ["torso"], special: "Stackable", cost: 600, avail: 3 },
+  { name: "Sleeved Mail Shirt", tier: 3, def: 4, enc: 7, covers: ["arms", "torso"], special: "Stackable", cost: 950, avail: 3 },
+  { name: "Mail Coat", tier: 3, def: 4, enc: 8, covers: ["torso", "legs"], special: "Stackable", cost: 750, avail: 3 },
+  { name: "Sleeved Mail Coat", tier: 3, def: 4, enc: 10, covers: ["arms", "torso", "legs"], special: "Stackable", cost: 1300, avail: 3 },
+  { name: "Mail Leggings", tier: 3, def: 4, enc: 5, covers: ["legs"], special: "Stackable", cost: 200, avail: 2 },
+  { name: "Helmet", tier: 4, def: 5, enc: 5, covers: ["head"], special: "Clunky, Stackable", cost: 300, avail: 3 },
+  { name: "Breastplate", tier: 4, def: 5, enc: 7, covers: ["torso"], special: "Clunky, Stackable", cost: 700, avail: 3 },
+  { name: "Plate Bracers", tier: 4, def: 5, enc: 4, covers: ["arms"], special: "Stackable", cost: 600, avail: 3 },
+  { name: "Plate Leggings", tier: 4, def: 5, enc: 6, covers: ["legs"], special: "Clunky, Stackable", cost: 700, avail: 3 },
+  { name: "Buckler", tier: 0, def: 4, enc: 4, covers: ["shield"], special: "Class 1", cost: 20, avail: 4 },
+  { name: "Heater Shield", tier: 0, def: 6, enc: 10, covers: ["shield"], special: "Class 3", cost: 100, avail: 3 },
+  { name: "Tower Shield", tier: 0, def: 8, enc: 15, covers: ["shield"], special: "Class 5, Huge", cost: 200, avail: 2 },
+];
 
 const CC_ATTACK_MODS = [
   { label: "Enemy lying down (also loses its to-hit)", value: 30 },
@@ -1165,6 +1198,17 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.10.0",
+    date: "2026-08-07",
+    sections: {
+      "Added": [
+        "Armour picker on the hero card — each location (Head, Arms, Torso, Legs, Shield) now has a 'Pick from table…' dropdown listing the pieces from the Armour & Shields Appendix that actually cover that spot, auto-filling Name/Def/ENC/Durability. A reference line shows Tier, Special rules (Stackable, Clunky, Huge), Cost, Availability, and flags if the piece also covers another location (so ENC only gets counted once)",
+        "Armour pieces are now named — they were previously just bare Def/ENC/Dur numbers with nothing identifying what they were",
+        "Sell & Repair on the Settlement tab now include named armour alongside weapons and backpack items — selling clears the slot, repairing restores real durability on the hero sheet, same as weapons since v1.9.1",
+      ],
+    },
+  },
+  {
     version: "1.9.1",
     date: "2026-08-07",
     sections: {
@@ -1815,6 +1859,11 @@ function HeroCard({ hero, update, remove, addLog }) {
     update({ ...hero, weapon: { name: w.name, dmg: w.dmg, enc: w.enc, dur: { cur: 6, max: 6 } } });
   };
   const setArmourPiece = (loc, patch) => update({ ...hero, armour: { ...hero.armour, [loc]: { ...hero.armour[loc], ...patch } } });
+  const pickArmour = (loc, name) => {
+    const a = ARMOUR_AND_SHIELDS.find((x) => x.name === name);
+    if (!a) return;
+    setArmourPiece(loc, { name: a.name, def: a.def, enc: a.enc, dur: { cur: 6, max: 6 } });
+  };
 
   const extraSkillKey = CASTER_SKILL[hero.profession] || PRAYER_SKILL[hero.profession] || null;
   const visibleSkills = [
@@ -2351,26 +2400,57 @@ function HeroCard({ hero, update, remove, addLog }) {
           {/* Armour */}
           <div className="mb-2">
             <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">Armour</div>
+            <p className="text-[10px] mb-1.5 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+              A piece covering more than one location (shown in its reference line) is worn once — only count its ENC on one slot.
+            </p>
             <div className="space-y-2">
-              {[["head", "Head"], ["arms", "Arms"], ["torso", "Torso"], ["legs", "Legs"], ["shield", "Shield"]].map(([loc, label]) => (
-                <div key={loc}>
-                  <div className="text-xs font-semibold mb-0.5" style={{ fontFamily: "Cinzel, serif", color: palette.inkSoft }}>{label}</div>
-                  <div className="flex items-center gap-1 text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
-                    <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>DEF</span>
-                    <input type="number" value={hero.armour[loc].def} onChange={(e) => setArmourPiece(loc, { def: Number(e.target.value) || 0 })}
-                      className="w-9 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-                    <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>ENC</span>
-                    <input type="number" value={hero.armour[loc].enc} onChange={(e) => setArmourPiece(loc, { enc: Number(e.target.value) || 0 })}
-                      className="w-9 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-                    <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>DUR</span>
-                    <input type="number" value={hero.armour[loc].dur.cur} onChange={(e) => setArmourPiece(loc, { dur: { ...hero.armour[loc].dur, cur: Number(e.target.value) || 0 } })}
-                      className="w-8 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-                    <span style={{ color: palette.inkSoft }}>/</span>
-                    <input type="number" value={hero.armour[loc].dur.max} onChange={(e) => setArmourPiece(loc, { dur: { ...hero.armour[loc].dur, max: Number(e.target.value) || 0 } })}
-                      className="w-8 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+              {[["head", "Head"], ["arms", "Arms"], ["torso", "Torso"], ["legs", "Legs"], ["shield", "Shield"]].map(([loc, label]) => {
+                const piece = hero.armour[loc];
+                const ref = ARMOUR_AND_SHIELDS.find((a) => a.name === piece.name);
+                const options = ARMOUR_AND_SHIELDS.filter((a) => a.covers.includes(loc));
+                return (
+                  <div key={loc}>
+                    <div className="text-xs font-semibold mb-0.5" style={{ fontFamily: "Cinzel, serif", color: palette.inkSoft }}>{label}</div>
+                    <select
+                      value=""
+                      onChange={(e) => e.target.value && pickArmour(loc, e.target.value)}
+                      className="w-full text-xs rounded px-2 py-1 mb-1"
+                      style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}
+                    >
+                      <option value="">Pick from table…</option>
+                      {options.map((a) => (
+                        <option key={a.name} value={a.name}>{a.name} (Def {a.def}, {a.cost}c)</option>
+                      ))}
+                    </select>
+                    <div className="flex items-center gap-1 text-xs flex-wrap" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+                      <input
+                        value={piece.name}
+                        onChange={(e) => setArmourPiece(loc, { name: e.target.value })}
+                        placeholder="Name"
+                        className="flex-1 min-w-0 rounded px-1.5 py-0.5"
+                        style={{ border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                      />
+                      <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>DEF</span>
+                      <input type="number" value={piece.def} onChange={(e) => setArmourPiece(loc, { def: Number(e.target.value) || 0 })}
+                        className="w-9 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                      <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>ENC</span>
+                      <input type="number" value={piece.enc} onChange={(e) => setArmourPiece(loc, { enc: Number(e.target.value) || 0 })}
+                        className="w-9 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                      <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>DUR</span>
+                      <input type="number" value={piece.dur.cur} onChange={(e) => setArmourPiece(loc, { dur: { ...piece.dur, cur: Number(e.target.value) || 0 } })}
+                        className="w-8 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                      <span style={{ color: palette.inkSoft }}>/</span>
+                      <input type="number" value={piece.dur.max} onChange={(e) => setArmourPiece(loc, { dur: { ...piece.dur, max: Number(e.target.value) || 0 } })}
+                        className="w-8 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                    </div>
+                    {ref && (
+                      <div className="text-[10px] mt-0.5 rounded px-1.5 py-0.5" style={{ background: "#00000008", color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+                        Tier {ref.tier || "—"}{ref.special ? ` · ${ref.special}` : ""} · {ref.cost}c (avail {ref.avail}){ref.covers.length > 1 ? ` · Also covers: ${ref.covers.filter((c) => c !== loc).join(", ")}` : ""}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -2735,9 +2815,9 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   };
 
   // Real, currently-owned items the party can sell/repair — sourced from each hero's
-  // equipped weapon and named backpack items. Selling requires picking one of these
-  // (rather than a free-standing price field) and removes it from the hero afterward,
-  // so it can't be sold twice.
+  // equipped weapon, named armour pieces, and named backpack items. Selling requires
+  // picking one of these (rather than a free-standing price field) and removes it from
+  // the hero afterward, so it can't be sold twice.
   const sellableItems = [];
   heroes.forEach((h) => {
     if (h.weapon && h.weapon.name) {
@@ -2752,6 +2832,22 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         defaultMax: h.weapon.dur.max || 6,
       });
     }
+    ["head", "arms", "torso", "legs", "shield"].forEach((loc) => {
+      const piece = h.armour[loc];
+      if (piece && piece.name) {
+        const ref = ARMOUR_AND_SHIELDS.find((a) => a.name === piece.name);
+        sellableItems.push({
+          key: `${h.id}:armour:${loc}`,
+          label: `${h.name} — ${loc[0].toUpperCase()}${loc.slice(1)}: ${piece.name}`,
+          heroId: h.id,
+          kind: "armour",
+          loc,
+          defaultPrice: ref ? ref.cost : 0,
+          defaultLost: Math.max(0, (piece.dur.max || 0) - (piece.dur.cur || 0)),
+          defaultMax: piece.dur.max || 6,
+        });
+      }
+    });
     (h.backpack || []).forEach((item) => {
       if (item.name) {
         sellableItems.push({
@@ -2799,6 +2895,8 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
     if (!hero) return;
     if (item.kind === "weapon") {
       updateHero({ ...hero, weapon: { name: "", dmg: "", enc: 0, dur: { cur: 6, max: 6 } } });
+    } else if (item.kind === "armour") {
+      updateHero({ ...hero, armour: { ...hero.armour, [item.loc]: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 } } } });
     } else {
       updateHero({ ...hero, backpack: hero.backpack.filter((it) => it.id !== item.itemId) });
     }
@@ -2808,27 +2906,44 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
     setSellKey("");
   };
 
-  // Only equipped weapons have real cur/max durability to repair — backpack items store
-  // a single free-text durability field, so there's nothing structured to restore there.
-  const repairableWeapons = [];
+  // Equipped weapons and worn armour both have real cur/max durability to repair —
+  // backpack items store a single free-text durability field, so there's nothing
+  // structured to restore there yet.
+  const repairableItems = [];
   heroes.forEach((h) => {
     if (h.weapon && h.weapon.name && h.weapon.dur.cur < h.weapon.dur.max) {
       const ref = WEAPONS.find((w) => w.name === h.weapon.name);
-      repairableWeapons.push({
+      repairableItems.push({
         key: `${h.id}:weapon`,
-        label: `${h.name} — ${h.weapon.name} (${h.weapon.dur.cur}/${h.weapon.dur.max})`,
+        label: `${h.name} — Weapon: ${h.weapon.name} (${h.weapon.dur.cur}/${h.weapon.dur.max})`,
         heroId: h.id,
+        kind: "weapon",
         defaultPrice: ref ? ref.cost : 0,
         maxPoints: h.weapon.dur.max - h.weapon.dur.cur,
       });
     }
+    ["head", "arms", "torso", "legs", "shield"].forEach((loc) => {
+      const piece = h.armour[loc];
+      if (piece && piece.name && piece.dur.cur < piece.dur.max) {
+        const ref = ARMOUR_AND_SHIELDS.find((a) => a.name === piece.name);
+        repairableItems.push({
+          key: `${h.id}:armour:${loc}`,
+          label: `${h.name} — ${loc[0].toUpperCase()}${loc.slice(1)}: ${piece.name} (${piece.dur.cur}/${piece.dur.max})`,
+          heroId: h.id,
+          kind: "armour",
+          loc,
+          defaultPrice: ref ? ref.cost : 0,
+          maxPoints: piece.dur.max - piece.dur.cur,
+        });
+      }
+    });
   });
-  const selectedRepairItem = repairableWeapons.find((i) => i.key === repairKey) || null;
+  const selectedRepairItem = repairableItems.find((i) => i.key === repairKey) || null;
 
   const pickRepairItem = (key) => {
     setRepairKey(key);
     setRepairResult(null);
-    const item = repairableWeapons.find((i) => i.key === key);
+    const item = repairableItems.find((i) => i.key === key);
     if (item) {
       setRepairPrice(item.defaultPrice);
       setRepairPoints(Math.min(1, item.maxPoints) || 1);
@@ -2838,7 +2953,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const doRepair = () => {
     const item = selectedRepairItem;
     if (!item) {
-      setRepairResult({ ok: false, line: "Pick a damaged weapon the party actually has first." });
+      setRepairResult({ ok: false, line: "Pick a damaged weapon or armour piece the party actually has first." });
       return;
     }
     const points = Math.min(repairPoints, item.maxPoints);
@@ -2850,11 +2965,22 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
     }
     const hero = heroes.find((h) => h.id === item.heroId);
     if (!hero) return;
-    const newCur = Math.min(hero.weapon.dur.max, hero.weapon.dur.cur + points);
-    updateHero({ ...hero, weapon: { ...hero.weapon, dur: { ...hero.weapon.dur, cur: newCur } } });
+    let itemName, newCur, maxDur;
+    if (item.kind === "weapon") {
+      newCur = Math.min(hero.weapon.dur.max, hero.weapon.dur.cur + points);
+      maxDur = hero.weapon.dur.max;
+      itemName = hero.weapon.name;
+      updateHero({ ...hero, weapon: { ...hero.weapon, dur: { ...hero.weapon.dur, cur: newCur } } });
+    } else {
+      const piece = hero.armour[item.loc];
+      newCur = Math.min(piece.dur.max, piece.dur.cur + points);
+      maxDur = piece.dur.max;
+      itemName = piece.name;
+      updateHero({ ...hero, armour: { ...hero.armour, [item.loc]: { ...piece, dur: { ...piece.dur, cur: newCur } } } });
+    }
     setParty((prev) => ({ ...prev, coins: prev.coins - total }));
-    setRepairResult({ ok: true, line: `Repaired ${points} point${points === 1 ? "" : "s"} on ${hero.weapon.name} for ${total}c (now ${newCur}/${hero.weapon.dur.max}). Party now has ${party.coins - total}c.` });
-    addLog(`Repaired ${points} durability point${points === 1 ? "" : "s"} on ${hero.name}'s ${hero.weapon.name} for ${total}c.`);
+    setRepairResult({ ok: true, line: `Repaired ${points} point${points === 1 ? "" : "s"} on ${itemName} for ${total}c (now ${newCur}/${maxDur}). Party now has ${party.coins - total}c.` });
+    addLog(`Repaired ${points} durability point${points === 1 ? "" : "s"} on ${hero.name}'s ${itemName} for ${total}c.`);
     setRepairKey("");
   };
 
@@ -3041,7 +3167,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
             className="w-full text-xs rounded px-2 py-1.5 mb-2"
             style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
           >
-            <option value="">{sellableItems.length === 0 ? "No weapons or named backpack items to sell" : "Pick an item the party has…"}</option>
+            <option value="">{sellableItems.length === 0 ? "No weapons, armour, or named backpack items to sell" : "Pick an item the party has…"}</option>
             {sellableItems.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
           </select>
           {selectedSellItem && (
@@ -3080,7 +3206,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         <div className="rounded p-2" style={{ background: "#00000008" }}>
           <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1.5">Repair an Item</div>
           <p className="text-[10px] mb-1.5 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-            Weapons only — backpack items don't track current/max durability separately, so there's nothing structured to restore there yet.
+            Weapons and worn armour only — backpack items don't track current/max durability separately, so there's nothing structured to restore there yet.
           </p>
           <select
             value={repairKey}
@@ -3088,8 +3214,8 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
             className="w-full text-xs rounded px-2 py-1.5 mb-2"
             style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
           >
-            <option value="">{repairableWeapons.length === 0 ? "No damaged weapons to repair" : "Pick a damaged weapon…"}</option>
-            {repairableWeapons.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
+            <option value="">{repairableItems.length === 0 ? "No damaged weapons or armour to repair" : "Pick a damaged item…"}</option>
+            {repairableItems.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
           </select>
           {selectedRepairItem && (
             <>

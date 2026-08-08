@@ -3,6 +3,13 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.10.0] — 2026-08-07
+
+### Added
+- Armour picker on the hero card — each location (Head, Arms, Torso, Legs, Shield) now has a "Pick from table…" dropdown listing the pieces from the Armour & Shields Appendix that actually cover that spot, auto-filling Name/Def/ENC/Durability. A reference line shows Tier, Special rules (Stackable, Clunky, Huge), Cost, Availability, and flags if the piece also covers another location (so ENC only gets counted once)
+- Armour pieces are now named — they were previously just bare Def/ENC/Dur numbers with nothing identifying what they were
+- Sell & Repair on the Settlement tab now include named armour alongside weapons and backpack items — selling clears the slot, repairing restores real durability on the hero sheet, same as weapons since v1.9.1
+
 ## [1.9.1] — 2026-08-07
 
 ### Fixed

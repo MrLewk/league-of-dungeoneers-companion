@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.16.0] — 2026-08-08
+
+### Added
+- Side Quest table (1d6) wired in — the Settlement Event "Side Quest" now has a Roll It button that names the actual quest instead of just saying "roll on the Side Quest Table", and the Roll Available Quests side-quest check names it too when it triggers. Full quest details still live in your own Quest Book — this just automates picking which one
+
 ## [1.15.1] — 2026-08-08
 
 ### Added

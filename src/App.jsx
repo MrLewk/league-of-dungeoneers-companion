@@ -401,6 +401,10 @@ const SETTLEMENTS = [
 
 // Settlement Events (1d12) — full table from the Settlements chapter.
 // `resolve` marks events with a spelled-out follow-up roll the app can auto-apply.
+// Side Quests (1d6) — just the names; roll tells you which one, look up the details
+// in the Quest Book.
+const SIDE_QUESTS = ["The Missing Brother", "Slay the Beast", "The Mapmaker", "Go Fetch!", "Manhunt", "Mushrooms"];
+
 const SETTLEMENT_EVENTS = [
   { roll: 1, title: "Stray Dog", text: "A stray dog follows the party through the streets. After a small treat from a hero, you now own it. Randomise the kind of dog (Companions' Compendium), or if you already have one, treat as 'Nothing special happens'." },
   { roll: 2, title: "Scrolls Salesman", text: "A man approaches selling magic scrolls. Randomise three available spells. Each scroll costs 100c.", resolve: "scrolls" },
@@ -409,7 +413,7 @@ const SETTLEMENT_EVENTS = [
   { roll: 5, title: "Sale!", text: "A settlement-wide sale — all stores sell items at a 20% discount." },
   { roll: 6, title: "Fresh Stocks", text: "All stores just restocked. All availabilities are modified by +2 (a result of 6 is automatically in stock)." },
   { roll: 7, title: "Settlement Feast", text: "A celebration boosts Party Morale by +2 (temporarily, can exceed max) if you stay the night. On 1d12 of 9-12, no beds are available and the party must continue travel without business (quest reward may still be claimed).", resolve: "feast" },
-  { roll: 8, title: "Side Quest", text: "A citizen urgently requests help. Roll on the Side Quest Table and decide whether to add it to the current quest." },
+  { roll: 8, title: "Side Quest", text: "A citizen urgently requests help. Roll on the Side Quest Table and decide whether to add it to the current quest.", resolve: "sidequest" },
   { roll: 9, title: "Shortage of Goods", text: "No trade caravans for weeks. All availabilities modified by -2 (0 = automatically out of stock). Prices up +10%." },
   { roll: 10, title: "Thief", text: "A pickpocket gets too close. 1d100 coins are stolen from the party.", resolve: "thief" },
   { roll: 11, title: "Assassination Attempt", text: "Someone holds a grudge. Randomise one hero attacked by 1d4 bandits (randomise weapons; ranged bandits also carry daggers). Fight on the city tile; heroes are nursed to 1 HP instead of dying. Bandits may be searched afterward.", resolve: "assassination" },
@@ -1340,6 +1344,15 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.16.0",
+    date: "2026-08-08",
+    sections: {
+      "Added": [
+        "Side Quest table (1d6) wired in — the Settlement Event 'Side Quest' now has a Roll It button that names the actual quest instead of just saying 'roll on the Side Quest Table', and the Roll Available Quests side-quest check names it too when it triggers. Full quest details still live in your own Quest Book — this just automates picking which one",
+      ],
+    },
+  },
   {
     version: "1.15.1",
     date: "2026-08-08",
@@ -3218,6 +3231,12 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       const line = `Rolled ${roll} → ${curse.text}. Apply to all heroes manually until they next exit a dungeon (no duration tracking in-app yet).`;
       setEventResolution([line]);
       addLog(`Curse!: rolled ${roll} → ${curse.text} (applies to all heroes until next dungeon exit).`);
+    } else if (event.resolve === "sidequest") {
+      const roll = rollDie(6);
+      const quest = SIDE_QUESTS[roll - 1];
+      const line = `Rolled ${roll} → "${quest}". Check the Quest Book for details, then decide whether to add it to the current quest.`;
+      setEventResolution([line]);
+      addLog(`Side Quest: rolled ${roll} → "${quest}".`);
     }
   };
 
@@ -3227,13 +3246,15 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
     const row = QUEST_AVAILABILITY.find((r) => roll >= r.roll[0] && roll <= r.roll[1]);
     const text = isSilverCity ? row.silverCity : row.settlement;
     let side = null;
+    let sideQuestName = null;
     if (text !== "-") {
       const roll8 = rollDie(8);
       side = roll8 <= 2;
-      setQuestResult({ roll, text, roll8, side });
-      addLog(`${settlement.name}: quests roll ${roll} → ${text}. Side-quest check (${roll8}) → ${side ? "side quest also available" : "no side quest"}.`);
+      if (side) sideQuestName = SIDE_QUESTS[rollDie(6) - 1];
+      setQuestResult({ roll, text, roll8, side, sideQuestName });
+      addLog(`${settlement.name}: quests roll ${roll} → ${text}. Side-quest check (${roll8}) → ${side ? `side quest available: "${sideQuestName}"` : "no side quest"}.`);
     } else {
-      setQuestResult({ roll, text, roll8: null, side: null });
+      setQuestResult({ roll, text, roll8: null, side: null, sideQuestName: null });
       addLog(`${settlement.name}: quests roll ${roll} → no quests available here.`);
     }
   };
@@ -3582,7 +3603,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
             <span className="font-bold" style={{ color: palette.ink }}>Quests roll: {questResult.roll} → {questResult.text}</span>
             {questResult.roll8 != null && (
               <p className="mt-1" style={{ color: palette.inkSoft }}>
-                Side-quest check ({questResult.roll8}): {questResult.side ? "a side quest is also available." : "no side quest."}
+                Side-quest check ({questResult.roll8}): {questResult.side ? <>side quest available — <b style={{ color: palette.ink }}>"{questResult.sideQuestName}"</b></> : "no side quest."}
               </p>
             )}
           </div>

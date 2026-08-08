@@ -5,6 +5,7 @@ import {
   RotateCcw, Coins, Wheat, ScrollText, Pencil, Check, X, FolderOpen, Loader2, Map, Download, Upload,
   Landmark, Bed, ClipboardList
 } from "lucide-react";
+import { useRegisterSW } from "virtual:pwa-register/react";
 
 // ---------- Palette / tokens (inline, no Tailwind arbitrary values) ----------
 const palette = {
@@ -1164,6 +1165,19 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.9.0",
+    date: "2026-08-07",
+    sections: {
+      "Added": [
+        "Update-available toast — since updates have been shipping fast, the app now detects when a new version has been deployed (checked hourly while open, plus on every normal page load) and shows a floating banner with a Reload button, instead of you needing to know to manually refresh",
+        "Reloading via that banner automatically opens the changelog afterward, so it's obvious what changed — but only right after an update, not on every ordinary refresh (uses a one-time #log URL hash that gets cleaned up immediately after)",
+      ],
+      "Changed": [
+        "PWA update mode switched from silent auto-update to prompt-based — new versions no longer swap in behind your back mid-session; you control when the reload happens",
+      ],
+    },
+  },
+  {
     version: "1.8.1",
     date: "2026-08-07",
     sections: {
@@ -1488,8 +1502,73 @@ function InstallBanner() {
   );
 }
 
+function UpdateToast() {
+  const {
+    needRefresh: [needRefresh, setNeedRefresh],
+    updateServiceWorker,
+  } = useRegisterSW({
+    onRegisteredSW(_url, registration) {
+      if (!registration) return;
+      // Long-lived open tabs otherwise only notice a new deploy on their next
+      // full navigation — poll hourly so the toast can show up on its own.
+      setInterval(() => registration.update(), 60 * 60 * 1000);
+    },
+  });
+
+  const reload = () => {
+    // Marks this reload as update-triggered, so the Footer knows to pop the
+    // changelog open once — see Footer's hash check.
+    window.location.hash = "log";
+    updateServiceWorker(true);
+  };
+
+  if (!needRefresh) return null;
+
+  return (
+    <div className="fixed top-0 left-0 right-0 z-40 px-3 pt-3">
+      <div
+        className="max-w-md mx-auto rounded-xl p-3 flex items-center gap-3"
+        style={{ background: palette.charcoal, border: `1px solid ${palette.gold}`, boxShadow: "0 4px 16px rgba(0,0,0,0.4)" }}
+      >
+        <div className="shrink-0 rounded-lg p-2" style={{ background: palette.forestDark }}>
+          <RotateCcw size={18} color={palette.parchment} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold" style={{ color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+            Update available
+          </p>
+          <p className="text-xs" style={{ color: "#B8A78A", fontFamily: "Crimson Pro, serif" }}>
+            A new version of the companion is ready.
+          </p>
+        </div>
+        <button
+          onClick={reload}
+          className="shrink-0 px-3 py-1.5 rounded-lg text-sm font-bold"
+          style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
+        >
+          Reload
+        </button>
+        <button onClick={() => setNeedRefresh(false)} className="shrink-0 p-1 rounded" style={{ color: "#B8A78A" }} title="Dismiss">
+          <X size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Footer() {
   const [showChangelog, setShowChangelog] = useState(false);
+
+  // If we just reloaded after an app update (see UpdateToast), pop the changelog
+  // open once so the person can see what changed — then clean the hash so a
+  // later manual refresh doesn't reopen it by mistake.
+  useEffect(() => {
+    if (window.location.hash === "#log") {
+      setShowChangelog(true);
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  }, []);
+
   return (
     <footer className="max-w-2xl mx-auto px-4 py-8 flex flex-col items-center gap-2">
       <BuyMeACoffeeButton />
@@ -4392,6 +4471,7 @@ export default function App() {
     <div style={{ minHeight: "100vh", background: palette.parchment, fontFamily: "Crimson Pro, serif" }}>
       <style>{fontImport}</style>
       {(!loaded || switching) && <LoadingOverlay label={!loaded ? "Opening the ledger…" : switchingLabel} />}
+      <UpdateToast />
       <InstallBanner />
 
       <header style={{ background: palette.charcoal, borderBottom: `4px solid ${palette.crimson}` }} className="px-4 py-4">

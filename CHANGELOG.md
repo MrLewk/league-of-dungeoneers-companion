@@ -3,6 +3,15 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.17.0] — 2026-08-08
+
+### Added
+- Resolve an Activity panel on the Settlement tab — rolls and applies 7 settlement activities that previously had no mechanic behind them: Pray at Temple (all 6 gods' boons, auto-filtered to whichever temples the current settlement actually has), Fortune Teller, Gambling (Luck reduces the roll without spending it, per the rule), Horse Racing (DEX test, level-based payout multiplier, catastrophe-strikes failure), Arena Fighting (CS check with HP/STR/bracket modifiers), Tending to Those Memories (free Sanity + optional paid top-up), and Treat Mental Conditions (cures a listed condition)
+
+### Notes
+- Arena Fighting resolves win/lose but the book doesn't list prize money for winning, so that part's still on you
+- Temple/Curse/Feast-style boons that last "until the next dungeon exit" are applied immediately with a reminder in the result — there's no duration-tracking system yet, so remove them manually when the dungeon ends
+
 ## [1.16.0] — 2026-08-08
 
 ### Added

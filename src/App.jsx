@@ -405,6 +405,55 @@ const SETTLEMENTS = [
 // in the Quest Book.
 const SIDE_QUESTS = ["The Missing Brother", "Slay the Beast", "The Mapmaker", "Go Fetch!", "Manhunt", "Mushrooms"];
 
+// Pray at Temple (p144-145) — 50c, 1d6 roll, 1-3 succeeds. Effects last "until you leave
+// the next dungeon" (temporary) except Charus's, which is worded as a standing bonus
+// that just can't be topped up by resting.
+const TEMPLE_BOONS = {
+  Charus: { kind: "energy", amount: 1, label: "+1 Energy Point (not regained by resting)" },
+  Iphy: { kind: "stat", stat: "RES", amount: 5, label: "+5 Resolve" },
+  Metheia: { kind: "hp", amount: 1, label: "+1 HP (until next dungeon exit)" },
+  Ohlnir: { kind: "choice", options: ["CS", "RS"], amount: 5, label: "+5 CS or RS (your choice)" },
+  Rhidnir: { kind: "luck", amount: 1, label: "+1 Luck" },
+  Ramos: { kind: "stat", stat: "STR", amount: 5, label: "+5 STR" },
+};
+
+// Fortune Teller (p143) — 50c, 1d6.
+const FORTUNE_TELLER_TABLE = [
+  { roll: 1, text: "Foresees an upcoming battle in such detail that the hero may treat one successful enemy attack as a miss during the next quest." },
+  { roll: 2, text: "Talk of gambling fortune: -2 on a gambling dice roll during this stay in the city." },
+  { roll: 3, text: "Nothing of any importance." },
+  { roll: 4, text: "Nothing of any importance." },
+  { roll: 5, text: "Nothing of any importance." },
+  { roll: 6, text: "Cursed! The hero will suffer a curse during the next quest (roll on the Curses Table)." },
+];
+
+// Gambling (p143) — bet 50-500c, -1 to the roll per Luck Point (without spending them);
+// a natural 10 can't be modified.
+const GAMBLING_TABLE = [
+  { max: 1, mult: 2, extra: 0, label: "Grand slam! Win 2x your bet." },
+  { max: 3, mult: 1.5, extra: 0, label: "Win! 1.5x your bet (rounded down)." },
+  { max: 9, mult: 0, extra: 0, label: "Lose all bets." },
+  { max: 10, mult: 0, extra: 100, label: "Accused of cheating — lose your bet, an extra 100c, and take a beating." },
+];
+
+// Horse Racing (p143-144) — 50c entry (counts toward the bet), bet up to 300c total,
+// DEX Test to place.
+const HORSE_RACE_MULTIPLIERS = {
+  1: { first: 3, second: 2.5 }, 2: { first: 2.9, second: 2.4 }, 3: { first: 2.8, second: 2.3 },
+  4: { first: 2.7, second: 2.2 }, 5: { first: 2.6, second: 2.1 }, 6: { first: 2.5, second: 2.0 },
+  7: { first: 2.4, second: 1.9 }, 8: { first: 2.3, second: 1.8 }, 9: { first: 2.2, second: 1.7 }, 10: { first: 2.1, second: 1.6 },
+};
+const HORSE_EXTRA_PRIZE = {
+  first: [{ max: 2, prize: "Wonderful Treasure" }, { max: 4, prize: "Fine Treasure" }, { max: 10, prize: null }],
+  second: [{ max: 1, prize: "Wonderful Treasure" }, { max: 3, prize: "Fine Treasure" }, { max: 10, prize: null }],
+};
+
+// Arena Fighting (p139) — modifiers on a CS roll, entry 50-200c. The book doesn't list
+// prize money for winning, only the win/lose check itself, so that's all this resolves.
+const ARENA_HP_MOD = (hp) => (hp < 10 ? -5 : hp <= 15 ? 0 : 5);
+const ARENA_STR_MOD = (str) => (str < 40 ? -5 : str <= 50 ? 0 : 5);
+const ARENA_LEVEL_MOD = { Group: -10, Semi: -15, Final: -20 };
+
 const SETTLEMENT_EVENTS = [
   { roll: 1, title: "Stray Dog", text: "A stray dog follows the party through the streets. After a small treat from a hero, you now own it. Randomise the kind of dog (Companions' Compendium), or if you already have one, treat as 'Nothing special happens'." },
   { roll: 2, title: "Scrolls Salesman", text: "A man approaches selling magic scrolls. Randomise three available spells. Each scroll costs 100c.", resolve: "scrolls" },
@@ -1344,6 +1393,19 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.17.0",
+    date: "2026-08-08",
+    sections: {
+      "Added": [
+        "Resolve an Activity panel on the Settlement tab — rolls and applies 7 settlement activities that previously had no mechanic behind them: Pray at Temple (all 6 gods' boons, auto-filtered to whichever temples the current settlement actually has), Fortune Teller, Gambling (Luck reduces the roll without spending it, per the rule), Horse Racing (DEX test, level-based payout multiplier, catastrophe-strikes failure), Arena Fighting (CS check with HP/STR/bracket modifiers), Tending to Those Memories (free Sanity + optional paid top-up), and Treat Mental Conditions (cures a listed condition)",
+      ],
+      "Notes": [
+        "Arena Fighting resolves win/lose but the book doesn't list prize money for winning, so that part's still on you",
+        "Temple/Curse/Feast-style boons that last 'until the next dungeon exit' are applied immediately with a reminder in the result — there's no duration-tracking system yet, so remove them manually when the dungeon ends",
+      ],
+    },
+  },
   {
     version: "1.16.0",
     date: "2026-08-08",
@@ -3153,6 +3215,14 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const [repairPrice, setRepairPrice] = useState(0);
   const [repairPoints, setRepairPoints] = useState(1);
   const [repairResult, setRepairResult] = useState(null);
+  const [resolverActivity, setResolverActivity] = useState("Pray");
+  const [resolverHero, setResolverHero] = useState("");
+  const [resolverTemple, setResolverTemple] = useState("");
+  const [resolverOhlnirChoice, setResolverOhlnirChoice] = useState("CS");
+  const [resolverBet, setResolverBet] = useState(50);
+  const [resolverArenaLevel, setResolverArenaLevel] = useState("Group");
+  const [resolverDrinkAle, setResolverDrinkAle] = useState(false);
+  const [resolverResult, setResolverResult] = useState(null);
   // Tracks opted-OUT heroes rather than opted-in, so heroes added later still default to selected.
   const [restExcluded, setRestExcluded] = useState(() => new Set());
 
@@ -3516,6 +3586,153 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
     setRepairKey("");
   };
 
+  const resolvedHero = heroes.find((h) => h.id === resolverHero) || heroes[0];
+  const templeOptions = !settlement || !settlement.temples || settlement.temples === "All"
+    ? Object.keys(TEMPLE_BOONS)
+    : settlement.temples.split(", ");
+
+  const resolveActivity = () => {
+    if (!resolvedHero) return;
+    if (resolverActivity === "Pray") {
+      if (!resolverTemple) { setResolverResult({ ok: false, lines: ["Pick a temple first."] }); return; }
+      if (party.coins < 50) { setResolverResult({ ok: false, lines: ["Can't afford the 50c offering."] }); return; }
+      setParty((prev) => ({ ...prev, coins: prev.coins - 50 }));
+      const roll = rollDie(6);
+      if (roll > 3) {
+        setResolverResult({ ok: true, lines: [`Rolled ${roll} — ${resolverTemple} doesn't answer this time. (Paid 50c.)`] });
+        addLog(`${resolvedHero.name} prays at the Temple of ${resolverTemple}: no answer (rolled ${roll}).`);
+        return;
+      }
+      const boon = TEMPLE_BOONS[resolverTemple];
+      let line = boon.label;
+      if (boon.kind === "stat") {
+        updateHero({ ...resolvedHero, stats: { ...resolvedHero.stats, [boon.stat]: (Number(resolvedHero.stats[boon.stat]) || 0) + boon.amount } });
+      } else if (boon.kind === "hp") {
+        updateHero({ ...resolvedHero, hp: { cur: resolvedHero.hp.cur + boon.amount, max: resolvedHero.hp.max + boon.amount } });
+      } else if (boon.kind === "luck") {
+        updateHero({ ...resolvedHero, luck: { cur: resolvedHero.luck.cur + boon.amount, max: resolvedHero.luck.max + boon.amount } });
+      } else if (boon.kind === "energy") {
+        updateHero({ ...resolvedHero, energy: { cur: resolvedHero.energy.cur + boon.amount, max: resolvedHero.energy.max + boon.amount } });
+      } else if (boon.kind === "choice") {
+        const skillKey = resolverOhlnirChoice === "CS" ? "cs" : "rs";
+        updateHero({ ...resolvedHero, skills: { ...resolvedHero.skills, [skillKey]: (Number(resolvedHero.skills[skillKey]) || 0) + boon.amount } });
+        line = `+5 ${resolverOhlnirChoice}`;
+      }
+      setResolverResult({ ok: true, lines: [`Rolled ${roll} — ${resolverTemple} answers! ${line} applied. Lasts until ${resolvedHero.name} next leaves a dungeon — remove manually afterward. (Paid 50c.)`] });
+      addLog(`${resolvedHero.name} prays at the Temple of ${resolverTemple}: success (${roll}). ${line}.`);
+    } else if (resolverActivity === "Fortune Teller") {
+      if (party.coins < 50) { setResolverResult({ ok: false, lines: ["Can't afford the 50c fee."] }); return; }
+      setParty((prev) => ({ ...prev, coins: prev.coins - 50 }));
+      const roll = rollDie(6);
+      const entry = FORTUNE_TELLER_TABLE.find((e) => e.roll === roll);
+      let line = `Rolled ${roll} — ${entry.text}`;
+      if (roll === 6) {
+        const curseRoll = rollDie(10);
+        const curse = CURSES_TABLE.find((c) => c.roll === curseRoll);
+        line += ` Curse roll: ${curseRoll} → ${curse.text} (applies next quest, manual).`;
+      }
+      setResolverResult({ ok: true, lines: [line] });
+      addLog(`${resolvedHero.name} visits the Fortune Teller: ${line}`);
+    } else if (resolverActivity === "Gambling") {
+      const bet = Math.max(50, Math.min(500, resolverBet));
+      if (party.coins < bet) { setResolverResult({ ok: false, lines: [`Can't afford a ${bet}c bet.`] }); return; }
+      const raw = rollDie(10);
+      const luckBonus = resolvedHero.luck.cur;
+      const modified = raw === 10 ? 10 : Math.max(1, raw - luckBonus);
+      const row = GAMBLING_TABLE.find((r) => modified <= r.max);
+      const winnings = Math.floor(bet * row.mult);
+      const net = winnings - bet - row.extra;
+      setParty((prev) => ({ ...prev, coins: prev.coins + net }));
+      const line = `Bet ${bet}c. Rolled ${raw}${luckBonus > 0 && raw !== 10 ? ` (-${luckBonus} Luck → ${modified})` : ""} — ${row.label} Net ${net >= 0 ? "+" : ""}${net}c.`;
+      setResolverResult({ ok: true, lines: [line] });
+      addLog(`${resolvedHero.name} gambles: ${line}`);
+    } else if (resolverActivity === "Horse Racing") {
+      const bet = Math.max(50, Math.min(300, resolverBet));
+      if (party.coins < bet) { setResolverResult({ ok: false, lines: [`Can't afford ${bet}c (includes the 50c entry).`] }); return; }
+      const dex = Number(resolvedHero.stats.DEX) || 0;
+      const roll = rollDie(100);
+      setParty((prev) => ({ ...prev, coins: prev.coins - bet }));
+      if (roll >= 95) {
+        const hpLoss = rollDie(6);
+        updateHero({ ...resolvedHero, hp: { ...resolvedHero.hp, cur: Math.max(0, resolvedHero.hp.cur - hpLoss) }, sanity: { ...resolvedHero.sanity, cur: Math.max(0, resolvedHero.sanity.cur - 1) } });
+        const line = `Rolled ${roll} — Catastrophe strikes! Lost the horse (remove it manually), -${hpLoss} HP, -1 Sanity. Bet (${bet}c) lost.`;
+        setResolverResult({ ok: true, lines: [line] });
+        addLog(`${resolvedHero.name} races a horse: ${line}`);
+        return;
+      }
+      const place = roll <= Math.floor(dex / 2) ? "first" : roll <= dex - 10 ? "second" : null;
+      if (!place) {
+        const line = `Rolled ${roll} (DEX ${dex}) — you lose. Bet (${bet}c) lost.`;
+        setResolverResult({ ok: true, lines: [line] });
+        addLog(`${resolvedHero.name} races a horse: ${line}`);
+        return;
+      }
+      const level = Math.min(10, Math.max(1, resolvedHero.level));
+      const mult = HORSE_RACE_MULTIPLIERS[level][place];
+      const winnings = Math.floor(bet * mult);
+      const extraRoll = rollDie(10);
+      const extraRow = HORSE_EXTRA_PRIZE[place].find((r) => extraRoll <= r.max);
+      setParty((prev) => ({ ...prev, coins: prev.coins + winnings }));
+      const lines = [`Rolled ${roll} (DEX ${dex}) — ${place === "first" ? "1st place!" : "2nd place!"} Won ${winnings}c (x${mult}).`];
+      if (extraRow.prize) lines.push(`Extra prize roll (${extraRoll}): 1 ${extraRow.prize}!`);
+      setResolverResult({ ok: true, lines });
+      addLog(`${resolvedHero.name} races a horse: ${lines.join(" ")}`);
+    } else if (resolverActivity === "Arena Fighting") {
+      const fee = Math.max(50, Math.min(200, resolverBet));
+      if (party.coins < fee) { setResolverResult({ ok: false, lines: [`Can't afford the ${fee}c entry.`] }); return; }
+      const cs = Number(resolvedHero.skills.cs) || 0;
+      const hpMod = ARENA_HP_MOD(resolvedHero.hp.max);
+      const strMod = ARENA_STR_MOD(Number(resolvedHero.stats.STR) || 0);
+      const levelMod = ARENA_LEVEL_MOD[resolverArenaLevel];
+      const target = cs + hpMod + strMod + levelMod;
+      const roll = rollDie(100);
+      const win = roll <= target;
+      setParty((prev) => ({ ...prev, coins: prev.coins - fee }));
+      const line = `${resolverArenaLevel} bracket — target ${target} (CS ${cs}, HP mod ${hpMod >= 0 ? "+" : ""}${hpMod}, STR mod ${strMod >= 0 ? "+" : ""}${strMod}, level mod ${levelMod}). Rolled ${roll} — ${win ? "Win!" : "Lose."} (Paid ${fee}c entry — the book doesn't list arena prize money, so that part's on you.)`;
+      setResolverResult({ ok: true, lines: [line] });
+      addLog(`${resolvedHero.name} fights in the ${resolverArenaLevel} arena bracket: target ${target}, rolled ${roll} — ${win ? "win" : "lose"}.`);
+    } else if (resolverActivity === "Tending to Those Memories") {
+      const roll = rollDie(3);
+      let newSanity = Math.min(resolvedHero.sanity.max, resolvedHero.sanity.cur + roll);
+      const lines = [`+${roll} Sanity from a night at the inn (now ${newSanity}/${resolvedHero.sanity.max}).`];
+      let coinsSpent = 0;
+      if (resolverDrinkAle) {
+        const cost = rollDie(3) * 100;
+        if (party.coins < cost) {
+          lines.push(`Wanted to drink the rest away too, but can't afford it (needed ${cost}c).`);
+        } else {
+          const roll2 = rollDie(6);
+          newSanity = Math.min(resolvedHero.sanity.max, newSanity + roll2);
+          coinsSpent = cost;
+          lines.push(`Drank the memories away: +${roll2} more Sanity (now ${newSanity}/${resolvedHero.sanity.max}) for ${cost}c.`);
+        }
+      }
+      updateHero({ ...resolvedHero, sanity: { ...resolvedHero.sanity, cur: newSanity } });
+      if (coinsSpent > 0) setParty((prev) => ({ ...prev, coins: prev.coins - coinsSpent }));
+      setResolverResult({ ok: true, lines });
+      addLog(`${resolvedHero.name} tends to those memories: ${lines.join(" ")}`);
+    } else if (resolverActivity === "Treat Mental Conditions") {
+      if (party.coins < 1000) { setResolverResult({ ok: false, lines: ["Can't afford the 1000c treatment."] }); return; }
+      if (!resolvedHero.conditions || resolvedHero.conditions.length === 0) {
+        setResolverResult({ ok: false, lines: [`${resolvedHero.name} has no conditions listed to treat.`] });
+        return;
+      }
+      const roll = rollDie(6);
+      setParty((prev) => ({ ...prev, coins: prev.coins - 1000 }));
+      if (roll <= 5) {
+        const cured = resolvedHero.conditions[0];
+        updateHero({ ...resolvedHero, conditions: resolvedHero.conditions.slice(1) });
+        const line = `Rolled ${roll} — treatment succeeds! "${cured}" cured. Takes 5 days. (Paid 1000c.)`;
+        setResolverResult({ ok: true, lines: [line] });
+        addLog(`${resolvedHero.name} is treated at the Asylum: cured "${cured}" (rolled ${roll}).`);
+      } else {
+        const line = `Rolled ${roll} — the treatment fails this time. Takes 5 days. (Paid 1000c.)`;
+        setResolverResult({ ok: true, lines: [line] });
+        addLog(`${resolvedHero.name} is treated at the Asylum: failed (rolled ${roll}).`);
+      }
+    }
+  };
+
   return (
     <div>
       <Panel className="mb-4">
@@ -3793,6 +4010,119 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
             </p>
           )}
         </div>
+      </Panel>
+
+      <Panel className="mb-4">
+        <SectionTitle icon={Sparkles}>Resolve an Activity</SectionTitle>
+        <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+          Pray, Fortune Teller, Gambling, Horse Racing, Arena Fighting, Tending to Those Memories, Treat Mental Conditions.
+        </p>
+        <div className="grid grid-cols-2 gap-1.5 mb-1.5">
+          <select
+            value={resolverActivity}
+            onChange={(e) => { setResolverActivity(e.target.value); setResolverResult(null); }}
+            className="text-xs rounded px-2 py-1.5"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            {["Pray", "Fortune Teller", "Gambling", "Horse Racing", "Arena Fighting", "Tending to Those Memories", "Treat Mental Conditions"].map((a) => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
+          <select
+            value={resolvedHero?.id || ""}
+            onChange={(e) => setResolverHero(e.target.value)}
+            className="text-xs rounded px-2 py-1.5"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+          </select>
+        </div>
+
+        {resolverActivity === "Pray" && (
+          <div className="flex gap-1.5 mb-1.5">
+            <select
+              value={resolverTemple}
+              onChange={(e) => setResolverTemple(e.target.value)}
+              className="flex-1 text-xs rounded px-2 py-1.5"
+              style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+            >
+              <option value="">Pick a temple…</option>
+              {templeOptions.map((g) => <option key={g} value={g}>{g} ({TEMPLE_BOONS[g].label})</option>)}
+            </select>
+            {resolverTemple === "Ohlnir" && (
+              <select
+                value={resolverOhlnirChoice}
+                onChange={(e) => setResolverOhlnirChoice(e.target.value)}
+                className="text-xs rounded px-2 py-1.5"
+                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+              >
+                <option value="CS">CS</option>
+                <option value="RS">RS</option>
+              </select>
+            )}
+          </div>
+        )}
+
+        {(resolverActivity === "Gambling" || resolverActivity === "Horse Racing" || resolverActivity === "Arena Fighting") && (
+          <div className="flex gap-1.5 mb-1.5 items-center">
+            <span className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+              {resolverActivity === "Arena Fighting" ? "Entry fee (50-200c)" : resolverActivity === "Horse Racing" ? "Bet incl. entry (50-300c)" : "Bet (50-500c)"}
+            </span>
+            <input
+              type="number"
+              value={resolverBet}
+              onChange={(e) => setResolverBet(Number(e.target.value) || 0)}
+              className="w-20 text-xs rounded px-2 py-1"
+              style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+            />
+          </div>
+        )}
+
+        {resolverActivity === "Arena Fighting" && (
+          <select
+            value={resolverArenaLevel}
+            onChange={(e) => setResolverArenaLevel(e.target.value)}
+            className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            <option value="Group">Group fight</option>
+            <option value="Semi">Semi-final</option>
+            <option value="Final">Final</option>
+          </select>
+        )}
+
+        {resolverActivity === "Tending to Those Memories" && (
+          <label className="flex items-center gap-1.5 text-xs mb-1.5" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            <input type="checkbox" checked={resolverDrinkAle} onChange={(e) => setResolverDrinkAle(e.target.checked)} />
+            Also drink to forget (+1d6 more Sanity for 1d3×100c)
+          </label>
+        )}
+
+        {resolverActivity === "Treat Mental Conditions" && resolvedHero && (
+          <p className="text-[10px] mb-1.5 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            {resolvedHero.conditions && resolvedHero.conditions.length > 0
+              ? `Will attempt to cure: "${resolvedHero.conditions[0]}"`
+              : `${resolvedHero.name} has no conditions listed on their sheet.`}
+          </p>
+        )}
+
+        <button
+          onClick={resolveActivity}
+          className="w-full flex items-center justify-center gap-1 text-xs px-2 py-2 rounded font-semibold"
+          style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
+        >
+          <Dice5 size={14} /> Roll It
+        </button>
+
+        {resolverResult && (
+          <div className="rounded p-2 mt-2" style={{ background: "#fff", border: `1px solid ${resolverResult.ok ? palette.forest : palette.crimson}` }}>
+            {resolverResult.lines.map((line, i) => (
+              <p key={i} className="text-xs" style={{ color: resolverResult.ok ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif", fontWeight: 600 }}>
+                {line}
+              </p>
+            ))}
+          </div>
+        )}
       </Panel>
 
       <Panel className="mb-4">

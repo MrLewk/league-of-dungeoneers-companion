@@ -3,6 +3,13 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.4.2] — 2026-08-07
+
+### Added
+- Settlement events that need a follow-up roll now show a "Roll It" button that resolves it automatically: Thief (steals coins), Settlement Feast (bed check + morale), Scrolls Salesman (3 random spells), Assassination Attempt (bandit count + targeted hero), Curse (rolls the Curses Table)
+- Reset button on both the Quick Dice and Loot Roller panels — clears recent rolls without switching tabs
+- Rest at Inn now shows a confirmation summary (HP/Mana/Energy per hero, inn cost paid) so the button doesn't look like it did nothing
+
 ## [1.4.1] — 2026-08-07
 
 ### Fixed

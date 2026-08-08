@@ -247,19 +247,34 @@ const SETTLEMENTS = [
 ];
 
 // Settlement Events (1d12) — full table from the Settlements chapter.
+// `resolve` marks events with a spelled-out follow-up roll the app can auto-apply.
 const SETTLEMENT_EVENTS = [
   { roll: 1, title: "Stray Dog", text: "A stray dog follows the party through the streets. After a small treat from a hero, you now own it. Randomise the kind of dog (Companions' Compendium), or if you already have one, treat as 'Nothing special happens'." },
-  { roll: 2, title: "Scrolls Salesman", text: "A man approaches selling magic scrolls. Randomise three available spells. Each scroll costs 100c." },
+  { roll: 2, title: "Scrolls Salesman", text: "A man approaches selling magic scrolls. Randomise three available spells. Each scroll costs 100c.", resolve: "scrolls" },
   { roll: 3, title: "Potion Salesman", text: "A man in purple robes sells premium potions. Use the Potions Table with an availability of 4 for every potion regardless of class, and -20c as a price modifier." },
   { roll: 4, title: "Trinket Salesman", text: "An old man sells magic trinkets, 100c each, max 1 per hero. Roll 1d12 per trinket: 1-5 magic, 5-11 useless (cannot be sold), 12 cursed (roll on Curses Table). Decide ring or necklace." },
   { roll: 5, title: "Sale!", text: "A settlement-wide sale — all stores sell items at a 20% discount." },
   { roll: 6, title: "Fresh Stocks", text: "All stores just restocked. All availabilities are modified by +2 (a result of 6 is automatically in stock)." },
-  { roll: 7, title: "Settlement Feast", text: "A celebration boosts Party Morale by +2 (temporarily, can exceed max) if you stay the night. On 1d12 of 9-12, no beds are available and the party must continue travel without business (quest reward may still be claimed)." },
+  { roll: 7, title: "Settlement Feast", text: "A celebration boosts Party Morale by +2 (temporarily, can exceed max) if you stay the night. On 1d12 of 9-12, no beds are available and the party must continue travel without business (quest reward may still be claimed).", resolve: "feast" },
   { roll: 8, title: "Side Quest", text: "A citizen urgently requests help. Roll on the Side Quest Table and decide whether to add it to the current quest." },
   { roll: 9, title: "Shortage of Goods", text: "No trade caravans for weeks. All availabilities modified by -2 (0 = automatically out of stock). Prices up +10%." },
-  { roll: 10, title: "Thief", text: "A pickpocket gets too close. 1d100 coins are stolen from the party." },
-  { roll: 11, title: "Assassination Attempt", text: "Someone holds a grudge. Randomise one hero attacked by 1d4 bandits (randomise weapons; ranged bandits also carry daggers). Fight on the city tile; heroes are nursed to 1 HP instead of dying. Bandits may be searched afterward." },
-  { roll: 12, title: "Curse!", text: "An old woman curses the party. Roll on the Curses Table once and apply to all heroes until they exit the next dungeon." },
+  { roll: 10, title: "Thief", text: "A pickpocket gets too close. 1d100 coins are stolen from the party.", resolve: "thief" },
+  { roll: 11, title: "Assassination Attempt", text: "Someone holds a grudge. Randomise one hero attacked by 1d4 bandits (randomise weapons; ranged bandits also carry daggers). Fight on the city tile; heroes are nursed to 1 HP instead of dying. Bandits may be searched afterward.", resolve: "assassination" },
+  { roll: 12, title: "Curse!", text: "An old woman curses the party. Roll on the Curses Table once and apply to all heroes until they exit the next dungeon.", resolve: "curse" },
+];
+
+// Curses Table (1d10) — Appendix III, referenced by several settlement/magic-item events.
+const CURSES_TABLE = [
+  { roll: 1, text: "-2 Hit Points" },
+  { roll: 2, text: "-5 Wisdom" },
+  { roll: 3, text: "-5 Constitution" },
+  { roll: 4, text: "-5 Strength" },
+  { roll: 5, text: "-5 Dexterity" },
+  { roll: 6, text: "-3 Hit Points" },
+  { roll: 7, text: "-10 Resolve" },
+  { roll: 8, text: "-5 on a Random Skill" },
+  { roll: 9, text: "-1 Luck" },
+  { roll: 10, text: "-1 Energy" },
 ];
 
 // Available Quests roll (1d6) — quest count by settlement type, per the Settlements chapter.
@@ -960,6 +975,17 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.4.2",
+    date: "2026-08-07",
+    sections: {
+      "Added": [
+        "Settlement events that need a follow-up roll now show a 'Roll It' button that resolves it automatically: Thief (steals coins), Settlement Feast (bed check + morale), Scrolls Salesman (3 random spells), Assassination Attempt (bandit count + targeted hero), Curse (rolls the Curses Table)",
+        "Reset button on both the Quick Dice and Loot Roller panels — clears recent rolls without switching tabs",
+        "Rest at Inn now shows a confirmation summary (HP/Mana/Energy per hero, inn cost paid) so the button doesn't look like it did nothing",
+      ],
+    },
+  },
   {
     version: "1.4.1",
     date: "2026-08-07",
@@ -2018,10 +2044,12 @@ function MapViewer({ map, onClose }) {
 
 function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const [eventResult, setEventResult] = useState(null);
+  const [eventResolution, setEventResolution] = useState(null);
   const [questResult, setQuestResult] = useState(null);
   const [activityHero, setActivityHero] = useState(heroes[0]?.id || "");
   const [activityChoice, setActivityChoice] = useState(SETTLEMENT_ACTIVITIES[0].name);
   const [openMap, setOpenMap] = useState(null);
+  const [restResult, setRestResult] = useState(null);
   // Tracks opted-OUT heroes rather than opted-in, so heroes added later still default to selected.
   const [restExcluded, setRestExcluded] = useState(() => new Set());
 
@@ -2038,6 +2066,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
 
   const rollEvent = () => {
     if (!settlement) return;
+    setEventResolution(null);
     const roll = rollDie(12);
     const [lo, hi] = settlement.eventOn;
     const triggered = roll >= lo && roll <= hi;
@@ -2049,6 +2078,49 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
     } else {
       setEventResult({ roll, triggered, roll2: null, event: null });
       addLog(`${settlement.name}: entry roll ${roll} (needs ${lo}-${hi}) → quiet, no event.`);
+    }
+  };
+
+  const resolveEvent = () => {
+    const event = eventResult?.event;
+    if (!event || !event.resolve) return;
+    if (event.resolve === "thief") {
+      const amt = rollPercent();
+      const newCoins = Math.max(0, party.coins - amt);
+      setParty((prev) => ({ ...prev, coins: Math.max(0, prev.coins - amt) }));
+      const line = `Rolled ${amt} → ${amt}c stolen. Coins now ${newCoins}.`;
+      setEventResolution([line]);
+      addLog(`Thief: ${line}`);
+    } else if (event.resolve === "feast") {
+      const roll = rollDie(12);
+      if (roll <= 8) {
+        setParty((prev) => ({ ...prev, morale: prev.morale + 2 }));
+        const line = `Beds available (rolled ${roll}) → Party Morale +2.`;
+        setEventResolution([line]);
+        addLog(`Settlement Feast: ${line}`);
+      } else {
+        const line = `No beds available (rolled ${roll}) → business skipped this stop, no morale bonus.`;
+        setEventResolution([line]);
+        addLog(`Settlement Feast: ${line}`);
+      }
+    } else if (event.resolve === "scrolls") {
+      const shuffled = [...SPELLS].sort(() => Math.random() - 0.5).slice(0, 3);
+      const lines = shuffled.map((s) => `${s.name} (Lvl ${s.lvl}, ${s.school}) — 100c`);
+      setEventResolution(lines);
+      addLog(`Scrolls Salesman offers: ${shuffled.map((s) => s.name).join(", ")} (100c each).`);
+    } else if (event.resolve === "assassination") {
+      if (heroes.length === 0) return;
+      const banditCount = rollDie(4);
+      const target = heroes[Math.floor(Math.random() * heroes.length)];
+      const line = `${banditCount} bandit${banditCount === 1 ? "" : "s"} ambush ${target.name}. Fight it out on the city tile — heroes are nursed to 1 HP instead of dying, not killed.`;
+      setEventResolution([line]);
+      addLog(`Assassination Attempt: ${line}`);
+    } else if (event.resolve === "curse") {
+      const roll = rollDie(10);
+      const curse = CURSES_TABLE.find((c) => c.roll === roll);
+      const line = `Rolled ${roll} → ${curse.text}. Apply to all heroes manually until they next exit a dungeon (no duration tracking in-app yet).`;
+      setEventResolution([line]);
+      addLog(`Curse!: rolled ${roll} → ${curse.text} (applies to all heroes until next dungeon exit).`);
     }
   };
 
@@ -2114,6 +2186,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const restAtInn = () => {
     const selected = heroes.filter((h) => !restExcluded.has(h.id));
     if (selected.length === 0) return;
+    const summary = [];
     selected.forEach((hero) => {
       const roll = rollDie(6) + rollDie(6);
       const newHp = Math.min(hero.hp.max, hero.hp.cur + roll);
@@ -2124,12 +2197,15 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         energy: { ...hero.energy, cur: hero.energy.max },
       };
       updateHero(hero.id, next);
+      summary.push(`${hero.name}: +${roll} HP (${newHp}/${hero.hp.max}), Mana & Energy refilled`);
       addLog(`${hero.name} rests at the inn: +${roll} HP (${newHp}/${hero.hp.max}), Mana & Energy refilled.`);
     });
     if (party.innCostPerNight > 0) {
       setParty((prev) => ({ ...prev, coins: Math.max(0, prev.coins - prev.innCostPerNight) }));
+      summary.push(`Paid ${party.innCostPerNight}c for the inn.`);
       addLog(`Paid ${party.innCostPerNight}c for the inn (whole party).`);
     }
+    setRestResult(summary);
   };
 
   return (
@@ -2180,6 +2256,22 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
               <>
                 <span style={{ color: palette.crimson }}>→ Event ({eventResult.roll2}): {eventResult.event.title}</span>
                 <p className="mt-1" style={{ color: palette.inkSoft }}>{eventResult.event.text}</p>
+                {eventResult.event.resolve && !eventResolution && (
+                  <button
+                    onClick={resolveEvent}
+                    className="mt-2 w-full flex items-center justify-center gap-1 px-2 py-2 rounded font-semibold"
+                    style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
+                  >
+                    <Dice5 size={14} /> Roll It
+                  </button>
+                )}
+                {eventResolution && (
+                  <div className="mt-2 rounded p-2" style={{ background: palette.parchment, border: `1px solid ${palette.gold}` }}>
+                    {eventResolution.map((line, i) => (
+                      <p key={i} className="text-xs" style={{ color: palette.forestDark, fontWeight: 600 }}>• {line}</p>
+                    ))}
+                  </div>
+                )}
               </>
             ) : (
               <span style={{ color: palette.inkSoft }}>→ Nothing happens.</span>
@@ -2320,6 +2412,16 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         <button onClick={restAtInn} className="text-xs px-3 py-2 rounded font-semibold w-full" style={{ background: palette.crimson, color: palette.parchment }}>
           Rest Selected Heroes
         </button>
+        {restResult && (
+          <div className="rounded p-2 mt-2 text-xs" style={{ background: "#fff", border: `1px solid ${palette.forest}`, fontFamily: "Crimson Pro, serif" }}>
+            <div className="flex items-center gap-1 mb-1 font-bold" style={{ color: palette.forestDark }}>
+              <Check size={14} /> Rested
+            </div>
+            <ul style={{ color: palette.inkSoft }}>
+              {restResult.map((line, i) => <li key={i}>• {line}</li>)}
+            </ul>
+          </div>
+        )}
       </Panel>
     </div>
   );
@@ -2954,7 +3056,18 @@ function DiceTray() {
   return (
     <div className="space-y-4">
       <Panel>
-        <SectionTitle icon={Dice5}>Quick Dice</SectionTitle>
+        <div className="flex items-center justify-between mb-3">
+          <SectionTitle icon={Dice5}>Quick Dice</SectionTitle>
+          {rolls.length > 0 && (
+            <button
+              onClick={() => setRolls([])}
+              className="text-xs flex items-center gap-1 px-2 py-1 rounded font-semibold"
+              style={{ background: palette.inkSoft, color: palette.parchment }}
+            >
+              <RotateCcw size={11} /> Reset
+            </button>
+          )}
+        </div>
         <div className="flex flex-wrap gap-2 mb-4">
           {dice.map((d) => (
             <button
@@ -2992,7 +3105,18 @@ function DiceTray() {
       </Panel>
 
       <Panel>
-        <SectionTitle icon={Coins}>Loot Roller (1d10)</SectionTitle>
+        <div className="flex items-center justify-between mb-1">
+          <SectionTitle icon={Coins}>Loot Roller (1d10)</SectionTitle>
+          {lootRolls.length > 0 && (
+            <button
+              onClick={() => setLootRolls([])}
+              className="text-xs flex items-center gap-1 px-2 py-1 rounded font-semibold"
+              style={{ background: palette.inkSoft, color: palette.parchment }}
+            >
+              <RotateCcw size={11} /> Reset
+            </button>
+          )}
+        </div>
         <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
           Pick the loot table shown on the monster card (T1–T5).
         </p>

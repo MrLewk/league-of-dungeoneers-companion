@@ -74,7 +74,7 @@ const defaultHero = () => ({
   prayers: [],
   specialRules: [],
   conditions: [],
-  backpackSize: 0,
+  backpackUpgrade: "",
   backpack: [],
   notes: "",
 });
@@ -266,14 +266,27 @@ function computeProfessionSkills(hero) {
   return next;
 }
 
+// Backpack upgrades (Miscellaneous Equipment) — the starting "small" backpack the QRS
+// gives every hero adds no bonus capacity at all; Medium/Large are what "increase the
+// carrying capacity" (their own wording), each with a DEX trade-off while worn.
+const BACKPACK_UPGRADES = {
+  "": { label: "Small (starting, no bonus)", enc: 0, dexPenalty: 0, cost: 0 },
+  Medium: { label: "Medium Backpack", enc: 10, dexPenalty: -5, cost: 350 },
+  Large: { label: "Large Backpack", enc: 25, dexPenalty: -10, cost: 600 },
+};
+function backpackEncBonus(hero) {
+  return BACKPACK_UPGRADES[hero.backpackUpgrade || ""]?.enc || 0;
+}
+
 // Encumbrance penalty per the rulebook: total ENC (weapon + armour + backpack) over
-// STR gives -10 to all skills and stats.
+// STR gives -10 to all skills and stats. A backpack upgrade raises the STR-based
+// threshold by its own ENC bonus.
 function encumbranceOver(hero) {
   const totalEnc =
     (Number(hero.weapon.enc) || 0) +
     Object.values(hero.armour).reduce((s, p) => s + (Number(p.enc) || 0), 0) +
     hero.backpack.reduce((s, i) => s + (Number(i.enc) || 0), 0);
-  return totalEnc > (Number(hero.stats.STR) || 0);
+  return totalEnc > (Number(hero.stats.STR) || 0) + backpackEncBonus(hero);
 }
 
 const defaultParty = () => ({
@@ -506,6 +519,60 @@ const ARMOUR_AND_SHIELDS = [
   { name: "Buckler", tier: 0, def: 4, enc: 4, covers: ["shield"], special: "Class 1", cost: 20, avail: 4 },
   { name: "Heater Shield", tier: 0, def: 6, enc: 10, covers: ["shield"], special: "Class 3", cost: 100, avail: 3 },
   { name: "Tower Shield", tier: 0, def: 8, enc: 15, covers: ["shield"], special: "Class 5, Huge", cost: 200, avail: 2 },
+];
+
+// General Equipment (Equipment Appendix) — everything that isn't a weapon or armour:
+// alchemy supplies, consumables, jewellery, light sources, tools, and misc gear. Powers
+// the backpack "Add from table" picker. ENC uses the item's own carry weight (the number
+// before any "/X" quick-slot-stacking notation in the book; "-" becomes 0).
+const GENERAL_EQUIPMENT = [
+  // Alchemy
+  { name: "Alchemist Belt", category: "Alchemy", enc: 0, dur: 6, cost: 300, avail: 3, special: "Stores 6 potions/vials in ready slots" },
+  { name: "Alchemist Tool", category: "Alchemy", enc: 5, dur: 6, cost: 200, avail: 3, special: "Needed to harvest parts/ingredients" },
+  { name: "Empty Bottle", category: "Alchemy", enc: 0, dur: 1, cost: 10, avail: 5, special: "Needed to mix potions" },
+  { name: "Healing Potion", category: "Alchemy", enc: 1, dur: 1, cost: 75, avail: 4, special: "1d4 (weak) / 1d6 (standard, 100c) healing" },
+  { name: "Potion of Cure Disease", category: "Alchemy", enc: 1, dur: 1, cost: 125, avail: 3, special: "Removes all effects of disease" },
+  { name: "Potion of Cure Disease (Weak)", category: "Alchemy", enc: 1, dur: 1, cost: 90, avail: 3, special: "75% chance to remove disease" },
+  { name: "Potion of Cure Poison", category: "Alchemy", enc: 1, dur: 1, cost: 125, avail: 3, special: "Removes all effects of poison" },
+  { name: "Potion of Cure Poison (Weak)", category: "Alchemy", enc: 1, dur: 1, cost: 90, avail: 3, special: "75% chance to remove poison" },
+  // Consumables
+  { name: "Beef Jerky", category: "Consumables", enc: 0, dur: 1, cost: 10, avail: 5, special: "1 AP, heals 1 HP" },
+  { name: "Dwarven Ale", category: "Consumables", enc: 2, dur: 1, cost: 100, avail: 2, special: "-10 all tests, +20 RES, rest of quest" },
+  { name: "Ration", category: "Consumables", enc: 1, dur: 1, cost: 5, avail: 5, special: "Sustains the party for a day/rest" },
+  { name: "Tobacco", category: "Consumables", enc: 0, dur: 0, cost: 50, avail: 4, special: "+10 RES; risk of addiction" },
+  // Jewellery
+  { name: "Necklace", category: "Jewellery", enc: 0, dur: 0, cost: 150, avail: 4, special: "Can be enchanted" },
+  { name: "Religious Relic (Necklace)", category: "Jewellery", enc: 0, dur: 0, cost: 500, avail: 2, special: "Warrior Priest only" },
+  { name: "Religious Relic (Ring)", category: "Jewellery", enc: 0, dur: 0, cost: 500, avail: 2, special: "Warrior Priest only" },
+  { name: "Ring", category: "Jewellery", enc: 0, dur: 0, cost: 150, avail: 4, special: "Can be enchanted" },
+  // Light sources
+  { name: "Headlamp", category: "Light", enc: 1, dur: 1, cost: 150, avail: 3, special: "Hands-free lantern" },
+  { name: "Lamp Oil", category: "Light", enc: 0, dur: 1, cost: 15, avail: 5, special: "Refills a lantern once" },
+  { name: "Lantern (filled)", category: "Light", enc: 1, dur: 1, cost: 100, avail: 4, special: "+5 Fear/Terror, +10 Perception" },
+  { name: "Torch", category: "Light", enc: 1, dur: 1, cost: 15, avail: 5, special: "+5 Fear/Terror, +5 Perception, can be swung" },
+  // Miscellaneous
+  { name: "Bandage (old rags)", category: "Misc", enc: 1, dur: 1, cost: 15, avail: 5, special: "Heals 1d4 HP, 3 uses" },
+  { name: "Bandage (linen)", category: "Misc", enc: 1, dur: 1, cost: 25, avail: 4, special: "Heals 1d8 HP" },
+  { name: "Bandage (herbal wrap)", category: "Misc", enc: 1, dur: 1, cost: 50, avail: 4, special: "+15 Heal, heals 1d10 HP" },
+  { name: "Bed Roll", category: "Misc", enc: 5, dur: 0, cost: 200, avail: 3, special: "Auto-regains all Energy on a short rest" },
+  { name: "Combat Harness", category: "Misc", enc: 0, dur: 6, cost: 500, avail: 2, special: "Quick Slots 3 -> 5" },
+  { name: "Extended Battle Belt", category: "Misc", enc: 0, dur: 6, cost: 300, avail: 3, special: "Quick Slots 3 -> 4" },
+  { name: "Holy Water", category: "Misc", enc: 0, dur: 1, cost: 25, avail: 3, special: "1d3 dmg to undead; dip 5 arrows" },
+  { name: "Iron Wedges", category: "Misc", enc: 4, dur: 6, cost: 50, avail: 4, special: "Blocks a door; enough for 2" },
+  { name: "Parchment", category: "Misc", enc: 0, dur: 0, cost: 50, avail: 4, special: "Needed to make magic scrolls" },
+  { name: "Partial Map", category: "Misc", enc: 0, dur: 0, cost: 75, avail: 4, special: "Look at 2 Exploration Cards" },
+  // Tools
+  { name: "Armour Repair Kit", category: "Tools", enc: 5, dur: 0, cost: 200, avail: 4, special: "Repairs 1d3 durability per armour piece" },
+  { name: "Cooking Gear", category: "Tools", enc: 3, dur: 0, cost: 100, avail: 4, special: "Cooked rations heal +3 HP" },
+  { name: "Crowbar", category: "Tools", enc: 10, dur: 6, cost: 55, avail: 3, special: "Breaks doors: 8+DB dmg, Threat +1" },
+  { name: "Dwarven Pickaxe", category: "Tools", enc: 8, dur: 6, cost: 225, avail: 2, special: "Lighter, stronger pickaxe" },
+  { name: "Fishing Gear", category: "Tools", enc: 3, dur: 0, cost: 40, avail: 5, special: "+5 Foraging" },
+  { name: "Lockpicks (5)", category: "Tools", enc: 0, dur: 1, cost: 30, avail: 3, special: "Needed for Pick Locks; 1 destroyed per fail" },
+  { name: "Pickaxe", category: "Tools", enc: 10, dur: 0, cost: 175, avail: 3, special: "Removes rubble" },
+  { name: "Rope (old)", category: "Tools", enc: 2, dur: 1, cost: 20, avail: 5, special: "1-in-6 chance to break" },
+  { name: "Rope", category: "Tools", enc: 2, dur: 1, cost: 50, avail: 4, special: "" },
+  { name: "Trap Disarming Kit", category: "Tools", enc: 5, dur: 6, cost: 200, avail: 3, special: "+10 disarming traps" },
+  { name: "Whetstone", category: "Tools", enc: 1, dur: 0, cost: 100, avail: 4, special: "Repairs 1d3 CC weapon durability, 3 uses" },
 ];
 
 const CC_ATTACK_MODS = [
@@ -1231,6 +1298,18 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.13.0",
+    date: "2026-08-07",
+    sections: {
+      "Added": [
+        "Backpack now has an 'Add from table…' dropdown covering ~35 items from the Equipment Appendix (potions, tools, consumables, jewellery, light sources, misc gear) — picking one adds it with name/value/ENC/durability already filled in. 'Add Custom Item' is still there for anything homebrew or not in the book",
+      ],
+      "Changed": [
+        "Replaced the Backpack Size item-count field with a real Backpack Upgrade picker (Small/Medium/Large). Turns out the QRS doesn't cap backpacks by item count at all — capacity is purely STR-based ENC, and Medium/Large backpacks are what actually raise that threshold (+10/+25 ENC, at a cost of -5/-10 DEX while worn, both applied automatically). The old counter wasn't modelling the real rule, so it's gone rather than kept as a parallel system",
+      ],
+    },
+  },
+  {
     version: "1.12.1",
     date: "2026-08-07",
     sections: {
@@ -1900,6 +1979,7 @@ function normalizeHero(h) {
     specialRules: h.specialRules || base.specialRules,
     conditions: h.conditions || base.conditions,
     backpack: h.backpack || base.backpack,
+    backpackUpgrade: h.backpackUpgrade || "",
     armour: {
       head: armourPiece("head"),
       arms: armourPiece("arms"),
@@ -2171,7 +2251,6 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
   };
 
   const addBackpackItem = () => {
-    if (hero.backpackSize > 0 && hero.backpack.length >= hero.backpackSize) return;
     set({ backpack: [...hero.backpack, { id: uid(), name: "", value: "", enc: "", dur: "" }] });
   };
   const updateBackpackItem = (id, patch) => set({ backpack: hero.backpack.map((it) => (it.id === id ? { ...it, ...patch } : it)) });
@@ -2190,12 +2269,26 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
     (Number(hero.weapon.enc) || 0) +
     Object.values(hero.armour).reduce((sum, piece) => sum + (Number(piece.enc) || 0), 0) +
     hero.backpack.reduce((sum, item) => sum + (Number(item.enc) || 0), 0);
-  const isEncumbered = totalEnc > (Number(hero.stats.STR) || 0);
+  const carryCapacity = (Number(hero.stats.STR) || 0) + backpackEncBonus(hero);
+  const isEncumbered = totalEnc > carryCapacity;
   const weaponRef = WEAPONS.find((w) => w.name === hero.weapon.name);
   const strReq = weaponRef ? WEAPON_CLASS_STR_REQ[weaponRef.class] : null;
   // twoH is always the lower/easier bar (wielding one-handed needs more STR, where possible
   // at all) — so that's the real "can this hero use it" threshold.
   const strTooWeak = strReq ? (Number(hero.stats.STR) || 0) < strReq.twoH : false;
+
+  const pickBackpackUpgrade = (newUpgrade) => {
+    const oldPenalty = BACKPACK_UPGRADES[hero.backpackUpgrade || ""]?.dexPenalty || 0;
+    const newPenalty = BACKPACK_UPGRADES[newUpgrade || ""]?.dexPenalty || 0;
+    const newDex = Math.max(0, (Number(hero.stats.DEX) || 0) - oldPenalty + newPenalty);
+    update({ ...hero, backpackUpgrade: newUpgrade, stats: { ...hero.stats, DEX: newDex } });
+  };
+
+  const addFromEquipmentTable = (name) => {
+    const item = GENERAL_EQUIPMENT.find((x) => x.name === name);
+    if (!item) return;
+    update({ ...hero, backpack: [...hero.backpack, { id: uid(), name: item.name, value: item.cost, enc: item.enc, dur: item.dur }] });
+  };
 
   return (
     <Panel className="mb-3">
@@ -2747,30 +2840,59 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
             <div className="flex items-center justify-between">
               <span style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase">Encumbrance</span>
               <span className="text-sm font-bold" style={{ fontFamily: "JetBrains Mono, monospace", color: isEncumbered ? palette.crimson : palette.ink }}>
-                {totalEnc} / {hero.stats.STR} <span style={{ color: palette.inkSoft, fontWeight: "normal" }}>(max {hero.stats.STR + 15})</span>
+                {totalEnc} / {carryCapacity} <span style={{ color: palette.inkSoft, fontWeight: "normal" }}>(max {carryCapacity + 15})</span>
               </span>
             </div>
+            {backpackEncBonus(hero) > 0 && (
+              <p className="text-[10px] mt-0.5" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+                Includes +{backpackEncBonus(hero)} from the {hero.backpackUpgrade} Backpack.
+              </p>
+            )}
             {isEncumbered && (
               <p className="text-xs mt-1" style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif", fontWeight: "bold" }}>
-                Overloaded — all skills and stats are at −10 (shown as "eff" above) until ENC drops to {hero.stats.STR} or below.
+                Overloaded — all skills and stats are at −10 (shown as "eff" above) until ENC drops to {carryCapacity} or below.
               </p>
             )}
           </div>
 
           {/* Backpack */}
-          <div className="flex items-center justify-between mb-1">
-            <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase">Backpack</div>
-            <label className="flex items-center gap-1 text-[10px]" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
-              Size
-              <input
-                type="number"
-                value={hero.backpackSize}
-                onChange={(e) => set({ backpackSize: Number(e.target.value) || 0 })}
-                className="w-10 rounded px-1"
-                style={{ border: `1px solid ${palette.line}` }}
-              />
-            </label>
+          <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">Backpack</div>
+          <div className="flex gap-1.5 mb-2">
+            {Object.entries(BACKPACK_UPGRADES).map(([key, up]) => (
+              <button
+                key={key}
+                onClick={() => pickBackpackUpgrade(key)}
+                className="flex-1 text-[10px] px-1.5 py-1.5 rounded text-center"
+                style={{
+                  background: (hero.backpackUpgrade || "") === key ? palette.forestDark : "#00000008",
+                  color: (hero.backpackUpgrade || "") === key ? palette.parchment : palette.inkSoft,
+                  fontFamily: "Crimson Pro, serif",
+                  border: `1px solid ${(hero.backpackUpgrade || "") === key ? palette.forestDark : palette.line}`,
+                }}
+                title={key ? `+${up.enc} ENC capacity, ${up.dexPenalty} DEX, ${up.cost}c` : "No bonus capacity — the free starting backpack"}
+              >
+                <div className="font-bold">{key || "Small"}</div>
+                {key && <div>+{up.enc} ENC, {up.dexPenalty} DEX</div>}
+              </button>
+            ))}
           </div>
+          {GENERAL_EQUIPMENT.length > 0 && (
+            <select
+              value=""
+              onChange={(e) => e.target.value && addFromEquipmentTable(e.target.value)}
+              className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+              style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}
+            >
+              <option value="">Add from table…</option>
+              {["Alchemy", "Consumables", "Jewellery", "Light", "Misc", "Tools"].map((cat) => (
+                <optgroup key={cat} label={cat}>
+                  {GENERAL_EQUIPMENT.filter((i) => i.category === cat).map((i) => (
+                    <option key={i.name} value={i.name}>{i.name} — {i.cost}c</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          )}
           <div className="rounded overflow-hidden mb-1.5" style={{ border: `1px solid ${palette.line}` }}>
             <div className="flex gap-1 px-1.5 py-1 text-xs font-bold uppercase" style={{ background: palette.charcoal, color: palette.goldSoft, fontFamily: "Cinzel, serif" }}>
               <span className="flex-1 min-w-0">Item</span>
@@ -2817,15 +2939,10 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
           </div>
           <button
             onClick={addBackpackItem}
-            disabled={hero.backpackSize > 0 && hero.backpack.length >= hero.backpackSize}
             className="w-full flex items-center justify-center gap-1.5 text-xs py-1.5 rounded font-semibold mb-3"
-            style={{
-              background: (hero.backpackSize > 0 && hero.backpack.length >= hero.backpackSize) ? "#00000015" : palette.forestDark,
-              color: (hero.backpackSize > 0 && hero.backpack.length >= hero.backpackSize) ? palette.inkSoft : palette.parchment,
-              fontFamily: "Cinzel, serif",
-            }}
+            style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
           >
-            <Plus size={13} /> Add Backpack Item{hero.backpackSize > 0 ? ` (${hero.backpack.length}/${hero.backpackSize})` : ""}
+            <Plus size={13} /> Add Custom Item
           </button>
 
           <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">Comments</div>

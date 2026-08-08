@@ -3,6 +3,13 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.14.0] — 2026-08-08
+
+### Changed
+- Luck is now a proper cur/max stat (like HP, Mana, Energy, Sanity) instead of a bare number. Existing saves migrate automatically — old Luck value becomes both cur and max. Shows as a StatBar alongside the other stats, with the Talents/Level Up bonuses that grant Luck (Lucky, God's Chosen, Halfling's starting Luck, the level-up table) correctly raising the max and refilling the current value
+- Rest at Inn now actually restores Luck to max, per the Rest and Recuperation rule ("Mana, Luck and energy are automatically restored") — previously left un-refilled because Luck had no max to restore to
+- Rest at Inn no longer just blocks if the party can't afford it — it now applies the rulebook's actual fallback: sleeping in the stable for free, which gives 1d6 HP (instead of 2d6) and only half (rounded down) of the Mana/Luck/Energy deficit
+
 ## [1.13.0] — 2026-08-07
 
 ### Added

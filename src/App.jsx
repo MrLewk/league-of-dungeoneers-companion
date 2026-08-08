@@ -43,7 +43,7 @@ const defaultHero = () => ({
   level: 1,
   xp: 0,
   stats: { STR: 5, CON: 5, DEX: 5, WIS: 5, RES: 5 },
-  luck: 0,
+  luck: { cur: 0, max: 0 },
   background: "",
   improvementPoints: 0,
   ipSpentThisLevel: {},
@@ -209,7 +209,7 @@ function applyAutoLevelUps(hero) {
       notes.push(`+${roll} HP`);
     }
     if (entry.luck) {
-      patch.luck = cur.luck + 1;
+      patch.luck = { cur: cur.luck.cur + 1, max: cur.luck.max + 1 };
       notes.push("+1 Luck");
     }
     if (entry.energy) {
@@ -1074,7 +1074,7 @@ function talentEffectPatch(hero, talentName, sign) {
   if (eff.hp) patch.hp = adjustCurMax(hero.hp, eff.hp, sign);
   if (eff.mana) patch.mana = adjustCurMax(hero.mana, eff.mana, sign);
   if (eff.sanity) patch.sanity = adjustCurMax(hero.sanity, eff.sanity, sign);
-  if (eff.luck) patch.luck = Math.max(0, hero.luck + sign * eff.luck);
+  if (eff.luck) patch.luck = adjustCurMax(hero.luck, eff.luck, sign);
   if (eff.movement) patch.movement = Math.max(0, (hero.movement ?? 4) + sign * eff.movement);
   return patch;
 }
@@ -1297,6 +1297,17 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.14.0",
+    date: "2026-08-08",
+    sections: {
+      "Changed": [
+        "Luck is now a proper cur/max stat (like HP, Mana, Energy, Sanity) instead of a bare number. Existing saves migrate automatically — old Luck value becomes both cur and max. Shows as a StatBar alongside the other stats, with the Talents/Level Up bonuses that grant Luck (Lucky, God's Chosen, Halfling's starting Luck, the level-up table) correctly raising the max and refilling the current value",
+        "Rest at Inn now actually restores Luck to max, per the Rest and Recuperation rule ('Mana, Luck and energy are automatically restored') — previously left un-refilled because Luck had no max to restore to",
+        "Rest at Inn no longer just blocks if the party can't afford it — it now applies the rulebook's actual fallback: sleeping in the stable for free, which gives 1d6 HP (instead of 2d6) and only half (rounded down) of the Mana/Luck/Energy deficit",
+      ],
+    },
+  },
   {
     version: "1.13.0",
     date: "2026-08-07",
@@ -1968,6 +1979,8 @@ function normalizeHero(h) {
     energy: { ...base.energy, ...(h.energy || {}) },
     sanity: { ...base.sanity, ...(h.sanity || {}) },
     mana: { ...base.mana, ...(h.mana || {}) },
+    // Luck used to be a bare number; migrate old saves to {cur,max} (old value becomes both).
+    luck: typeof h.luck === "number" ? { cur: h.luck, max: h.luck } : { ...base.luck, ...(h.luck || {}) },
     skills: { ...base.skills, ...(h.skills || {}) },
     ipSpentThisLevel: h.ipSpentThisLevel || {},
     creationPointsSpent: { ...base.creationPointsSpent, ...(h.creationPointsSpent || {}) },
@@ -2138,7 +2151,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
     nextSkills = workingHero.skills;
 
     // Lucky (Halfling) — starts with 1 Luck Point; non-halflings start at 0.
-    const luckPatch = speciesData.name === "Halfling" ? { luck: Math.max(hero.luck, 1) } : {};
+    const luckPatch = speciesData.name === "Halfling" ? { luck: { cur: Math.max(hero.luck.cur, 1), max: Math.max(hero.luck.max, 1) } } : {};
 
     update({ ...hero, stats: newStats, skills: nextSkills, hp: { cur: hpRoll, max: hpRoll }, creationPoints: 15, creationPointsSpent: { STR: 0, CON: 0, DEX: 0, WIS: 0, RES: 0 }, talents, ...luckPatch, ...manaPatch });
   };
@@ -2166,7 +2179,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
         notes.push(`+${roll} HP (max now ${patch.hp.max})`);
       }
       if (entry.luck) {
-        patch.luck = hero.luck + 1;
+        patch.luck = { cur: hero.luck.cur + 1, max: hero.luck.max + 1 };
         notes.push("+1 Luck");
       }
       if (entry.energy) {
@@ -2415,6 +2428,8 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
             onChange={(v) => set({ sanity: { ...hero.sanity, cur: v } })} onMaxChange={(v) => set({ sanity: { ...hero.sanity, max: v } })} />
           <StatBar label="Mana" icon={Sparkles} cur={hero.mana.cur} max={hero.mana.max} color="#5B6FA8"
             onChange={(v) => set({ mana: { ...hero.mana, cur: v } })} onMaxChange={(v) => set({ mana: { ...hero.mana, max: v } })} />
+          <StatBar label="Luck" icon={Dice5} cur={hero.luck.cur} max={hero.luck.max} color={palette.gold}
+            onChange={(v) => set({ luck: { ...hero.luck, cur: v } })} onMaxChange={(v) => set({ luck: { ...hero.luck, max: v } })} />
 
           {/* Sanity quick event */}
           <div className="flex gap-2 items-center mt-2 mb-3">
@@ -2641,14 +2656,6 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
           <p className="text-[10px] mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
             Creation Points: the +/− buttons under each stat (above) spend/refund from the 15-point pool, capped at 10 into any single stat. Improvement Points: +15 each level-up (Level Up also rolls the automatic HP/Luck/Energy gains for the new level) — the buttons below apply the actual increase and enforce the +5/stat-skill and +2/HP per-level caps; cost doubles once a stat/skill has passed 70.
           </p>
-
-          <div className="rounded p-2 mb-3 flex items-center justify-between" style={{ background: "#00000008" }}>
-            <div>
-              <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }}>LUCK</div>
-              <p className="text-[10px]" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>Spend 1 to reroll a dice roll that directly affects you.</p>
-            </div>
-            <Stepper value={hero.luck} onChange={(v) => set({ luck: v })} min={0} max={999} />
-          </div>
 
           <div className="rounded p-2 mb-3 flex items-center justify-between" style={{ background: "#00000008" }}>
             <div>
@@ -3193,28 +3200,44 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const restAtInn = () => {
     const selected = heroes.filter((h) => !restExcluded.has(h.id));
     if (selected.length === 0) return;
-    if (party.innCostPerNight > party.coins) {
-      setRestResult({ ok: false, lines: [`Can't afford the inn: costs ${party.innCostPerNight}c, party only has ${party.coins}c.`] });
-      return;
-    }
+    const canAfford = party.innCostPerNight <= party.coins;
     const summary = [];
     selected.forEach((hero) => {
-      const roll = rollDie(6) + rollDie(6);
-      const newHp = Math.min(hero.hp.max, hero.hp.cur + roll);
-      const next = {
+      let newHp, newMana, newEnergy, newLuck;
+      if (canAfford) {
+        const roll = rollDie(6) + rollDie(6);
+        newHp = Math.min(hero.hp.max, hero.hp.cur + roll);
+        newMana = hero.mana.max;
+        newEnergy = hero.energy.max;
+        newLuck = hero.luck.max;
+        summary.push(`${hero.name}: +${roll} HP (${newHp}/${hero.hp.max}), Mana/Luck/Energy refilled`);
+        addLog(`${hero.name} rests at the inn: +${roll} HP (${newHp}/${hero.hp.max}), Mana/Luck/Energy refilled.`);
+      } else {
+        // Can't afford it — free fallback per the rulebook: sleep in the stable instead.
+        // 1d6 HP (not 2d6), and only half (rounded down) of the Mana/Luck/Energy deficit.
+        const roll = rollDie(6);
+        newHp = Math.min(hero.hp.max, hero.hp.cur + roll);
+        newMana = hero.mana.cur + Math.floor((hero.mana.max - hero.mana.cur) / 2);
+        newEnergy = hero.energy.cur + Math.floor((hero.energy.max - hero.energy.cur) / 2);
+        newLuck = hero.luck.cur + Math.floor((hero.luck.max - hero.luck.cur) / 2);
+        summary.push(`${hero.name}: slept in the stable (couldn't afford the inn) — +${roll} HP (${newHp}/${hero.hp.max}), half Mana/Luck/Energy regained`);
+        addLog(`${hero.name} couldn't afford the inn, slept in the stable: +${roll} HP, half Mana/Luck/Energy regained.`);
+      }
+      updateHero(hero.id, {
         ...hero,
         hp: { ...hero.hp, cur: newHp },
-        mana: { ...hero.mana, cur: hero.mana.max },
-        energy: { ...hero.energy, cur: hero.energy.max },
-      };
-      updateHero(hero.id, next);
-      summary.push(`${hero.name}: +${roll} HP (${newHp}/${hero.hp.max}), Mana & Energy refilled`);
-      addLog(`${hero.name} rests at the inn: +${roll} HP (${newHp}/${hero.hp.max}), Mana & Energy refilled.`);
+        mana: { ...hero.mana, cur: newMana },
+        energy: { ...hero.energy, cur: newEnergy },
+        luck: { ...hero.luck, cur: newLuck },
+      });
     });
-    if (party.innCostPerNight > 0) {
+    if (canAfford && party.innCostPerNight > 0) {
       setParty((prev) => ({ ...prev, coins: prev.coins - prev.innCostPerNight }));
       summary.push(`Paid ${party.innCostPerNight}c for the inn.`);
       addLog(`Paid ${party.innCostPerNight}c for the inn (whole party).`);
+    } else if (!canAfford) {
+      summary.push(`Couldn't afford the ${party.innCostPerNight}c inn cost — the party must leave the settlement in the morning.`);
+      addLog(`Party couldn't afford the ${party.innCostPerNight}c inn cost — must leave the settlement in the morning.`);
     }
     setRestResult({ ok: true, lines: summary });
   };
@@ -3655,7 +3678,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       <Panel className="mb-4">
         <SectionTitle icon={Bed}>Rest at Inn</SectionTitle>
         <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-          Each resting hero regains 2d6 HP and refills Mana and Energy. Note: Luck isn't tracked with a max here, so it isn't auto-refilled — adjust it manually if your table restores it at the inn.
+          Each resting hero regains 2d6 HP and refills Mana, Luck, and Energy. If the party can't afford the inn cost, they sleep in the stable instead: 1d6 HP and only half (rounded down) of the Mana/Luck/Energy deficit, for free.
         </p>
         <div className="flex flex-wrap gap-1.5 mb-2">
           {heroes.map((h) => (

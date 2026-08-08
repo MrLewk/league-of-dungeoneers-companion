@@ -448,11 +448,41 @@ const HORSE_EXTRA_PRIZE = {
   second: [{ max: 1, prize: "Wonderful Treasure" }, { max: 3, prize: "Fine Treasure" }, { max: 10, prize: null }],
 };
 
-// Arena Fighting (p139) — modifiers on a CS roll, entry 50-200c. The book doesn't list
-// prize money for winning, only the win/lose check itself, so that's all this resolves.
+// Arena Fighting (p139) — modifiers on a CS roll, entry 50-200c. Win/lose consequences
+// (payout, XP, HP/Sanity loss) are on p139's "Betting, Odds, and Winning" page.
 const ARENA_HP_MOD = (hp) => (hp < 10 ? -5 : hp <= 15 ? 0 : 5);
 const ARENA_STR_MOD = (str) => (str < 40 ? -5 : str <= 50 ? 0 : 5);
 const ARENA_LEVEL_MOD = { Group: -10, Semi: -15, Final: -20 };
+// Betting/Odds/Winning (p139) — entry fee x this multiplier (RDD) on a win, by hero
+// level and bracket. Lower-level heroes get better odds, matching Horse Racing's
+// underdog-favouring design.
+const ARENA_WIN_MULTIPLIER = {
+  1: { Group: 2.0, Semi: 2.2, Final: 2.4 }, 2: { Group: 1.9, Semi: 2.1, Final: 2.3 },
+  3: { Group: 1.8, Semi: 2.0, Final: 2.2 }, 4: { Group: 1.7, Semi: 1.9, Final: 2.1 },
+  5: { Group: 1.6, Semi: 1.8, Final: 2.0 }, 6: { Group: 1.5, Semi: 1.7, Final: 1.9 },
+  7: { Group: 1.4, Semi: 1.6, Final: 1.8 }, 8: { Group: 1.3, Semi: 1.5, Final: 1.7 },
+  9: { Group: 1.2, Semi: 1.4, Final: 1.6 }, 10: { Group: 1.1, Semi: 1.3, Final: 1.5 },
+};
+const ARENA_WIN_XP = { Group: 50, Semi: 100, Final: 150 }; // goes to the hero, not the party
+const ARENA_LOSE_HP = { Group: 2, Semi: 4, Final: 6 };
+const ARENA_FINAL_EXTRA_AWARD = [{ max: 1, prize: "Wonderful Treasure" }, { max: 4, prize: "Fine Treasure" }, { max: 10, prize: null }];
+
+// Banking (p145, Silver City only) — three banks, each covering a different slice of a
+// shared 1d20 roll (rolled once per Silver City visit per bank the hero has money in).
+const BANKS = ["Chamberlings Reserve", "Smartfall Bank", "The Vault"];
+const BANK_TABLE = [
+  { chamberlings: null, smartfall: null, vault: [1, 2], pct: 30 },
+  { chamberlings: [1, 4], smartfall: null, vault: [3, 4], pct: 20 },
+  { chamberlings: [5, 7], smartfall: [1, 2], vault: [5, 5], pct: 15 },
+  { chamberlings: [8, 10], smartfall: [3, 4], vault: [6, 6], pct: 10 },
+  { chamberlings: [11, 11], smartfall: [5, 9], vault: [7, 7], pct: 5 },
+  { chamberlings: [12, 12], smartfall: [10, 14], vault: [8, 10], pct: 0 },
+  { chamberlings: [13, 14], smartfall: [15, 16], vault: [11, 14], pct: -5 },
+  { chamberlings: [15, 17], smartfall: [17, 17], vault: [15, 16], pct: -10 },
+  { chamberlings: [18, 19], smartfall: null, vault: [17, 17], pct: -20 },
+  { chamberlings: null, smartfall: null, vault: [18, 18], pct: -30 },
+  { chamberlings: [20, 20], smartfall: [18, 20], vault: [19, 20], pct: "robbed" },
+];
 
 const SETTLEMENT_EVENTS = [
   { roll: 1, title: "Stray Dog", text: "A stray dog follows the party through the streets. After a small treat from a hero, you now own it. Randomise the kind of dog (Companions' Compendium), or if you already have one, treat as 'Nothing special happens'." },
@@ -1393,6 +1423,16 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.17.1",
+    date: "2026-08-08",
+    sections: {
+      "Added": [
+        "Arena Fighting now resolves the full result, not just win/lose — the 'Betting, Odds, and Winning' page turned out to have the missing prize data: winning pays out entry fee x a level/bracket multiplier plus XP (50/100/150 for Group/Semi/Final) straight to the hero, a Final win rolls for a bonus treasure, and losing costs HP (2/4/6 by bracket) and 2 Sanity",
+        "The entry fee is only charged on the Group round, matching the book ('you pay once to attend all three levels') — rolling Semi or Final afterward for the same attempt assumes it's already paid, while still using the same fee amount as the payout base for that bracket's multiplier",
+      ],
+    },
+  },
   {
     version: "1.17.0",
     date: "2026-08-08",
@@ -3679,7 +3719,11 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       addLog(`${resolvedHero.name} races a horse: ${lines.join(" ")}`);
     } else if (resolverActivity === "Arena Fighting") {
       const fee = Math.max(50, Math.min(200, resolverBet));
-      if (party.coins < fee) { setResolverResult({ ok: false, lines: [`Can't afford the ${fee}c entry.`] }); return; }
+      // The entry fee covers all three brackets ("you pay once to attend all three
+      // levels") — only charge it on the Group round; Semi/Final assume it's already
+      // paid, but still use the same fee as the payout base for that bracket's multiplier.
+      const payingNow = resolverArenaLevel === "Group";
+      if (payingNow && party.coins < fee) { setResolverResult({ ok: false, lines: [`Can't afford the ${fee}c entry.`] }); return; }
       const cs = Number(resolvedHero.skills.cs) || 0;
       const hpMod = ARENA_HP_MOD(resolvedHero.hp.max);
       const strMod = ARENA_STR_MOD(Number(resolvedHero.stats.STR) || 0);
@@ -3687,10 +3731,29 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       const target = cs + hpMod + strMod + levelMod;
       const roll = rollDie(100);
       const win = roll <= target;
-      setParty((prev) => ({ ...prev, coins: prev.coins - fee }));
-      const line = `${resolverArenaLevel} bracket — target ${target} (CS ${cs}, HP mod ${hpMod >= 0 ? "+" : ""}${hpMod}, STR mod ${strMod >= 0 ? "+" : ""}${strMod}, level mod ${levelMod}). Rolled ${roll} — ${win ? "Win!" : "Lose."} (Paid ${fee}c entry — the book doesn't list arena prize money, so that part's on you.)`;
-      setResolverResult({ ok: true, lines: [line] });
-      addLog(`${resolvedHero.name} fights in the ${resolverArenaLevel} arena bracket: target ${target}, rolled ${roll} — ${win ? "win" : "lose"}.`);
+      if (payingNow) setParty((prev) => ({ ...prev, coins: prev.coins - fee }));
+      const lines = [`${resolverArenaLevel} bracket — target ${target} (CS ${cs}, HP mod ${hpMod >= 0 ? "+" : ""}${hpMod}, STR mod ${strMod >= 0 ? "+" : ""}${strMod}, level mod ${levelMod}). Rolled ${roll} — ${win ? "Win!" : "Lose."}`];
+      if (payingNow) lines.push(`Paid ${fee}c entry (covers all three brackets).`);
+      const heroLevel = Math.min(10, Math.max(1, resolvedHero.level));
+      if (win) {
+        const mult = ARENA_WIN_MULTIPLIER[heroLevel][resolverArenaLevel];
+        const winnings = Math.floor(fee * mult);
+        const xpGain = ARENA_WIN_XP[resolverArenaLevel];
+        setParty((prev) => ({ ...prev, coins: prev.coins + winnings }));
+        updateHero({ ...resolvedHero, xp: resolvedHero.xp + xpGain });
+        lines.push(`Won ${winnings}c (x${mult} entry fee) and ${xpGain} XP.`);
+        if (resolverArenaLevel === "Final") {
+          const extraRoll = rollDie(10);
+          const extraRow = ARENA_FINAL_EXTRA_AWARD.find((r) => extraRoll <= r.max);
+          if (extraRow.prize) lines.push(`Extra award roll (${extraRoll}): 1 ${extraRow.prize}!`);
+        }
+      } else {
+        const hpLoss = ARENA_LOSE_HP[resolverArenaLevel];
+        updateHero({ ...resolvedHero, hp: { ...resolvedHero.hp, cur: Math.max(0, resolvedHero.hp.cur - hpLoss) }, sanity: { ...resolvedHero.sanity, cur: Math.max(0, resolvedHero.sanity.cur - 2) } });
+        lines.push(`Lost: -${hpLoss} HP, -2 Sanity.`);
+      }
+      setResolverResult({ ok: true, lines });
+      addLog(`${resolvedHero.name} fights in the ${resolverArenaLevel} arena bracket: rolled ${roll} vs target ${target} — ${lines.slice(1).join(" ")}`);
     } else if (resolverActivity === "Tending to Those Memories") {
       const roll = rollDie(3);
       let newSanity = Math.min(resolvedHero.sanity.max, resolvedHero.sanity.cur + roll);

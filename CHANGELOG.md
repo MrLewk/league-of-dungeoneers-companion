@@ -3,6 +3,12 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.17.1] — 2026-08-08
+
+### Added
+- Arena Fighting now resolves the full result, not just win/lose — the "Betting, Odds, and Winning" page turned out to have the missing prize data: winning pays out entry fee x a level/bracket multiplier plus XP (50/100/150 for Group/Semi/Final) straight to the hero, a Final win rolls for a bonus treasure, and losing costs HP (2/4/6 by bracket) and 2 Sanity
+- The entry fee is only charged on the Group round, matching the book ("you pay once to attend all three levels") — rolling Semi or Final afterward for the same attempt assumes it's already paid, while still using the same fee amount as the payout base for that bracket's multiplier
+
 ## [1.17.0] — 2026-08-08
 
 ### Added

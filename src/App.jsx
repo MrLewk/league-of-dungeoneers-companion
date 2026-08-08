@@ -400,6 +400,47 @@ function repairCostPerPoint(price) {
   return Math.round(price * 0.2);
 }
 
+// Weapons table (Equipment Appendix) — Damage, ENC, Class, Special rules, Cost,
+// Availability, and Reload (missile weapons only). All weapons have Durability 6
+// unless otherwise noted in the book — none of these are noted otherwise.
+const WEAPONS = [
+  { name: "Dagger", dmg: "1d6", enc: 5, class: 1, special: "Dual Wield +1", cost: 10, avail: 4, reload: null },
+  { name: "Rapier", dmg: "1d6+1", enc: 5, class: 1, special: "Fast, Dual Wield +2", cost: 130, avail: 3, reload: null },
+  { name: "Javelin", dmg: "1d10", enc: 10, class: 2, special: "Reach, BFO, AP(1)", cost: 100, avail: 4, reload: null },
+  { name: "Shortsword", dmg: "1d6+2", enc: 7, class: 2, special: "Dual Wield +2", cost: 70, avail: 4, reload: null },
+  { name: "Staff", dmg: "1d8", enc: 5, class: 2, special: "Defensive", cost: 5, avail: 5, reload: null },
+  { name: "Battle Hammer", dmg: "1d10", enc: 10, class: 3, special: "Stun, BFO", cost: 100, avail: 4, reload: null },
+  { name: "Broadsword", dmg: "1d8+2", enc: 8, class: 3, special: "", cost: 90, avail: 5, reload: null },
+  { name: "Battleaxe", dmg: "1d10+1", enc: 10, class: 4, special: "BFO, AP(1)", cost: 100, avail: 4, reload: null },
+  { name: "Longsword", dmg: "1d12", enc: 10, class: 4, special: "", cost: 100, avail: 4, reload: null },
+  { name: "Morning Star", dmg: "1d8+4", enc: 10, class: 4, special: "Unwieldy, BFO, Stun", cost: 150, avail: 2, reload: null },
+  { name: "Flail", dmg: "1d10+4", enc: 20, class: 5, special: "Unwieldy, BFO, Stun", cost: 150, avail: 2, reload: null },
+  { name: "Greataxe", dmg: "1d12+2", enc: 20, class: 5, special: "Slow, BFO, AP(2)", cost: 200, avail: 3, reload: null },
+  { name: "Greatsword", dmg: "2d6", enc: 20, class: 5, special: "Slow", cost: 200, avail: 3, reload: null },
+  { name: "Halberd", dmg: "1d12", enc: 20, class: 5, special: "Reach, AP(1)", cost: 150, avail: 4, reload: null },
+  { name: "Warhammer", dmg: "2d6", enc: 20, class: 5, special: "Slow, BFO, Stun", cost: 200, avail: 3, reload: null },
+  { name: "Arbalest", dmg: "3d6", enc: 20, class: 6, special: "Requires STR 55, AP(2)", cost: 400, avail: 2, reload: 3 },
+  { name: "Crossbow", dmg: "1d10+3", enc: 15, class: 6, special: "AP(1)", cost: 250, avail: 3, reload: 2 },
+  { name: "Crossbow Pistol", dmg: "1d8+1", enc: 5, class: 2, special: "Secondary Weapon", cost: 350, avail: 2, reload: 2 },
+  { name: "Elven Bow", dmg: "1d10+2", enc: 7, class: 4, special: "AP(1)", cost: 700, avail: 2, reload: 1 },
+  { name: "Longbow", dmg: "1d10", enc: 10, class: 4, special: "AP(1)", cost: 100, avail: 4, reload: 1 },
+  { name: "Shortbow", dmg: "1d8", enc: 5, class: 6, special: "", cost: 100, avail: 4, reload: 1 },
+  { name: "Sling", dmg: "1d6", enc: 1, class: 6, special: "Unlimited Ammo", cost: 40, avail: 4, reload: null },
+  { name: "Net", dmg: "-", enc: 2, class: 2, special: "Ensnare, Dual Wield +0", cost: 100, avail: 3, reload: null },
+];
+
+// 2H/1H STR requirement per weapon class, from Creating Your Character. Class 5 can
+// never be used one-handed; Class 6 (missile weapons) always needs two hands regardless
+// of STR — the "2H STR req" for class 6 isn't really a strength gate, just book-keeping.
+const WEAPON_CLASS_STR_REQ = {
+  1: { twoH: 20, oneH: 20 },
+  2: { twoH: 25, oneH: 30 },
+  3: { twoH: 30, oneH: 40 },
+  4: { twoH: 40, oneH: 50 },
+  5: { twoH: 55, oneH: null },
+  6: { twoH: 20, oneH: null },
+};
+
 const CC_ATTACK_MODS = [
   { label: "Enemy lying down (also loses its to-hit)", value: 30 },
   { label: "Attacking from behind", value: 20 },
@@ -1123,6 +1164,16 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.8.0",
+    date: "2026-08-07",
+    sections: {
+      "Added": [
+        "Weapon picker on the hero card — a dropdown of all 23 weapons from the Equipment Appendix (Dagger through Elven Bow) that auto-fills Name, DMG, ENC, and Durability (6/6, the QRS default) instead of typing them in by hand",
+        "Once a weapon matching the table is set (picked or typed to match), a reference line shows its Class, Special rules, Cost, Availability, Reload (missile weapons), and the STR needed to wield it — highlighted red if the hero's current STR is under the two-handed minimum",
+      ],
+    },
+  },
+  {
     version: "1.7.0",
     date: "2026-08-07",
     sections: {
@@ -1660,6 +1711,11 @@ function HeroCard({ hero, update, remove, addLog }) {
   const setStat = (k, v) => update({ ...hero, stats: { ...hero.stats, [k]: v } });
   const setSkill = (k, v) => update({ ...hero, skills: { ...hero.skills, [k]: v } });
   const setWeapon = (patch) => update({ ...hero, weapon: { ...hero.weapon, ...patch } });
+  const pickWeapon = (name) => {
+    const w = WEAPONS.find((x) => x.name === name);
+    if (!w) return;
+    update({ ...hero, weapon: { name: w.name, dmg: w.dmg, enc: w.enc, dur: { cur: 6, max: 6 } } });
+  };
   const setArmourPiece = (loc, patch) => update({ ...hero, armour: { ...hero.armour, [loc]: { ...hero.armour[loc], ...patch } } });
 
   const extraSkillKey = CASTER_SKILL[hero.profession] || PRAYER_SKILL[hero.profession] || null;
@@ -1777,6 +1833,11 @@ function HeroCard({ hero, update, remove, addLog }) {
     Object.values(hero.armour).reduce((sum, piece) => sum + (Number(piece.enc) || 0), 0) +
     hero.backpack.reduce((sum, item) => sum + (Number(item.enc) || 0), 0);
   const isEncumbered = totalEnc > (Number(hero.stats.STR) || 0);
+  const weaponRef = WEAPONS.find((w) => w.name === hero.weapon.name);
+  const strReq = weaponRef ? WEAPON_CLASS_STR_REQ[weaponRef.class] : null;
+  // twoH is always the lower/easier bar (wielding one-handed needs more STR, where possible
+  // at all) — so that's the real "can this hero use it" threshold.
+  const strTooWeak = strReq ? (Number(hero.stats.STR) || 0) < strReq.twoH : false;
 
   return (
     <Panel className="mb-3">
@@ -2137,6 +2198,17 @@ function HeroCard({ hero, update, remove, addLog }) {
           {/* Weapon */}
           <div className="mb-2">
             <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">Weapon</div>
+            <select
+              value=""
+              onChange={(e) => e.target.value && pickWeapon(e.target.value)}
+              className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+              style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}
+            >
+              <option value="">Pick from table…</option>
+              {WEAPONS.map((w) => (
+                <option key={w.name} value={w.name}>{w.name} ({w.dmg}, Class {w.class})</option>
+              ))}
+            </select>
             <div className="flex gap-1.5 flex-wrap">
               <input
                 value={hero.weapon.name}
@@ -2166,6 +2238,16 @@ function HeroCard({ hero, update, remove, addLog }) {
                   className="w-9 rounded px-1" style={{ border: `1px solid ${palette.line}` }} />
               </div>
             </div>
+            {weaponRef && (
+              <div className="text-[10px] mt-1 rounded px-2 py-1" style={{ background: "#00000008", color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+                Class {weaponRef.class}{weaponRef.special ? ` · ${weaponRef.special}` : ""} · {weaponRef.cost}c (avail {weaponRef.avail}){weaponRef.reload ? ` · Reload ${weaponRef.reload}` : ""}
+                {strReq && (
+                  <span style={{ color: strTooWeak ? palette.crimson : palette.inkSoft, fontWeight: strTooWeak ? 700 : 400 }}>
+                    {" · "}Requires STR {strReq.oneH ? `${strReq.oneH} (1H) / ` : ""}{strReq.twoH} (2H){strTooWeak ? " — under this hero's STR" : ""}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Armour */}

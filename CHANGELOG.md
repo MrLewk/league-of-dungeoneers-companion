@@ -3,6 +3,16 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.12.0] — 2026-08-07
+
+### Added
+- Levelling up is now automatic — awarding XP (either via "Award XP" on the Party tab, or editing a hero's XP directly) checks it against the XP Levelling table and, if it crosses a threshold, applies the level increase, rolls the HP/Luck/Energy gains, and adds the +15 Improvement Points to that hero's pool, all on its own. A big XP award that crosses two thresholds at once correctly levels up twice
+- A gold toast pops up ("[Hero] leveled up! Now level X — ...") no matter which tab triggered it, since Award XP lives on the Party tab but the level-up itself is about a specific hero
+- A small gold badge with the Improvement Point count now sits on each hero's button in the Heroes tab whenever they have unspent points, plus a matching dot on the Heroes nav tab itself so it's visible without switching tabs
+
+### Notes
+- The manual Level Up button is still there as an override (forces a level regardless of XP, e.g. for house rules) — it's not gated behind the XP threshold, since the automatic path now handles the normal case
+
 ## [1.11.0] — 2026-08-07
 
 ### Added

@@ -190,6 +190,38 @@ const XP_LEVELLING = [
   { level: 10, xp: 220000, hpDie: true, luck: false, energy: false },
 ];
 
+// Auto-applies every level-up a hero's current XP qualifies for (loops, so a big XP
+// award that crosses two thresholds at once levels up twice), rolling the same
+// HP/Luck/Energy gains and +15 Improvement Points as the manual Level Up button.
+// Returns the updated hero plus a list of what happened, for a toast/log message.
+function applyAutoLevelUps(hero) {
+  let cur = hero;
+  const events = [];
+  while (true) {
+    const nextLevel = cur.level + 1;
+    const entry = XP_LEVELLING.find((l) => l.level === nextLevel);
+    if (!entry || cur.xp < entry.xp) break;
+    const patch = { level: nextLevel, improvementPoints: cur.improvementPoints + 15, ipSpentThisLevel: {} };
+    const notes = ["+15 Improvement Points"];
+    if (entry.hpDie) {
+      const roll = rollDie(2);
+      patch.hp = { ...cur.hp, cur: cur.hp.cur + roll, max: cur.hp.max + roll };
+      notes.push(`+${roll} HP`);
+    }
+    if (entry.luck) {
+      patch.luck = cur.luck + 1;
+      notes.push("+1 Luck");
+    }
+    if (entry.energy) {
+      patch.energy = { ...cur.energy, cur: cur.energy.cur + 1, max: cur.energy.max + 1 };
+      notes.push("+1 Energy");
+    }
+    cur = { ...cur, ...patch };
+    events.push({ level: nextLevel, notes });
+  }
+  return { hero: cur, events };
+}
+
 // Improvement Point cost table (p54) — cost to raise a stat/skill by +1, per profession.
 // Knight and Druid aren't in the official QRS table (they're extra professions this app
 // added beyond the base 8), so they're left out — IP spending for them stays manual.
@@ -1199,6 +1231,20 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.12.0",
+    date: "2026-08-07",
+    sections: {
+      "Added": [
+        "Levelling up is now automatic — awarding XP (either via 'Award XP' on the Party tab, or editing a hero's XP directly) checks it against the XP Levelling table and, if it crosses a threshold, applies the level increase, rolls the HP/Luck/Energy gains, and adds the +15 Improvement Points to that hero's pool, all on its own. A big XP award that crosses two thresholds at once correctly levels up twice",
+        "A gold toast pops up ('[Hero] leveled up! Now level X — ...') no matter which tab triggered it, since Award XP lives on the Party tab but the level-up itself is about a specific hero",
+        "A small gold badge with the Improvement Point count now sits on each hero's button in the Heroes tab whenever they have unspent points, plus a matching dot on the Heroes nav tab itself so it's visible without switching tabs",
+      ],
+      "Notes": [
+        "The manual Level Up button is still there as an override (forces a level regardless of XP, e.g. for house rules) — it's not gated behind the XP threshold, since the automatic path now handles the normal case",
+      ],
+    },
+  },
+  {
     version: "1.11.0",
     date: "2026-08-07",
     sections: {
@@ -1639,6 +1685,46 @@ function UpdateToast() {
   );
 }
 
+// Stack of auto-dismissing toasts, used for level-up notifications so they're visible
+// no matter which tab triggered the XP gain (Award XP on the Party tab, or editing a
+// hero's XP directly on the Heroes tab).
+function LevelUpToastStack({ toasts, dismissToast }) {
+  useEffect(() => {
+    if (toasts.length === 0) return;
+    const timers = toasts.map((t) => setTimeout(() => dismissToast(t.id), 4500));
+    return () => timers.forEach(clearTimeout);
+  }, [toasts, dismissToast]);
+
+  if (toasts.length === 0) return null;
+
+  return (
+    <div className="fixed top-3 left-0 right-0 z-50 px-3 flex flex-col items-center gap-2 pointer-events-none">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className="max-w-md w-full rounded-xl p-3 flex items-center gap-3 pointer-events-auto"
+          style={{ background: palette.charcoal, border: `1px solid ${palette.gold}`, boxShadow: "0 4px 16px rgba(0,0,0,0.4)" }}
+        >
+          <div className="shrink-0 rounded-lg p-2" style={{ background: palette.gold }}>
+            <Sparkles size={18} color={palette.charcoal} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold" style={{ color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+              {t.title}
+            </p>
+            <p className="text-xs" style={{ color: "#B8A78A", fontFamily: "Crimson Pro, serif" }}>
+              {t.body}
+            </p>
+          </div>
+          <button onClick={() => dismissToast(t.id)} className="shrink-0 p-1 rounded" style={{ color: "#B8A78A" }}>
+            <X size={16} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Footer() {
   const [showChangelog, setShowChangelog] = useState(false);
 
@@ -1875,7 +1961,7 @@ function AttachedItemList({ label, names, dataset, color, onRemove, groupKey, ef
   );
 }
 
-function HeroCard({ hero, update, remove, addLog }) {
+function HeroCard({ hero, update, remove, addLog, pushToast }) {
   const [sanityEvent, setSanityEvent] = useState(SANITY_EVENTS[0].label);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -2004,6 +2090,20 @@ function HeroCard({ hero, update, remove, addLog }) {
 
   const nextLevelEntry = XP_LEVELLING.find((l) => l.level === hero.level + 1);
   const xpToNext = nextLevelEntry ? Math.max(0, nextLevelEntry.xp - hero.xp) : null;
+
+  const setXP = (newXP) => {
+    const { hero: leveled, events } = applyAutoLevelUps({ ...hero, xp: newXP });
+    update(leveled);
+    if (events.length > 0) {
+      const finalLevel = events[events.length - 1].level;
+      const allNotes = events.flatMap((e) => e.notes).join(", ");
+      pushToast && pushToast(
+        `${hero.name} leveled up!`,
+        events.length > 1 ? `Now level ${finalLevel} (+${events.length} levels) — ${allNotes}` : `Now level ${finalLevel} — ${allNotes}`
+      );
+      addLog && addLog(`${hero.name} leveled up to ${finalLevel}: ${allNotes}`);
+    }
+  };
 
   const spendIP = (key) => {
     const cost = ipCostFor(hero, key);
@@ -2142,7 +2242,7 @@ function HeroCard({ hero, update, remove, addLog }) {
               <input
                 type="number"
                 value={hero.xp}
-                onChange={(e) => set({ xp: Number(e.target.value) || 0 })}
+                onChange={(e) => setXP(Number(e.target.value) || 0)}
                 className="w-14 rounded px-1"
                 style={{ background: "#fff", border: `1px solid ${palette.line}` }}
               />
@@ -3452,7 +3552,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   );
 }
 
-function PartyPanel({ party, setParty, log, addLog, heroes, updateHero }) {
+function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToast }) {
   const [moraleEvent, setMoraleEvent] = useState(MORALE_EVENTS[0].label);
   const [xpAmount, setXpAmount] = useState(50);
 
@@ -3485,7 +3585,20 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero }) {
 
   const awardXP = () => {
     if (!heroes || heroes.length === 0 || !xpAmount) return;
-    heroes.forEach((h) => updateHero(h.id, { ...h, xp: h.xp + Number(xpAmount) }));
+    heroes.forEach((h) => {
+      const withXP = { ...h, xp: h.xp + Number(xpAmount) };
+      const { hero: leveled, events } = applyAutoLevelUps(withXP);
+      updateHero(h.id, leveled);
+      if (events.length > 0) {
+        const finalLevel = events[events.length - 1].level;
+        const allNotes = events.flatMap((e) => e.notes).join(", ");
+        pushToast && pushToast(
+          `${h.name} leveled up!`,
+          events.length > 1 ? `Now level ${finalLevel} (+${events.length} levels) — ${allNotes}` : `Now level ${finalLevel} — ${allNotes}`
+        );
+        addLog(`${h.name} leveled up to ${finalLevel}: ${allNotes}`);
+      }
+    });
     addLog(`Awarded ${xpAmount} XP to all ${heroes.length} hero${heroes.length === 1 ? "" : "es"}`);
   };
 
@@ -4589,7 +4702,7 @@ function CampaignsTab({ campaigns, activeId, onNew, onLoad, onRename, onDelete, 
 }
 
 // ---------- Heroes Tab (per-hero sub-tabs) ----------
-function HeroesTab({ heroes, updateHero, removeHero, addHero, addLog }) {
+function HeroesTab({ heroes, updateHero, removeHero, addHero, addLog, pushToast }) {
   const [selectedId, setSelectedId] = useState(heroes[0] ? heroes[0].id : null);
 
   useEffect(() => {
@@ -4624,7 +4737,7 @@ function HeroesTab({ heroes, updateHero, removeHero, addHero, addLog }) {
             <button
               key={h.id}
               onClick={() => setSelectedId(h.id)}
-              className="shrink-0 px-3 py-2 rounded-lg text-sm font-bold whitespace-nowrap"
+              className="relative shrink-0 px-3 py-2 rounded-lg text-sm font-bold whitespace-nowrap"
               style={{
                 background: selectedId === h.id ? palette.crimson : "#00000010",
                 color: selectedId === h.id ? palette.parchment : palette.ink,
@@ -4635,6 +4748,15 @@ function HeroesTab({ heroes, updateHero, removeHero, addHero, addLog }) {
               }}
             >
               {h.name || "New Hero"}
+              {h.improvementPoints > 0 && (
+                <span
+                  className="absolute -top-1 -right-1 rounded-full flex items-center justify-center font-bold"
+                  style={{ width: 16, height: 16, fontSize: 9, background: palette.gold, color: palette.charcoal, fontFamily: "JetBrains Mono, monospace" }}
+                  title={`${h.improvementPoints} Improvement Points to spend`}
+                >
+                  {h.improvementPoints > 9 ? "9+" : h.improvementPoints}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -4647,6 +4769,7 @@ function HeroesTab({ heroes, updateHero, removeHero, addHero, addLog }) {
           update={(next) => updateHero(selectedHero.id, next)}
           remove={() => removeHero(selectedHero.id)}
           addLog={addLog}
+          pushToast={pushToast}
         />
       ) : (
         <Panel>
@@ -4678,6 +4801,14 @@ export default function App() {
 
   const addLog = useCallback((text) => {
     setLog((prev) => [...prev, text].slice(-60));
+  }, []);
+
+  const [toasts, setToasts] = useState([]);
+  const pushToast = useCallback((title, body) => {
+    setToasts((prev) => [...prev, { id: uid(), title, body }]);
+  }, []);
+  const dismissToast = useCallback((id) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
   // Mobile fix: a number input starting at "0" won't let you type a replacement digit
@@ -4903,6 +5034,7 @@ export default function App() {
       <style>{fontImport}</style>
       {(!loaded || switching) && <LoadingOverlay label={!loaded ? "Opening the ledger…" : switchingLabel} />}
       <UpdateToast />
+      <LevelUpToastStack toasts={toasts} dismissToast={dismissToast} />
       <InstallBanner />
 
       <header style={{ background: palette.charcoal, borderBottom: `4px solid ${palette.crimson}` }} className="px-4 py-4">
@@ -4929,7 +5061,7 @@ export default function App() {
           <button
             key={key}
             onClick={() => setTab(key)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold shrink-0"
+            className="relative flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold shrink-0"
             style={{
               scrollSnapAlign: "start",
               background: tab === key ? palette.crimson : palette.panel,
@@ -4939,17 +5071,24 @@ export default function App() {
             }}
           >
             <Icon size={14} /> {label}
+            {key === "heroes" && heroes.some((h) => h.improvementPoints > 0) && (
+              <span
+                className="absolute -top-1 -right-1 rounded-full"
+                style={{ width: 10, height: 10, background: palette.gold, border: `1.5px solid ${palette.parchment}` }}
+                title="A hero has Improvement Points to spend"
+              />
+            )}
           </button>
         ))}
       </nav>
 
       <main className="max-w-2xl mx-auto px-4 pb-16 pt-2">
-        {tab === "party" && <PartyPanel party={party} setParty={setParty} log={log} addLog={addLog} heroes={heroes} updateHero={updateHero} />}
+        {tab === "party" && <PartyPanel party={party} setParty={setParty} log={log} addLog={addLog} heroes={heroes} updateHero={updateHero} pushToast={pushToast} />}
         {tab === "settlement" && (
           <SettlementTab party={party} setParty={setParty} heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />
         )}
         {tab === "heroes" && (
-          <HeroesTab heroes={heroes} updateHero={updateHero} removeHero={removeHero} addHero={addHero} addLog={addLog} />
+          <HeroesTab heroes={heroes} updateHero={updateHero} removeHero={removeHero} addHero={addHero} addLog={addLog} pushToast={pushToast} />
         )}
         {tab === "combat" && <CombatCalc heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
         {tab === "dice" && <DiceTray />}

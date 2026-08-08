@@ -530,8 +530,8 @@ const QUEST_AVAILABILITY = [
 const SETTLEMENT_ACTIVITIES = [
   { name: "Arena Fighting", where: "Arena", ap: 1, locations: ["Arena"] },
   { name: "Banking", where: "Banks", ap: 1, locations: ["Banks"] },
-  { name: "Buy a Dog", where: "Kennel", ap: 1, locations: ["Kennel"] },
-  { name: "Buy a Familiar", where: "Alberta's Magnificent Animals", ap: 1, locations: ["Alberta's Magnificent Animals"] },
+  { name: "Buy a Dog", where: "Kennel", ap: 1, locations: ["Kennel"], note: "requires the Companions' Expansion — no mechanical effect in this app without it" },
+  { name: "Buy a Familiar", where: "Alberta's Magnificent Animals", ap: 1, locations: ["Alberta's Magnificent Animals"], note: "requires the Companions' Expansion — no mechanical effect in this app without it" },
   { name: "Buy or Sell Armour", where: "Blacksmith", ap: 1, locations: ["Blacksmith"] },
   { name: "Buy or Sell Equipment", where: "General Store, The Magic Brewery", ap: 1, locations: ["General Store", "Magic Brewery"] },
   { name: "Buy Ingredients", where: "Herbalist, Alchemists' Guild", ap: 1, locations: ["Herbalist", "Guilds"] },
@@ -1459,6 +1459,15 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.18.1",
+    date: "2026-08-08",
+    sections: {
+      "Fixed": [
+        "Buy a Dog and Buy a Familiar showed up as normal settlement activities with no indication they need the separate Companions' Expansion — both now note that right in the Activities picker, since this app has no mechanical effect for them without it",
+      ],
+    },
+  },
   {
     version: "1.18.0",
     date: "2026-08-08",

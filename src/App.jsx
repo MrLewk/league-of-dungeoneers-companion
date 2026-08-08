@@ -1341,6 +1341,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.15.1",
+    date: "2026-08-08",
+    sections: {
+      "Added": [
+        "Detailed Silver City street map added to the Maps section on the Settlement tab — shows named locations (Jarl's Palace, The Market, the guild halls, the Arena, the Temple Grounds, etc.), zoomable like the other two maps",
+      ],
+    },
+  },
+  {
     version: "1.15.0",
     date: "2026-08-08",
     sections: {
@@ -3058,6 +3067,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
 const MAPS = [
   { key: "known-world", title: "The Known World", src: "/maps/known-world.jpg" },
   { key: "silver-city-area", title: "Silver City Area", src: "/maps/silver-city-area.jpg" },
+  { key: "silver-city-detailed", title: "Silver City (Detailed)", src: "/maps/silver-city-detailed.jpg" },
 ];
 
 // Full-screen map viewer. Native pinch-zoom works here (the app's viewport meta doesn't

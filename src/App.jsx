@@ -48,6 +48,7 @@ const defaultHero = () => ({
   improvementPoints: 0,
   ipSpentThisLevel: {},
   creationPoints: 15,
+  creationPointsSpent: { STR: 0, CON: 0, DEX: 0, WIS: 0, RES: 0 },
   freeSkill: "",
   hp: { cur: 10, max: 10 },
   energy: { cur: 1, max: 1 },
@@ -1198,6 +1199,19 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.11.0",
+    date: "2026-08-07",
+    sections: {
+      "Added": [
+        "Creation Points are now interactive: a live 'X CP left' badge above the Stats grid, with +/− buttons under each stat that spend or refund from the 15-point pool and enforce the 10-per-stat cap — matching the Specialisation rule exactly instead of being a passive counter you had to track yourself",
+        "Improvement Points spending now has a matching − (refund) button next to each stat/skill, undoing a purchase and restoring both the point and the exact IP cost that was paid for it",
+      ],
+      "Fixed": [
+        "Number inputs starting at 0 couldn't be retyped on mobile without manually selecting and deleting the 0 first — tapping into any number field now auto-selects its content, so the next digit typed just overwrites it, across the whole app",
+      ],
+    },
+  },
+  {
     version: "1.10.1",
     date: "2026-08-07",
     sections: {
@@ -1781,6 +1795,7 @@ function normalizeHero(h) {
     mana: { ...base.mana, ...(h.mana || {}) },
     skills: { ...base.skills, ...(h.skills || {}) },
     ipSpentThisLevel: h.ipSpentThisLevel || {},
+    creationPointsSpent: { ...base.creationPointsSpent, ...(h.creationPointsSpent || {}) },
     weapon: { ...base.weapon, ...(h.weapon || {}), dur: mergeDur(h.weapon && h.weapon.dur) },
     talents: h.talents || base.talents,
     perks: h.perks || base.perks,
@@ -1866,6 +1881,27 @@ function HeroCard({ hero, update, remove, addLog }) {
 
   const set = (patch) => update({ ...hero, ...patch });
   const setStat = (k, v) => update({ ...hero, stats: { ...hero.stats, [k]: v } });
+  const CREATION_POINT_CAP_PER_STAT = 10;
+  const spendCreationPoint = (k, sign) => {
+    const spent = hero.creationPointsSpent?.[k] || 0;
+    if (sign > 0) {
+      if (hero.creationPoints <= 0 || spent >= CREATION_POINT_CAP_PER_STAT) return;
+      update({
+        ...hero,
+        stats: { ...hero.stats, [k]: (Number(hero.stats[k]) || 0) + 1 },
+        creationPoints: hero.creationPoints - 1,
+        creationPointsSpent: { ...hero.creationPointsSpent, [k]: spent + 1 },
+      });
+    } else {
+      if (spent <= 0) return;
+      update({
+        ...hero,
+        stats: { ...hero.stats, [k]: Math.max(0, (Number(hero.stats[k]) || 0) - 1) },
+        creationPoints: hero.creationPoints + 1,
+        creationPointsSpent: { ...hero.creationPointsSpent, [k]: spent - 1 },
+      });
+    }
+  };
   const setSkill = (k, v) => update({ ...hero, skills: { ...hero.skills, [k]: v } });
   const setWeapon = (patch) => update({ ...hero, weapon: { ...hero.weapon, ...patch } });
   const pickWeapon = (name) => {
@@ -1928,7 +1964,7 @@ function HeroCard({ hero, update, remove, addLog }) {
     // Lucky (Halfling) — starts with 1 Luck Point; non-halflings start at 0.
     const luckPatch = speciesData.name === "Halfling" ? { luck: Math.max(hero.luck, 1) } : {};
 
-    update({ ...hero, stats: newStats, skills: nextSkills, hp: { cur: hpRoll, max: hpRoll }, creationPoints: 15, talents, ...luckPatch, ...manaPatch });
+    update({ ...hero, stats: newStats, skills: nextSkills, hp: { cur: hpRoll, max: hpRoll }, creationPoints: 15, creationPointsSpent: { STR: 0, CON: 0, DEX: 0, WIS: 0, RES: 0 }, talents, ...luckPatch, ...manaPatch });
   };
 
   const recalcSkills = () => set({ skills: computeProfessionSkills(hero) });
@@ -1992,6 +2028,36 @@ function HeroCard({ hero, update, remove, addLog }) {
     }
     update({ ...hero, ...patch });
     addLog && addLog(`${hero.name}: spent ${cost} IP on ${label} (+1)`);
+  };
+
+  const refundIP = (key) => {
+    const spentSoFar = hero.ipSpentThisLevel?.[key] || 0;
+    if (spentSoFar <= 0) return;
+    // Refund the cost that was actually paid to reach the current value — simulate the
+    // stat/skill one point lower and price from there, mirroring the pre-increment
+    // check spendIP does (so undoing a purchase that just crossed the 70 threshold
+    // refunds the pre-threshold price, not the doubled one).
+    const patch = { ipSpentThisLevel: { ...hero.ipSpentThisLevel, [key]: spentSoFar - 1 } };
+    let label, costHero;
+    if (key === "hp") {
+      patch.hp = { ...hero.hp, cur: Math.max(0, hero.hp.cur - 1), max: Math.max(0, hero.hp.max - 1) };
+      label = "Hit Points";
+      costHero = hero;
+    } else if (STAT_KEYS.includes(key)) {
+      const lowered = Math.max(0, (Number(hero.stats[key]) || 0) - 1);
+      patch.stats = { ...hero.stats, [key]: lowered };
+      costHero = { ...hero, stats: patch.stats };
+      label = key;
+    } else {
+      const lowered = Math.max(0, (Number(hero.skills[key]) || 0) - 1);
+      patch.skills = { ...hero.skills, [key]: lowered };
+      costHero = { ...hero, skills: patch.skills };
+      label = SKILL_LABELS[key] || key;
+    }
+    const refund = ipCostFor(costHero, key) ?? 0;
+    patch.improvementPoints = hero.improvementPoints + refund;
+    update({ ...hero, ...patch });
+    addLog && addLog(`${hero.name}: refunded ${refund} IP from ${label} (−1)`);
   };
 
   const addBackpackItem = () => {
@@ -2192,11 +2258,25 @@ function HeroCard({ hero, update, remove, addLog }) {
           </div>
 
           {/* Basic stats */}
-          <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">Stats</div>
+          <div className="flex items-center justify-between mb-1">
+            <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase">Stats</div>
+            <div
+              className="text-xs font-bold px-2 py-0.5 rounded-full"
+              style={{
+                fontFamily: "JetBrains Mono, monospace",
+                background: hero.creationPoints > 0 ? palette.gold : "#00000010",
+                color: hero.creationPoints > 0 ? palette.charcoal : palette.inkSoft,
+              }}
+              title="Creation Points remaining (15 to spend at creation, max 10 into any one stat)"
+            >
+              {hero.creationPoints} CP left
+            </div>
+          </div>
           <div className="grid grid-cols-5 gap-1.5 mb-3">
             {Object.entries(hero.stats).map(([k, v]) => {
               const max = speciesData && speciesData.max ? speciesData.max[k] : null;
               const overMax = max != null && v > max;
+              const spent = hero.creationPointsSpent?.[k] || 0;
               return (
                 <div key={k} className="text-center rounded p-1.5" style={{ background: "#00000008" }}>
                   <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }}>{k}</div>
@@ -2207,6 +2287,30 @@ function HeroCard({ hero, update, remove, addLog }) {
                     className="w-full text-center bg-transparent font-bold outline-none"
                     style={{ fontFamily: "JetBrains Mono, monospace", color: overMax ? palette.crimson : palette.ink }}
                   />
+                  <div className="flex items-center justify-center gap-1 mt-0.5">
+                    <button
+                      onClick={() => spendCreationPoint(k, -1)}
+                      disabled={spent <= 0}
+                      className="w-5 h-5 rounded flex items-center justify-center text-xs font-bold"
+                      style={{ background: spent > 0 ? palette.crimsonDark : "#00000010", color: spent > 0 ? palette.parchment : palette.inkSoft }}
+                      title="Refund a Creation Point spent on this stat"
+                    >
+                      −
+                    </button>
+                    <span className="text-[9px] w-4" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.inkSoft }}>{spent}</span>
+                    <button
+                      onClick={() => spendCreationPoint(k, 1)}
+                      disabled={hero.creationPoints <= 0 || spent >= CREATION_POINT_CAP_PER_STAT}
+                      className="w-5 h-5 rounded flex items-center justify-center text-xs font-bold"
+                      style={{
+                        background: hero.creationPoints > 0 && spent < CREATION_POINT_CAP_PER_STAT ? palette.forestDark : "#00000010",
+                        color: hero.creationPoints > 0 && spent < CREATION_POINT_CAP_PER_STAT ? palette.parchment : palette.inkSoft,
+                      }}
+                      title={spent >= CREATION_POINT_CAP_PER_STAT ? "Max 10 Creation Points into any one stat" : "Spend a Creation Point on this stat"}
+                    >
+                      +
+                    </button>
+                  </div>
                   {max != null && (
                     <div className="text-[9px]" style={{ fontFamily: "JetBrains Mono, monospace", color: overMax ? palette.crimson : palette.inkSoft }}>
                       max {max}
@@ -2266,7 +2370,7 @@ function HeroCard({ hero, update, remove, addLog }) {
             </label>
 
             <div className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-              Creation Points
+              Creation Points (manual override)
               <div className="mt-0.5">
                 <Stepper value={hero.creationPoints} onChange={(v) => set({ creationPoints: v })} min={0} max={15} />
               </div>
@@ -2296,23 +2400,31 @@ function HeroCard({ hero, update, remove, addLog }) {
                   const disabled = atCap || !canAfford;
                   const label = key === "hp" ? "Hit Points" : (STAT_KEYS.includes(key) ? key : (SKILL_LABELS[key] || key));
                   return (
-                    <button
+                    <div
                       key={key}
-                      onClick={() => spendIP(key)}
-                      disabled={disabled}
-                      className="text-[10px] px-1.5 py-1 rounded flex items-center justify-between gap-1"
-                      style={{
-                        background: disabled ? "#00000010" : "#fff",
-                        border: `1px solid ${palette.line}`,
-                        color: palette.ink,
-                        fontFamily: "Crimson Pro, serif",
-                        opacity: disabled ? 0.5 : 1,
-                      }}
-                      title={atCap ? `Already at the +${cap}/level cap` : !canAfford ? "Not enough IP" : `Spend ${cost} IP for +1`}
+                      className="flex items-center gap-1 text-[10px] px-1.5 py-1 rounded"
+                      style={{ background: disabled && spent === 0 ? "#00000010" : "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
                     >
-                      <span className="truncate">{label}</span>
-                      <span className="shrink-0" style={{ fontFamily: "JetBrains Mono, monospace" }}>{cost}{spent > 0 ? ` (${spent}/${cap})` : ""}</span>
-                    </button>
+                      <button
+                        onClick={() => refundIP(key)}
+                        disabled={spent <= 0}
+                        className="w-4 h-4 shrink-0 rounded flex items-center justify-center font-bold"
+                        style={{ background: spent > 0 ? palette.crimsonDark : "#00000010", color: spent > 0 ? palette.parchment : palette.inkSoft }}
+                        title="Refund one point spent on this"
+                      >
+                        −
+                      </button>
+                      <button
+                        onClick={() => spendIP(key)}
+                        disabled={disabled}
+                        className="flex-1 min-w-0 flex items-center justify-between gap-1"
+                        style={{ color: palette.ink, opacity: disabled ? 0.5 : 1 }}
+                        title={atCap ? `Already at the +${cap}/level cap` : !canAfford ? "Not enough IP" : `Spend ${cost} IP for +1`}
+                      >
+                        <span className="truncate">{label}</span>
+                        <span className="shrink-0" style={{ fontFamily: "JetBrains Mono, monospace" }}>{cost}{spent > 0 ? ` (${spent}/${cap})` : ""}</span>
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -2324,7 +2436,7 @@ function HeroCard({ hero, update, remove, addLog }) {
           )}
 
           <p className="text-[10px] mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
-            Creation Points: 15 to spend on the rolled stats/HP above at creation, no more than 10 into any single one. Improvement Points: +15 each level-up (Level Up also rolls the automatic HP/Luck/Energy gains for the new level) — the buttons above apply the actual increase and enforce the +5/stat-skill and +2/HP per-level caps; cost doubles once a stat/skill has passed 70.
+            Creation Points: the +/− buttons under each stat (above) spend/refund from the 15-point pool, capped at 10 into any single stat. Improvement Points: +15 each level-up (Level Up also rolls the automatic HP/Luck/Energy gains for the new level) — the buttons below apply the actual increase and enforce the +5/stat-skill and +2/HP per-level caps; cost doubles once a stat/skill has passed 70.
           </p>
 
           <div className="rounded p-2 mb-3 flex items-center justify-between" style={{ background: "#00000008" }}>
@@ -4566,6 +4678,21 @@ export default function App() {
 
   const addLog = useCallback((text) => {
     setLog((prev) => [...prev, text].slice(-60));
+  }, []);
+
+  // Mobile fix: a number input starting at "0" won't let you type a replacement digit
+  // without first selecting/clearing it — typing "5" after "0" gives "05" until the
+  // extra zero is deleted separately. Auto-selecting the content on focus means the
+  // next digit typed just overwrites it, everywhere in the app, without needing to
+  // touch every individual input.
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.target && e.target.tagName === "INPUT" && e.target.type === "number") {
+        e.target.select();
+      }
+    };
+    document.addEventListener("focusin", handler);
+    return () => document.removeEventListener("focusin", handler);
   }, []);
 
   const readIndex = async () => {

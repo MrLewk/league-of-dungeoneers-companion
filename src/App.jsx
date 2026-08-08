@@ -51,7 +51,7 @@ const defaultHero = () => ({
   freeSkill: "",
   hp: { cur: 10, max: 10 },
   energy: { cur: 1, max: 1 },
-  sanity: { cur: 10, max: 10 },
+  sanity: { cur: 8, max: 8 },
   mana: { cur: 0, max: 0 },
   movement: 4,
   skills: {
@@ -82,10 +82,10 @@ const defaultHero = () => ({
 // tool (base game + Frogling/Pale expansions). Basic stats and HP are rolled the same
 // way: base + dice. Note text is condensed from that tool's per-species creation rules.
 const SPECIES_DATA = [
-  { name: "Human", hp: { base: 7, count: 1, size: 6 }, stats: { STR: 30, CON: 30, DEX: 30, WIS: 30, RES: 30 }, note: "Jack of All Trades: roll a random Talent from a chosen category at creation." },
-  { name: "Elf", hp: { base: 6, count: 1, size: 6 }, stats: { STR: 25, CON: 20, DEX: 40, WIS: 35, RES: 30 }, note: "" },
-  { name: "Halfling", hp: { base: 5, count: 1, size: 6 }, stats: { STR: 20, CON: 20, DEX: 40, WIS: 30, RES: 40 }, note: "Cannot use Longbows or Elvin bows (height). May buy Cooking Gear for 50c at the start of the game." },
-  { name: "Dwarf", hp: { base: 8, count: 1, size: 6 }, stats: { STR: 40, CON: 30, DEX: 25, WIS: 25, RES: 30 }, note: "Cannot use Longbows or Elvin bows (height)." },
+  { name: "Human", hp: { base: 7, count: 1, size: 6 }, stats: { STR: 30, CON: 30, DEX: 30, WIS: 30, RES: 30 }, note: "Jack of All Trades: roll a random Talent from a chosen category at creation (pick manually from the Compendium)." },
+  { name: "Elf", hp: { base: 6, count: 1, size: 6 }, stats: { STR: 25, CON: 20, DEX: 40, WIS: 35, RES: 30 }, note: "Traits: Perfect Hearing, Night Vision — both applied automatically when you roll starting stats." },
+  { name: "Halfling", hp: { base: 5, count: 1, size: 6 }, stats: { STR: 20, CON: 20, DEX: 40, WIS: 30, RES: 40 }, note: "Cannot use Longbows or Elvin bows (height). May buy Cooking Gear for 50c at the start of the game. Trait: Lucky — starts with 1 Luck Point, set automatically when you roll starting stats." },
+  { name: "Dwarf", hp: { base: 8, count: 1, size: 6 }, stats: { STR: 40, CON: 30, DEX: 25, WIS: 25, RES: 30 }, note: "Cannot use Longbows or Elvin bows (height). Traits: Hate Goblins, Night Vision — Night Vision is applied automatically when you roll starting stats; Hate Goblins needs a chosen enemy, so add the Hate Talent manually from the Compendium." },
   { name: "Gnome", hp: { base: 4, count: 1, size: 6 }, stats: { STR: 20, CON: 20, DEX: 30, WIS: 40, RES: 40 }, note: "Cannot use Longbows or Elvin bows (height). Artificer: once specialised, pays half cost for blacksmithing/crafting services." },
   { name: "Duckfolk", hp: { base: 6, count: 1, size: 6 }, stats: { STR: 25, CON: 25, DEX: 30, WIS: 30, RES: 40 }, max: { STR: 55, CON: 60, DEX: 70, WIS: 70, RES: 80 }, note: "Short arms — cannot use Longbows or Elvin bows." },
   { name: "Frogling", hp: { base: 4, count: 1, size: 6 }, stats: { STR: 20, CON: 35, DEX: 40, WIS: 30, RES: 25 }, note: "Cannot use Longbows or Elvin bows (height)." },
@@ -1198,6 +1198,21 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.10.1",
+    date: "2026-08-07",
+    sections: {
+      "Fixed": [
+        "Mana was computed as flat WIS instead of WIS x 1.5 rounded down (the actual Magic chapter formula) — fixed in both places it's set (Roll Starting Stats, and picking a caster profession)",
+        "Sanity for brand-new heroes defaulted to 10 instead of the QRS's fixed starting value of 8 (existing saved heroes are untouched — this only affects heroes created from now on)",
+        "Elf and Dwarf species notes didn't mention their actual Traits (Perfect Hearing, Night Vision, Hate Goblins) at all; Halfling's note didn't mention Lucky. All four now documented correctly",
+      ],
+      "Added": [
+        "Roll Starting Stats now auto-applies species Traits that map to a clean bonus: Night Vision (Elf, Dwarf) and Perfect Hearing (Elf) are added as Talents with their real effect, and Halfling gets its starting Luck Point set automatically. Hate Goblins (Dwarf) and Jack of All Trades (Human) still need a manual pick from the Compendium, since they require choosing an enemy/category",
+        "Picking Warrior Priest as a profession now sets starting Energy to 2 instead of 1, matching the QRS (only if Energy is still at its default, so it won't override a manual edit)",
+      ],
+    },
+  },
+  {
     version: "1.10.0",
     date: "2026-08-07",
     sections: {
@@ -1890,10 +1905,30 @@ function HeroCard({ hero, update, remove, addLog }) {
     Object.entries(speciesData.stats).forEach(([k, base]) => {
       newStats[k] = base + rollDie(10);
     });
-    const nextSkills = hero.profession ? computeProfessionSkills({ ...hero, stats: newStats }) : hero.skills;
+    let nextSkills = hero.profession ? computeProfessionSkills({ ...hero, stats: newStats }) : hero.skills;
     const isCaster = !!CASTER_SKILL[hero.profession];
-    const manaPatch = isCaster ? { mana: { cur: newStats.WIS, max: newStats.WIS } } : {};
-    update({ ...hero, stats: newStats, skills: nextSkills, hp: { cur: hpRoll, max: hpRoll }, creationPoints: 15, ...manaPatch });
+    // Mana = WIS x 1.5, rounded down — Magic chapter.
+    const manaMax = isCaster ? Math.floor(newStats.WIS * 1.5) : hero.mana.max;
+    const manaPatch = isCaster ? { mana: { cur: manaMax, max: manaMax } } : {};
+
+    // Species starting Traits that map to an unconditional Talent bonus — applied once
+    // (won't stack on reroll). Hate Goblins (Dwarf) and Jack of All Trades (Human) need
+    // a chosen enemy/category respectively, so those stay manual via the Compendium.
+    const speciesTraitTalents = { Elf: ["Night Vision", "Perfect Hearing"], Dwarf: ["Night Vision"] }[speciesData.name] || [];
+    let talents = hero.talents;
+    let workingHero = { ...hero, stats: newStats, skills: nextSkills };
+    speciesTraitTalents.forEach((tName) => {
+      if (!talents.includes(tName)) {
+        workingHero = { ...workingHero, ...talentEffectPatch(workingHero, tName, 1) };
+        talents = [...talents, tName];
+      }
+    });
+    nextSkills = workingHero.skills;
+
+    // Lucky (Halfling) — starts with 1 Luck Point; non-halflings start at 0.
+    const luckPatch = speciesData.name === "Halfling" ? { luck: Math.max(hero.luck, 1) } : {};
+
+    update({ ...hero, stats: newStats, skills: nextSkills, hp: { cur: hpRoll, max: hpRoll }, creationPoints: 15, talents, ...luckPatch, ...manaPatch });
   };
 
   const recalcSkills = () => set({ skills: computeProfessionSkills(hero) });
@@ -2012,8 +2047,13 @@ function HeroCard({ hero, update, remove, addLog }) {
                 const profession = e.target.value;
                 const nextSkills = computeProfessionSkills({ ...hero, profession });
                 const isCaster = !!CASTER_SKILL[profession];
-                const manaPatch = isCaster ? { mana: { cur: hero.stats.WIS, max: hero.stats.WIS } } : {};
-                update({ ...hero, profession, skills: nextSkills, ...manaPatch });
+                // Mana = WIS x 1.5, rounded down — Magic chapter.
+                const manaMax = isCaster ? Math.floor((Number(hero.stats.WIS) || 0) * 1.5) : hero.mana.max;
+                const manaPatch = isCaster ? { mana: { cur: manaMax, max: manaMax } } : {};
+                // Warrior Priest starts with 2 Energy instead of the usual 1 — only bump
+                // it if it's still at the default, so it doesn't clobber a manual edit.
+                const energyPatch = profession === "Warrior Priest" && hero.energy.max <= 1 ? { energy: { cur: 2, max: 2 } } : {};
+                update({ ...hero, profession, skills: nextSkills, ...manaPatch, ...energyPatch });
               }}
               className="text-xs rounded px-2 py-1 flex-1 min-w-[110px]"
               style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", color: hero.profession ? palette.ink : palette.inkSoft }}

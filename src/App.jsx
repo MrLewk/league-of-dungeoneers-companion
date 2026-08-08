@@ -342,21 +342,61 @@ const THREAT_UPS = [
   { label: "Forced open a door/chest (no crowbar)", delta: 2 },
 ];
 
-// Settlements — quest dice/colour from the Settlements chapter, event-roll threshold
-// (roll 1d12 on entering; a result inside this range triggers a Settlement Event).
-// Birnheim and Durburim are Dwarven settlements with no quest dice listed in the book.
+// Settlements — quest dice/colour and event-roll threshold from the Settlements chapter
+// intro, plus per-settlement Inn cost, available services, and Temples from "The
+// Settlements of the Southern Part of the Kingdom" (p134-137). `services` uses the same
+// category names as SETTLEMENT_ACTIVITIES' `locations`, so the Activities picker can
+// filter to what's actually offered wherever the party currently is.
 const SETTLEMENTS = [
-  { name: "Birnheim", questDice: "", colour: "", eventOn: [11, 12] },
-  { name: "Caelkirk", questDice: "1d4", colour: "Red", eventOn: [10, 12] },
-  { name: "Coalfell", questDice: "1d6", colour: "Green", eventOn: [11, 12] },
-  { name: "Durburim", questDice: "", colour: "", eventOn: [11, 12] },
-  { name: "Freyfell", questDice: "1d6", colour: "Pink", eventOn: [10, 12] },
-  { name: "Irondale", questDice: "1d6", colour: "Turqoise", eventOn: [11, 12] },
-  { name: "Rochdale", questDice: "1d6", colour: "Purple", eventOn: [11, 12] },
-  { name: "Silver City", questDice: "2d20", colour: "White", eventOn: [8, 12] },
-  { name: "The Outpost", questDice: "1d12", colour: "Yellow", eventOn: [9, 12] },
-  { name: "Whiteport", questDice: "1d6", colour: "Black", eventOn: [9, 12] },
-  { name: "Windfair", questDice: "1d6", colour: "Blue", eventOn: [11, 12] },
+  {
+    name: "Birnheim", questDice: "", colour: "", eventOn: [11, 12], innCost: 65,
+    services: ["Blacksmith", "General Store", "Temples"], temples: "All",
+    notes: "Armours purchased here are Dwarven-made: +2 Durability (cumulative with other modifiers).",
+  },
+  {
+    name: "Caelkirk", questDice: "1d4", colour: "Red", eventOn: [10, 12], innCost: 35,
+    services: ["Blacksmith", "General Store", "Kennel"], temples: null,
+  },
+  {
+    name: "Coalfell", questDice: "1d6", colour: "Green", eventOn: [11, 12], innCost: 35,
+    services: ["Blacksmith", "General Store", "Temples"], temples: "Ohlnir",
+  },
+  {
+    name: "Durburim", questDice: "", colour: "", eventOn: [11, 12], innCost: 65,
+    services: ["Blacksmith", "General Store", "Temples"], temples: "All",
+    notes: "Weapons purchased here are Dwarven-made: +2 Durability (cumulative with other modifiers).",
+  },
+  {
+    name: "Freyfell", questDice: "1d6", colour: "Pink", eventOn: [10, 12], innCost: 25,
+    services: ["Arena", "Blacksmith", "General Store", "Kennel", "Sick Ward"], temples: null,
+  },
+  {
+    name: "Irondale", questDice: "1d6", colour: "Turqoise", eventOn: [11, 12], innCost: 15,
+    services: ["Blacksmith", "General Store", "Temples"], temples: "Rhidnir, Iphy, Metheia",
+  },
+  {
+    name: "Rochdale", questDice: "1d6", colour: "Purple", eventOn: [11, 12], innCost: 20,
+    services: ["General Store", "Herbalist", "Sick Ward", "Magic Brewery"], temples: null,
+  },
+  {
+    name: "Silver City", questDice: "2d20", colour: "White", eventOn: [8, 12], innCost: 25,
+    services: ["Arena", "Asylum", "Banks", "Blacksmith", "Fortune Teller", "General Store", "Guilds", "Horse Racing Track", "Inner Sanctum", "Temples"],
+    temples: "All", notes: "The only place in the southern kingdom where the Guilds have settled.",
+  },
+  {
+    name: "The Outpost", questDice: "1d12", colour: "Yellow", eventOn: [9, 12], innCost: 25,
+    services: ["Blacksmith", "General Store"], temples: null,
+    notes: "Toll: 100c/hero plus League membership required before heading to an Ancient Lands (yellow) quest site.",
+  },
+  {
+    name: "Whiteport", questDice: "1d6", colour: "Black", eventOn: [9, 12], innCost: 15,
+    services: ["Alberta's Magnificent Animals", "General Store", "Inn", "Temples"], temples: "Rhidnir, Iphy, Ohlnir, Metheia",
+    notes: "Gambling opportunities at the inn.",
+  },
+  {
+    name: "Windfair", questDice: "1d6", colour: "Blue", eventOn: [11, 12], innCost: 35,
+    services: ["Blacksmith", "General Store", "Scryer", "Temples"], temples: "Ohlnir, Charus",
+  },
 ];
 
 // Settlement Events (1d12) — full table from the Settlements chapter.
@@ -400,36 +440,39 @@ const QUEST_AVAILABILITY = [
 
 // Settlement activities — Activity Point cost per the Settlements chapter. AP cost of
 // 0 with "requires stay at inn" still takes the whole day, it just doesn't cost the point.
+// `locations` uses the standardized category names from SETTLEMENTS.services, so the
+// Settlement tab can filter this list down to what's actually offered at the current
+// settlement. "Any" means it doesn't depend on a specific shop/building.
 const SETTLEMENT_ACTIVITIES = [
-  { name: "Arena Fighting", where: "Arena", ap: 1 },
-  { name: "Banking", where: "Banks", ap: 1 },
-  { name: "Buy a Dog", where: "Kennel", ap: 1 },
-  { name: "Buy a Familiar", where: "Alberta's Magnificent Animals", ap: 1 },
-  { name: "Buy or Sell Armour", where: "Blacksmith", ap: 1 },
-  { name: "Buy or Sell Equipment", where: "General Store, The Magic Brewery", ap: 1 },
-  { name: "Buy Ingredients", where: "Herbalist, Alchemists' Guild", ap: 1 },
-  { name: "Buy or Sell Weapons", where: "Blacksmith", ap: 1 },
-  { name: "Charge a Magic Item", where: "Wizards' Guild", ap: 1 },
-  { name: "Collect Quest Reward", where: "Start Settlement of Quest", ap: 0 },
-  { name: "Create a Scroll", where: "Inn", ap: 1, note: "per scroll, max 2" },
-  { name: "Cure Disease", where: "Sick Wards or Temple of Metheia", ap: 1 },
-  { name: "Cure Poison", where: "Sick Wards", ap: 1 },
-  { name: "Enchant Objects", where: "Inn", ap: 1, note: "max once" },
-  { name: "Gamble", where: "Inn", ap: 0, note: "requires stay at inn" },
-  { name: "Guild Business", where: "Guilds", ap: 1 },
-  { name: "Horse Racing", where: "Horse tracks", ap: 1 },
-  { name: "Identify a Magic Item", where: "Scryer or Wizards' Guild", ap: 1 },
-  { name: "Identify a Potion", where: "Alchemist Guild, The Magic Brewery, General Store", ap: 1 },
-  { name: "Learn a Prayer", where: "Temple Grounds", ap: 1 },
-  { name: "Learn a Spell", where: "Wizards' Guild", ap: 3 },
-  { name: "Level Up", where: "Any Settlement", ap: 0 },
-  { name: "Pray", where: "Temple", ap: 1 },
-  { name: "Read your Fortune", where: "Fortune Teller", ap: 1 },
-  { name: "Repair Equipment", where: "Blacksmith", ap: 1 },
-  { name: "Rest and Recuperation", where: "Inn", ap: 0, note: "requires stay at inn" },
-  { name: "Skill Training", where: "Guilds", ap: 1 },
-  { name: "Tend to those Memories", where: "Inn", ap: 0, note: "requires stay at inn" },
-  { name: "Treat Mental Conditions", where: "The Asylum", ap: 5 },
+  { name: "Arena Fighting", where: "Arena", ap: 1, locations: ["Arena"] },
+  { name: "Banking", where: "Banks", ap: 1, locations: ["Banks"] },
+  { name: "Buy a Dog", where: "Kennel", ap: 1, locations: ["Kennel"] },
+  { name: "Buy a Familiar", where: "Alberta's Magnificent Animals", ap: 1, locations: ["Alberta's Magnificent Animals"] },
+  { name: "Buy or Sell Armour", where: "Blacksmith", ap: 1, locations: ["Blacksmith"] },
+  { name: "Buy or Sell Equipment", where: "General Store, The Magic Brewery", ap: 1, locations: ["General Store", "Magic Brewery"] },
+  { name: "Buy Ingredients", where: "Herbalist, Alchemists' Guild", ap: 1, locations: ["Herbalist", "Guilds"] },
+  { name: "Buy or Sell Weapons", where: "Blacksmith", ap: 1, locations: ["Blacksmith"] },
+  { name: "Charge a Magic Item", where: "Wizards' Guild", ap: 1, locations: ["Guilds"] },
+  { name: "Collect Quest Reward", where: "Start Settlement of Quest", ap: 0, locations: ["Any"] },
+  { name: "Create a Scroll", where: "Inn", ap: 1, note: "per scroll, max 2", locations: ["Inn"] },
+  { name: "Cure Disease", where: "Sick Wards or Temple of Metheia", ap: 1, locations: ["Sick Ward", "Temples"] },
+  { name: "Cure Poison", where: "Sick Wards", ap: 1, locations: ["Sick Ward"] },
+  { name: "Enchant Objects", where: "Inn", ap: 1, note: "max once", locations: ["Inn"] },
+  { name: "Gamble", where: "Inn", ap: 0, note: "requires stay at inn", locations: ["Inn"] },
+  { name: "Guild Business", where: "Guilds", ap: 1, locations: ["Guilds"] },
+  { name: "Horse Racing", where: "Horse tracks", ap: 1, locations: ["Horse Racing Track"] },
+  { name: "Identify a Magic Item", where: "Scryer or Wizards' Guild", ap: 1, locations: ["Scryer", "Guilds"] },
+  { name: "Identify a Potion", where: "Alchemist Guild, The Magic Brewery, General Store", ap: 1, locations: ["Guilds", "Magic Brewery", "General Store"] },
+  { name: "Learn a Prayer", where: "Temple Grounds", ap: 1, locations: ["Temples"] },
+  { name: "Learn a Spell", where: "Wizards' Guild", ap: 3, locations: ["Guilds"] },
+  { name: "Level Up", where: "Any Settlement", ap: 0, locations: ["Any"] },
+  { name: "Pray", where: "Temple", ap: 1, locations: ["Temples"] },
+  { name: "Read your Fortune", where: "Fortune Teller", ap: 1, locations: ["Fortune Teller"] },
+  { name: "Repair Equipment", where: "Blacksmith", ap: 1, locations: ["Blacksmith"] },
+  { name: "Rest and Recuperation", where: "Inn", ap: 0, note: "requires stay at inn", locations: ["Inn"] },
+  { name: "Skill Training", where: "Guilds", ap: 1, locations: ["Guilds"] },
+  { name: "Tend to those Memories", where: "Inn", ap: 0, note: "requires stay at inn", locations: ["Inn"] },
+  { name: "Treat Mental Conditions", where: "The Asylum", ap: 5, locations: ["Asylum"] },
 ];
 
 // Sell & Repair pricing (Equipment chapter) — only doable in a settlement (Blacksmith,
@@ -1297,6 +1340,17 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.15.0",
+    date: "2026-08-08",
+    sections: {
+      "Added": [
+        "Real per-settlement data from 'The Settlements of the Southern Part of the Kingdom' (p134-137): actual Inn cost for all 11 settlements (15c-65c, not a flat guess), which auto-fills when you pick a settlement instead of needing to type it in",
+        "Each settlement now shows its available Services and which gods' Temples are present, plus settlement-specific notes (Durburim/Birnheim's +2 Durability on locally-made gear, the Outpost's 100c/hero Ancient Lands toll)",
+        "The Activities picker now only shows what the current settlement actually offers — no more seeing 'Learn a Spell' at a village with no Wizards' Guild. Guild-based activities (Charge/Identify Magic Item, Learn a Spell, Guild Business, Skill Training) turned out to only exist in Silver City at all, per the book ('the only place... where the Guilds have settled')",
+      ],
+    },
+  },
   {
     version: "1.14.1",
     date: "2026-08-08",
@@ -3082,12 +3136,19 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const settlement = SETTLEMENTS.find((s) => s.name === party.settlementName);
   const isSilverCity = party.settlementName === "Silver City";
   const currentActivityHero = heroes.some((h) => h.id === activityHero) ? activityHero : (heroes[0]?.id || "");
-  const selectedActivity = SETTLEMENT_ACTIVITIES.find((a) => a.name === activityChoice);
+  // Every settlement has an Inn (each just lists its own price) even though it's not in
+  // the "Available Services" bullet list, so Inn-based activities are always on offer.
+  const availableActivities = SETTLEMENT_ACTIVITIES.filter(
+    (a) => !settlement || a.locations.some((loc) => loc === "Any" || loc === "Inn" || settlement.services.includes(loc))
+  );
+  const selectedActivity = availableActivities.find((a) => a.name === activityChoice) || availableActivities[0];
 
   const setSettlementName = (name) => {
-    setParty({ ...party, settlementName: name });
+    const s = SETTLEMENTS.find((x) => x.name === name);
+    setParty({ ...party, settlementName: name, innCostPerNight: s ? s.innCost : party.innCostPerNight });
     setEventResult(null);
     setQuestResult(null);
+    if (s) setActivityChoice(SETTLEMENT_ACTIVITIES.find((a) => a.locations.some((loc) => loc === "Any" || loc === "Inn" || s.services.includes(loc)))?.name || SETTLEMENT_ACTIVITIES[0].name);
   };
 
   const rollEvent = () => {
@@ -3171,7 +3232,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
 
   const addActivity = () => {
     if (!currentActivityHero) return;
-    const activity = SETTLEMENT_ACTIVITIES.find((a) => a.name === activityChoice);
+    const activity = availableActivities.find((a) => a.name === activityChoice);
     const hero = heroes.find((h) => h.id === currentActivityHero);
     if (!activity || !hero) return;
     const cur = heroAP(currentActivityHero);
@@ -3440,10 +3501,21 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
           ))}
         </select>
         {settlement && (
-          <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-            Quest dice: {settlement.questDice || "— (no quests here)"} {settlement.colour && `(${settlement.colour})`} · Event on {settlement.eventOn[0]}
-            {settlement.eventOn[0] !== settlement.eventOn[1] ? `-${settlement.eventOn[1]}` : ""} (1d12)
-          </p>
+          <>
+            <p className="text-xs mb-1.5" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+              Quest dice: {settlement.questDice || "— (no quests here)"} {settlement.colour && `(${settlement.colour})`} · Event on {settlement.eventOn[0]}
+              {settlement.eventOn[0] !== settlement.eventOn[1] ? `-${settlement.eventOn[1]}` : ""} (1d12) · Inn: {settlement.innCost}c/night
+            </p>
+            <p className="text-xs mb-1.5" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+              <span className="font-semibold" style={{ color: palette.ink }}>Services:</span> {settlement.services.join(", ")}
+              {settlement.temples && <> · <span className="font-semibold" style={{ color: palette.ink }}>Temples:</span> {settlement.temples}</>}
+            </p>
+            {settlement.notes && (
+              <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+                {settlement.notes}
+              </p>
+            )}
+          </>
         )}
 
         <div className="flex flex-col sm:flex-row gap-2 mb-2">
@@ -3544,10 +3616,15 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
           className="w-full text-xs rounded px-2 py-2 mb-1"
           style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
         >
-          {SETTLEMENT_ACTIVITIES.map((a) => (
+          {availableActivities.map((a) => (
             <option key={a.name} value={a.name}>{a.name} — {a.ap} AP</option>
           ))}
         </select>
+        {settlement && availableActivities.length < SETTLEMENT_ACTIVITIES.length && (
+          <p className="text-[10px] mb-1.5 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            Showing only what {settlement.name} actually offers ({availableActivities.length}/{SETTLEMENT_ACTIVITIES.length}).
+          </p>
+        )}
         {selectedActivity && (
           <p className="text-xs mb-2 truncate" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
             {selectedActivity.where}{selectedActivity.note ? ` · ${selectedActivity.note}` : ""}

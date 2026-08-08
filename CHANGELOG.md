@@ -3,6 +3,13 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.15.0] — 2026-08-08
+
+### Added
+- Real per-settlement data from "The Settlements of the Southern Part of the Kingdom" (p134-137): actual Inn cost for all 11 settlements (15c-65c, not a flat guess), which auto-fills when you pick a settlement instead of needing to type it in
+- Each settlement now shows its available Services and which gods' Temples are present, plus settlement-specific notes (Durburim/Birnheim's +2 Durability on locally-made gear, the Outpost's 100c/hero Ancient Lands toll)
+- The Activities picker now only shows what the current settlement actually offers — no more seeing "Learn a Spell" at a village with no Wizards' Guild. Guild-based activities (Charge/Identify Magic Item, Learn a Spell, Guild Business, Skill Training) turned out to only exist in Silver City at all, per the book ("the only place... where the Guilds have settled")
+
 ## [1.14.1] — 2026-08-08
 
 ### Fixed

@@ -3,6 +3,14 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.19.0] — 2026-08-08
+
+### Added
+- Banking added to Resolve an Activity — each hero can hold a separate balance in all three Silver City banks (Chamberlings Reserve, Smartfall Bank, The Vault), with Deposit/Withdraw buttons and a "Roll It" that runs the 1d20 profit/loss check for the selected bank (each bank has its own slice of the roll range, including a "Robbed!" result that wipes that bank's balance)
+
+### Notes
+- This closes out the settlement-related backlog from the last batch of photos — next up is the older list: Start of Turn/Threat Table, the Door/Chest opener, Sanity automation, the Alchemy potion-maker, and fixing Backgrounds to have real mechanical effects
+
 ## [1.18.1] — 2026-08-08
 
 ### Fixed

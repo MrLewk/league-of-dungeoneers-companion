@@ -76,6 +76,7 @@ const defaultHero = () => ({
   conditions: [],
   backpackUpgrade: "",
   tempEffects: [],
+  bankBalances: { chamberlings: 0, smartfall: 0, vault: 0 },
   backpack: [],
   notes: "",
 });
@@ -471,6 +472,7 @@ const ARENA_FINAL_EXTRA_AWARD = [{ max: 1, prize: "Wonderful Treasure" }, { max:
 // Banking (p145, Silver City only) — three banks, each covering a different slice of a
 // shared 1d20 roll (rolled once per Silver City visit per bank the hero has money in).
 const BANKS = ["Chamberlings Reserve", "Smartfall Bank", "The Vault"];
+const BANK_KEY_MAP = { "Chamberlings Reserve": "chamberlings", "Smartfall Bank": "smartfall", "The Vault": "vault" };
 const BANK_TABLE = [
   { chamberlings: null, smartfall: null, vault: [1, 2], pct: 30 },
   { chamberlings: [1, 4], smartfall: null, vault: [3, 4], pct: 20 },
@@ -484,6 +486,14 @@ const BANK_TABLE = [
   { chamberlings: null, smartfall: null, vault: [18, 18], pct: -30 },
   { chamberlings: [20, 20], smartfall: [18, 20], vault: [19, 20], pct: "robbed" },
 ];
+// Looks up the profit/loss %% (or "robbed") for a 1d20 roll against one bank's column.
+function bankRollResult(bankKey, roll) {
+  const row = BANK_TABLE.find((r) => {
+    const range = r[bankKey];
+    return range && roll >= range[0] && roll <= range[1];
+  });
+  return row ? row.pct : 0;
+}
 
 const SETTLEMENT_EVENTS = [
   { roll: 1, title: "Stray Dog", text: "A stray dog follows the party through the streets. After a small treat from a hero, you now own it. Randomise the kind of dog (Companions' Compendium), or if you already have one, treat as 'Nothing special happens'." },
@@ -1460,6 +1470,18 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.19.0",
+    date: "2026-08-08",
+    sections: {
+      "Added": [
+        "Banking added to Resolve an Activity — each hero can hold a separate balance in all three Silver City banks (Chamberlings Reserve, Smartfall Bank, The Vault), with Deposit/Withdraw buttons and a 'Roll It' that runs the 1d20 profit/loss check for the selected bank (each bank has its own slice of the roll range, including a 'Robbed!' result that wipes that bank's balance)",
+      ],
+      "Notes": [
+        "This closes out the settlement-related backlog from the last batch of photos — next up is the older list: Start of Turn/Threat Table, the Door/Chest opener, Sanity automation, the Alchemy potion-maker, and fixing Backgrounds to have real mechanical effects",
+      ],
+    },
+  },
+  {
     version: "1.18.1",
     date: "2026-08-08",
     sections: {
@@ -2243,6 +2265,7 @@ function normalizeHero(h) {
     backpack: h.backpack || base.backpack,
     backpackUpgrade: h.backpackUpgrade || "",
     tempEffects: h.tempEffects || [],
+    bankBalances: { ...base.bankBalances, ...(h.bankBalances || {}) },
     armour: {
       head: armourPiece("head"),
       arms: armourPiece("arms"),
@@ -3351,6 +3374,8 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const [resolverBet, setResolverBet] = useState(50);
   const [resolverArenaLevel, setResolverArenaLevel] = useState("Group");
   const [resolverDrinkAle, setResolverDrinkAle] = useState(false);
+  const [resolverBank, setResolverBank] = useState("");
+  const [resolverBankAmount, setResolverBankAmount] = useState(100);
   const [resolverResult, setResolverResult] = useState(null);
   // Tracks opted-OUT heroes rather than opted-in, so heroes added later still default to selected.
   const [restExcluded, setRestExcluded] = useState(() => new Set());
@@ -3905,7 +3930,55 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         setResolverResult({ ok: true, lines: [line] });
         addLog(`${resolvedHero.name} is treated at the Asylum: failed (rolled ${roll}).`);
       }
+    } else if (resolverActivity === "Banking") {
+      if (!resolverBank) { setResolverResult({ ok: false, lines: ["Pick a bank first."] }); return; }
+      const bankKey = BANK_KEY_MAP[resolverBank];
+      const balances = resolvedHero.bankBalances || { chamberlings: 0, smartfall: 0, vault: 0 };
+      const current = balances[bankKey] || 0;
+      const roll = rollDie(20);
+      const pct = bankRollResult(bankKey, roll);
+      let newBalance, line;
+      if (pct === "robbed") {
+        newBalance = 0;
+        line = `Rolled ${roll} — Robbed! All ${resolverBank} deposits are gone (was ${current}c).`;
+      } else {
+        const change = Math.floor(current * (pct / 100));
+        newBalance = Math.max(0, current + change);
+        line = `Rolled ${roll} — ${pct >= 0 ? "+" : ""}${pct}% (${change >= 0 ? "+" : ""}${change}c). ${resolverBank} balance: ${current}c → ${newBalance}c.`;
+      }
+      updateHero({ ...resolvedHero, bankBalances: { ...balances, [bankKey]: newBalance } });
+      setResolverResult({ ok: true, lines: [line] });
+      addLog(`${resolvedHero.name} checks ${resolverBank}: ${line}`);
     }
+  };
+
+  const depositToBank = () => {
+    if (!resolverBank || !resolvedHero) return;
+    const bankKey = BANK_KEY_MAP[resolverBank];
+    const amount = Math.max(0, resolverBankAmount);
+    if (amount <= 0) return;
+    if (party.coins < amount) { setResolverResult({ ok: false, lines: [`The party doesn't have ${amount}c to deposit.`] }); return; }
+    const balances = resolvedHero.bankBalances || { chamberlings: 0, smartfall: 0, vault: 0 };
+    updateHero({ ...resolvedHero, bankBalances: { ...balances, [bankKey]: (balances[bankKey] || 0) + amount } });
+    setParty((prev) => ({ ...prev, coins: prev.coins - amount }));
+    const line = `Deposited ${amount}c into ${resolvedHero.name}'s ${resolverBank} account.`;
+    setResolverResult({ ok: true, lines: [line] });
+    addLog(line);
+  };
+
+  const withdrawFromBank = () => {
+    if (!resolverBank || !resolvedHero) return;
+    const bankKey = BANK_KEY_MAP[resolverBank];
+    const amount = Math.max(0, resolverBankAmount);
+    if (amount <= 0) return;
+    const balances = resolvedHero.bankBalances || { chamberlings: 0, smartfall: 0, vault: 0 };
+    const current = balances[bankKey] || 0;
+    if (current < amount) { setResolverResult({ ok: false, lines: [`Only ${current}c available in ${resolvedHero.name}'s ${resolverBank} account.`] }); return; }
+    updateHero({ ...resolvedHero, bankBalances: { ...balances, [bankKey]: current - amount } });
+    setParty((prev) => ({ ...prev, coins: prev.coins + amount }));
+    const line = `Withdrew ${amount}c from ${resolvedHero.name}'s ${resolverBank} account.`;
+    setResolverResult({ ok: true, lines: [line] });
+    addLog(line);
   };
 
   return (
@@ -4190,7 +4263,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       <Panel className="mb-4">
         <SectionTitle icon={Sparkles}>Resolve an Activity</SectionTitle>
         <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-          Pray, Fortune Teller, Gambling, Horse Racing, Arena Fighting, Tending to Those Memories, Treat Mental Conditions.
+          Pray, Fortune Teller, Gambling, Horse Racing, Arena Fighting, Tending to Those Memories, Treat Mental Conditions, Banking.
         </p>
         <div className="grid grid-cols-2 gap-1.5 mb-1.5">
           <select
@@ -4199,7 +4272,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
             className="text-xs rounded px-2 py-1.5"
             style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
           >
-            {["Pray", "Fortune Teller", "Gambling", "Horse Racing", "Arena Fighting", "Tending to Those Memories", "Treat Mental Conditions"].map((a) => (
+            {["Pray", "Fortune Teller", "Gambling", "Horse Racing", "Arena Fighting", "Tending to Those Memories", "Treat Mental Conditions", "Banking"].map((a) => (
               <option key={a} value={a}>{a}</option>
             ))}
           </select>
@@ -4279,6 +4352,46 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
               ? `Will attempt to cure: "${resolvedHero.conditions[0]}"`
               : `${resolvedHero.name} has no conditions listed on their sheet.`}
           </p>
+        )}
+
+        {resolverActivity === "Banking" && resolvedHero && (
+          <div className="mb-1.5">
+            <select
+              value={resolverBank}
+              onChange={(e) => setResolverBank(e.target.value)}
+              className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+              style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+            >
+              <option value="">Pick a bank…</option>
+              {BANKS.map((b) => <option key={b} value={b}>{b} ({resolvedHero.bankBalances?.[BANK_KEY_MAP[b]] || 0}c)</option>)}
+            </select>
+            <div className="grid grid-cols-3 gap-1 mb-1.5 text-[10px] text-center" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.inkSoft }}>
+              {BANKS.map((b) => (
+                <div key={b} className="rounded p-1" style={{ background: "#00000008" }}>
+                  <div className="truncate">{b}</div>
+                  <div className="font-bold" style={{ color: palette.ink }}>{resolvedHero.bankBalances?.[BANK_KEY_MAP[b]] || 0}c</div>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-1.5 mb-1.5">
+              <input
+                type="number"
+                value={resolverBankAmount}
+                onChange={(e) => setResolverBankAmount(Number(e.target.value) || 0)}
+                className="flex-1 text-xs rounded px-2 py-1.5"
+                style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+              />
+              <button onClick={depositToBank} className="text-xs px-3 py-1.5 rounded font-semibold" style={{ background: palette.forestDark, color: palette.parchment }}>
+                Deposit
+              </button>
+              <button onClick={withdrawFromBank} className="text-xs px-3 py-1.5 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>
+                Withdraw
+              </button>
+            </div>
+            <p className="text-[10px] mb-1.5 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+              "Roll It" below rolls the 1d20 profit/loss check for the selected bank (once per Silver City visit, per the book).
+            </p>
+          </div>
         )}
 
         <button

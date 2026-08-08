@@ -52,6 +52,7 @@ const defaultHero = () => ({
   energy: { cur: 1, max: 1 },
   sanity: { cur: 10, max: 10 },
   mana: { cur: 0, max: 0 },
+  movement: 4,
   skills: {
     cs: 30, rs: 30, dodge: 20, pickLocks: 20, barter: 20,
     heal: 20, alchemy: 20, perception: 20, foraging: 20,
@@ -845,6 +846,49 @@ const TALENTS = [
   { name: "Wise", type: "Mental", effect: "May re-roll a failed WIS test." },
 ];
 
+// Talents with an unconditional, always-on numeric bonus — these auto-apply to the hero
+// sheet when added/removed via the Compendium. Every other talent (the majority — things
+// like Hate, Fast Reload, Marksman) is situational/conditional and stays a description
+// card, since there's no safe generic way to "apply" a combat-only or once-per-battle rule.
+const TALENT_EFFECTS = {
+  "Catlike": { stat: "DEX", amount: 5, label: "+5 DEX" },
+  "Fast": { movement: 1, label: "+1 Movement" },
+  "Resilient": { stat: "CON", amount: 5, label: "+5 CON" },
+  "Strong": { stat: "STR", amount: 5, label: "+5 STR" },
+  "Strong Build": { hp: 2, label: "+2 HP" },
+  "God's Chosen": { luck: 1, label: "+1 Luck" },
+  "Disciplined": { stat: "RES", amount: 10, label: "+10 RES" },
+  "Hunter": { skill: "foraging", amount: 10, label: "+10 Foraging" },
+  "Lucky": { luck: 1, label: "+1 Luck" },
+  "Night Vision": { skill: "perception", amount: 10, label: "+10 Perception" },
+  "Persistent": { mana: 15, label: "+15 Mana" },
+  "Confident": { stat: "RES", amount: 5, label: "+5 RES" },
+  "Strong-Minded": { sanity: 1, label: "+1 Sanity" },
+};
+
+// Adjusts a cur/max pair by `amount` in the given direction. Growing (+1) raises both;
+// shrinking (-1) lowers max and clamps cur down to fit, without assuming cur was at max.
+function adjustCurMax(cm, amount, sign) {
+  if (sign > 0) return { cur: cm.cur + amount, max: cm.max + amount };
+  const max = Math.max(0, cm.max - amount);
+  return { cur: Math.min(cm.cur, max), max };
+}
+
+// Builds the hero patch for applying (sign=1) or reversing (sign=-1) a talent's effect.
+function talentEffectPatch(hero, talentName, sign) {
+  const eff = TALENT_EFFECTS[talentName];
+  if (!eff) return {};
+  const patch = {};
+  if (eff.stat) patch.stats = { ...hero.stats, [eff.stat]: Math.max(0, (Number(hero.stats[eff.stat]) || 0) + sign * eff.amount) };
+  if (eff.skill) patch.skills = { ...hero.skills, [eff.skill]: Math.max(0, (Number(hero.skills[eff.skill]) || 0) + sign * eff.amount) };
+  if (eff.hp) patch.hp = adjustCurMax(hero.hp, eff.hp, sign);
+  if (eff.mana) patch.mana = adjustCurMax(hero.mana, eff.mana, sign);
+  if (eff.sanity) patch.sanity = adjustCurMax(hero.sanity, eff.sanity, sign);
+  if (eff.luck) patch.luck = Math.max(0, hero.luck + sign * eff.luck);
+  if (eff.movement) patch.movement = Math.max(0, (hero.movement ?? 4) + sign * eff.movement);
+  return patch;
+}
+
 const PERKS = [
   { name: "Battle Fury", type: "Combat", effect: "May perform 2 Power Attacks in one turn as if they only cost 1 AP each." },
   { name: "Call to Action", type: "Leader", effect: "When activating this hero, once 2 AP spent, take a hero token from the bag and activate another hero within LOS." },
@@ -923,6 +967,11 @@ function CompendiumList({ items, showLevel, showType, onAdd, addedNames }) {
                   {item.school && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "#5B6FA8", color: palette.parchment, fontFamily: "JetBrains Mono, monospace" }}>{item.school}</span>
                   )}
+                  {TALENT_EFFECTS[item.name] && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: palette.gold, color: palette.charcoal, fontFamily: "JetBrains Mono, monospace" }}>
+                      Auto: {TALENT_EFFECTS[item.name].label}
+                    </span>
+                  )}
                 </div>
                 {onAdd && (
                   <button
@@ -949,7 +998,7 @@ function CompendiumList({ items, showLevel, showType, onAdd, addedNames }) {
   );
 }
 
-function CompendiumTab({ heroes, updateHero }) {
+function CompendiumTab({ heroes, updateHero, addLog }) {
   const [cat, setCat] = useState("talents");
   const [heroPick, setHeroPick] = useState("");
   const cats = [
@@ -966,7 +1015,10 @@ function CompendiumTab({ heroes, updateHero }) {
     if (!pickedHero || !field) return;
     const list = pickedHero[field] || [];
     if (list.includes(name)) return;
-    updateHero({ ...pickedHero, [field]: [...list, name] });
+    const effectPatch = field === "talents" ? talentEffectPatch(pickedHero, name, 1) : {};
+    updateHero({ ...pickedHero, [field]: [...list, name], ...effectPatch });
+    const eff = field === "talents" ? TALENT_EFFECTS[name] : null;
+    if (eff && addLog) addLog(`${pickedHero.name}: gained Talent "${name}" (${eff.label}, applied automatically).`);
   };
 
   return (
@@ -1040,6 +1092,16 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.6.0",
+    date: "2026-08-07",
+    sections: {
+      "Added": [
+        "13 Talents with an unconditional numeric bonus now auto-apply to the hero sheet when added or removed from the Compendium — Catlike (+5 DEX), Fast (+1 Movement), Resilient (+5 CON), Strong (+5 STR), Strong Build (+2 HP), God's Chosen (+1 Luck), Disciplined (+10 RES), Hunter (+10 Foraging), Lucky (+1 Luck), Night Vision (+10 Perception), Persistent (+15 Mana), Confident (+5 RES), Strong-Minded (+1 Sanity). Marked with a gold 'Auto:' badge in both the Compendium browser and on the hero's attached-talents list. Every other talent (the majority — combat/conditional ones like Hate or Marksman) stays a description card, since there's no safe way to auto-apply a once-per-battle or situational rule",
+        "Movement is now a tracked field on the hero sheet (starts at 4, per the QRS) instead of not existing at all",
+      ],
+    },
+  },
   {
     version: "1.5.1",
     date: "2026-08-07",
@@ -1484,7 +1546,7 @@ function normalizeHero(h) {
 // ---------- Hero Card ----------
 // Shows a hero's attached talents/perks/spells/prayers/special-rules as small
 // cards with name + description, instead of bare pills, with a remove button.
-function AttachedItemList({ label, names, dataset, color, onRemove, groupKey }) {
+function AttachedItemList({ label, names, dataset, color, onRemove, groupKey, effects }) {
   if (!names || names.length === 0) return null;
   const resolved = names.map((name) => ({ name, item: dataset.find((d) => d.name === name) }));
   const groups = {};
@@ -1505,6 +1567,11 @@ function AttachedItemList({ label, names, dataset, color, onRemove, groupKey }) 
           )}
           {item && item.school && (
             <span className="text-xs px-1.5 rounded-full" style={{ background: "#5B6FA8", color: palette.parchment, fontFamily: "JetBrains Mono, monospace" }}>{item.school}</span>
+          )}
+          {effects && effects[name] && (
+            <span className="text-xs px-1.5 rounded-full font-bold" style={{ background: palette.gold, color: palette.charcoal, fontFamily: "JetBrains Mono, monospace" }}>
+              Auto: {effects[name].label}
+            </span>
           )}
         </div>
         {item && item.cv != null && (
@@ -1972,6 +2039,14 @@ function HeroCard({ hero, update, remove, addLog }) {
             <Stepper value={hero.luck} onChange={(v) => set({ luck: v })} min={0} max={999} />
           </div>
 
+          <div className="rounded p-2 mb-3 flex items-center justify-between" style={{ background: "#00000008" }}>
+            <div>
+              <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }}>MOVEMENT</div>
+              <p className="text-[10px]" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>Starts at 4. The Fast Talent adds +1 automatically.</p>
+            </div>
+            <Stepper value={hero.movement ?? 4} onChange={(v) => set({ movement: v })} min={0} max={99} />
+          </div>
+
           {/* Skills */}
           <div className="flex items-center justify-between mb-1">
             <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase">Skills</div>
@@ -2167,7 +2242,19 @@ function HeroCard({ hero, update, remove, addLog }) {
 
           {(hero.talents.length > 0 || hero.perks.length > 0 || hero.spells.length > 0 || hero.prayers.length > 0 || hero.specialRules.length > 0) && (
             <div className="mt-2">
-              <AttachedItemList label="Talents" names={hero.talents} dataset={TALENTS} color={palette.forestDark} groupKey={(i) => i.type} onRemove={(t) => set({ talents: hero.talents.filter((x) => x !== t) })} />
+              <AttachedItemList
+                label="Talents"
+                names={hero.talents}
+                dataset={TALENTS}
+                color={palette.forestDark}
+                groupKey={(i) => i.type}
+                effects={TALENT_EFFECTS}
+                onRemove={(t) => {
+                  const reversePatch = talentEffectPatch(hero, t, -1);
+                  set({ talents: hero.talents.filter((x) => x !== t), ...reversePatch });
+                  if (TALENT_EFFECTS[t]) addLog && addLog(`${hero.name}: removed Talent "${t}" (${TALENT_EFFECTS[t].label} reversed).`);
+                }}
+              />
               <AttachedItemList label="Perks" names={hero.perks} dataset={PERKS} color={palette.gold} groupKey={(i) => i.type} onRemove={(t) => set({ perks: hero.perks.filter((x) => x !== t) })} />
               <AttachedItemList label="Spells" names={hero.spells} dataset={SPELLS} color="#5B6FA8" groupKey={(i) => i.school} onRemove={(t) => set({ spells: hero.spells.filter((x) => x !== t) })} />
               <AttachedItemList label="Prayers" names={hero.prayers} dataset={PRAYERS} color={palette.crimson} groupKey={(i) => `Level ${i.lvl}`} onRemove={(t) => set({ prayers: hero.prayers.filter((x) => x !== t) })} />

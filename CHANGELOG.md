@@ -3,6 +3,14 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.14.1] — 2026-08-08
+
+### Fixed
+- Inn cost now defaults to 25c (whole party) instead of 0 — still editable per settlement if your table charges differently
+
+### Notes
+- Only affects brand-new campaigns — existing saved campaigns keep whatever inn cost they already had (0, most likely), since the app can't tell the difference between "never touched this" and "deliberately set to 0." Update it manually on the Settlement tab if you want the correct default there too
+
 ## [1.14.0] — 2026-08-08
 
 ### Changed

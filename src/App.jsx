@@ -293,7 +293,7 @@ const defaultParty = () => ({
   threat: 2, threatFloor: 2, morale: 0, food: 4, coins: 150,
   settlementName: "",
   settlementAP: {}, // heroId -> { spent: number, log: [{label, cost}] }
-  innCostPerNight: 0,
+  innCostPerNight: 25,
   startingMorale: 0,
 });
 
@@ -1297,6 +1297,18 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.14.1",
+    date: "2026-08-08",
+    sections: {
+      "Fixed": [
+        "Inn cost now defaults to 25c (whole party) instead of 0 — still editable per settlement if your table charges differently",
+      ],
+      "Notes": [
+        "Only affects brand-new campaigns — existing saved campaigns keep whatever inn cost they already had (0, most likely), since the app can't tell the difference between 'never touched this' and 'deliberately set to 0'. Update it manually on the Settlement tab if you want the correct default there too",
+      ],
+    },
+  },
   {
     version: "1.14.0",
     date: "2026-08-08",

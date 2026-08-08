@@ -1231,6 +1231,16 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.12.1",
+    date: "2026-08-07",
+    sections: {
+      "Fixed": [
+        "No way to remove a weapon or armour piece once picked from the table, short of manually clearing every field — both now have a one-tap Clear button that resets the slot back to blank",
+        "Item name was squeezed into a cramped row alongside DEF/ENC/DUR and got clipped on mobile — name is now its own full-width line above the stats, so it's always fully visible",
+      ],
+    },
+  },
+  {
     version: "1.12.0",
     date: "2026-08-07",
     sections: {
@@ -2596,7 +2606,18 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
 
           {/* Weapon */}
           <div className="mb-2">
-            <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">Weapon</div>
+            <div className="flex items-center justify-between mb-1">
+              <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase">Weapon</div>
+              {hero.weapon.name && (
+                <button
+                  onClick={() => setWeapon({ name: "", dmg: "", enc: 0, dur: { cur: 6, max: 6 } })}
+                  className="text-[10px] flex items-center gap-0.5 px-1.5 py-0.5 rounded"
+                  style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif" }}
+                >
+                  <X size={11} /> Clear
+                </button>
+              )}
+            </div>
             <select
               value=""
               onChange={(e) => e.target.value && pickWeapon(e.target.value)}
@@ -2608,34 +2629,32 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
                 <option key={w.name} value={w.name}>{w.name} ({w.dmg}, Class {w.class})</option>
               ))}
             </select>
+            <input
+              value={hero.weapon.name}
+              onChange={(e) => setWeapon({ name: e.target.value })}
+              placeholder="Name (or pick from table above)"
+              className="w-full text-sm font-bold rounded px-2 py-1.5 mb-1.5"
+              style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Cinzel, serif", color: palette.ink }}
+            />
             <div className="flex gap-1.5 flex-wrap">
-              <input
-                value={hero.weapon.name}
-                onChange={(e) => setWeapon({ name: e.target.value })}
-                placeholder="Name"
-                className="flex-1 text-xs rounded px-2 py-1 min-w-0"
-                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-              />
-              <input
-                value={hero.weapon.dmg}
-                onChange={(e) => setWeapon({ dmg: e.target.value })}
-                placeholder="DMG"
-                className="w-16 text-xs rounded px-2 py-1"
-                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
-              />
-              <div className="flex items-center gap-1 text-xs" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+              <label className="flex items-center gap-1 text-xs" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+                DMG
+                <input value={hero.weapon.dmg} onChange={(e) => setWeapon({ dmg: e.target.value })}
+                  className="w-14 rounded px-1 py-0.5" style={{ border: `1px solid ${palette.line}` }} />
+              </label>
+              <label className="flex items-center gap-1 text-xs" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
                 ENC
                 <input type="number" value={hero.weapon.enc} onChange={(e) => setWeapon({ enc: Number(e.target.value) || 0 })}
-                  className="w-9 rounded px-1" style={{ border: `1px solid ${palette.line}` }} />
-              </div>
-              <div className="flex items-center gap-1 text-xs" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+                  className="w-9 rounded px-1 py-0.5" style={{ border: `1px solid ${palette.line}` }} />
+              </label>
+              <label className="flex items-center gap-1 text-xs" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
                 DUR
                 <input type="number" value={hero.weapon.dur.cur} onChange={(e) => setWeapon({ dur: { ...hero.weapon.dur, cur: Number(e.target.value) || 0 } })}
-                  className="w-9 rounded px-1" style={{ border: `1px solid ${palette.line}` }} />
+                  className="w-9 rounded px-1 py-0.5" style={{ border: `1px solid ${palette.line}` }} />
                 /
                 <input type="number" value={hero.weapon.dur.max} onChange={(e) => setWeapon({ dur: { ...hero.weapon.dur, max: Number(e.target.value) || 0 } })}
-                  className="w-9 rounded px-1" style={{ border: `1px solid ${palette.line}` }} />
-              </div>
+                  className="w-9 rounded px-1 py-0.5" style={{ border: `1px solid ${palette.line}` }} />
+              </label>
             </div>
             {weaponRef && (
               <div className="text-[10px] mt-1 rounded px-2 py-1" style={{ background: "#00000008", color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
@@ -2662,7 +2681,18 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
                 const options = ARMOUR_AND_SHIELDS.filter((a) => a.covers.includes(loc));
                 return (
                   <div key={loc}>
-                    <div className="text-xs font-semibold mb-0.5" style={{ fontFamily: "Cinzel, serif", color: palette.inkSoft }}>{label}</div>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="text-xs font-semibold" style={{ fontFamily: "Cinzel, serif", color: palette.inkSoft }}>{label}</div>
+                      {piece.name && (
+                        <button
+                          onClick={() => setArmourPiece(loc, { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 } })}
+                          className="text-[10px] flex items-center gap-0.5 px-1.5 py-0.5 rounded"
+                          style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif" }}
+                        >
+                          <X size={11} /> Clear
+                        </button>
+                      )}
+                    </div>
                     <select
                       value=""
                       onChange={(e) => e.target.value && pickArmour(loc, e.target.value)}
@@ -2674,26 +2704,32 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
                         <option key={a.name} value={a.name}>{a.name} (Def {a.def}, {a.cost}c)</option>
                       ))}
                     </select>
-                    <div className="flex items-center gap-1 text-xs flex-wrap" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
-                      <input
-                        value={piece.name}
-                        onChange={(e) => setArmourPiece(loc, { name: e.target.value })}
-                        placeholder="Name"
-                        className="flex-1 min-w-0 rounded px-1.5 py-0.5"
-                        style={{ border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-                      />
-                      <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>DEF</span>
-                      <input type="number" value={piece.def} onChange={(e) => setArmourPiece(loc, { def: Number(e.target.value) || 0 })}
-                        className="w-9 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-                      <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>ENC</span>
-                      <input type="number" value={piece.enc} onChange={(e) => setArmourPiece(loc, { enc: Number(e.target.value) || 0 })}
-                        className="w-9 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-                      <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>DUR</span>
-                      <input type="number" value={piece.dur.cur} onChange={(e) => setArmourPiece(loc, { dur: { ...piece.dur, cur: Number(e.target.value) || 0 } })}
-                        className="w-8 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-                      <span style={{ color: palette.inkSoft }}>/</span>
-                      <input type="number" value={piece.dur.max} onChange={(e) => setArmourPiece(loc, { dur: { ...piece.dur, max: Number(e.target.value) || 0 } })}
-                        className="w-8 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                    <input
+                      value={piece.name}
+                      onChange={(e) => setArmourPiece(loc, { name: e.target.value })}
+                      placeholder="Name (or pick from table above)"
+                      className="w-full text-sm font-bold rounded px-2 py-1 mb-1"
+                      style={{ border: `1px solid ${palette.line}`, fontFamily: "Cinzel, serif", color: palette.ink, background: "#fff" }}
+                    />
+                    <div className="flex items-center gap-1.5 text-xs flex-wrap" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+                      <label className="flex items-center gap-1" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+                        DEF
+                        <input type="number" value={piece.def} onChange={(e) => setArmourPiece(loc, { def: Number(e.target.value) || 0 })}
+                          className="w-9 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}` }} />
+                      </label>
+                      <label className="flex items-center gap-1" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+                        ENC
+                        <input type="number" value={piece.enc} onChange={(e) => setArmourPiece(loc, { enc: Number(e.target.value) || 0 })}
+                          className="w-9 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}` }} />
+                      </label>
+                      <label className="flex items-center gap-1" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+                        DUR
+                        <input type="number" value={piece.dur.cur} onChange={(e) => setArmourPiece(loc, { dur: { ...piece.dur, cur: Number(e.target.value) || 0 } })}
+                          className="w-8 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}` }} />
+                        /
+                        <input type="number" value={piece.dur.max} onChange={(e) => setArmourPiece(loc, { dur: { ...piece.dur, max: Number(e.target.value) || 0 } })}
+                          className="w-8 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}` }} />
+                      </label>
                     </div>
                     {ref && (
                       <div className="text-[10px] mt-0.5 rounded px-1.5 py-0.5" style={{ background: "#00000008", color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>

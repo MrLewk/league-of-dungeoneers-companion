@@ -1165,6 +1165,16 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.9.1",
+    date: "2026-08-07",
+    sections: {
+      "Fixed": [
+        "Sell & Repair let you type any price and click Sell repeatedly for infinite coins, since it wasn't tied to anything the party actually owned. Sell now requires picking a real item — a hero's equipped weapon, or a named backpack item — and removes it once sold, so it can't be sold twice",
+        "Repair now targets a real damaged weapon and actually restores its durability on the hero sheet, instead of being a disconnected calculator. Backpack items aren't repairable yet since they only store a single durability value, not a current/max pair",
+      ],
+    },
+  },
+  {
     version: "1.9.0",
     date: "2026-08-07",
     sections: {
@@ -2553,11 +2563,13 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const [activityChoice, setActivityChoice] = useState(SETTLEMENT_ACTIVITIES[0].name);
   const [openMap, setOpenMap] = useState(null);
   const [restResult, setRestResult] = useState(null);
-  const [sellPrice, setSellPrice] = useState(100);
+  const [sellKey, setSellKey] = useState("");
+  const [sellPrice, setSellPrice] = useState(0);
   const [sellLostDur, setSellLostDur] = useState(0);
   const [sellMaxDur, setSellMaxDur] = useState(6);
   const [sellResult, setSellResult] = useState(null);
-  const [repairPrice, setRepairPrice] = useState(100);
+  const [repairKey, setRepairKey] = useState("");
+  const [repairPrice, setRepairPrice] = useState(0);
   const [repairPoints, setRepairPoints] = useState(1);
   const [repairResult, setRepairResult] = useState(null);
   // Tracks opted-OUT heroes rather than opted-in, so heroes added later still default to selected.
@@ -2722,7 +2734,58 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
     setRestResult({ ok: true, lines: summary });
   };
 
+  // Real, currently-owned items the party can sell/repair — sourced from each hero's
+  // equipped weapon and named backpack items. Selling requires picking one of these
+  // (rather than a free-standing price field) and removes it from the hero afterward,
+  // so it can't be sold twice.
+  const sellableItems = [];
+  heroes.forEach((h) => {
+    if (h.weapon && h.weapon.name) {
+      const ref = WEAPONS.find((w) => w.name === h.weapon.name);
+      sellableItems.push({
+        key: `${h.id}:weapon`,
+        label: `${h.name} — Weapon: ${h.weapon.name}`,
+        heroId: h.id,
+        kind: "weapon",
+        defaultPrice: ref ? ref.cost : 0,
+        defaultLost: Math.max(0, (h.weapon.dur.max || 0) - (h.weapon.dur.cur || 0)),
+        defaultMax: h.weapon.dur.max || 6,
+      });
+    }
+    (h.backpack || []).forEach((item) => {
+      if (item.name) {
+        sellableItems.push({
+          key: `${h.id}:backpack:${item.id}`,
+          label: `${h.name} — ${item.name}`,
+          heroId: h.id,
+          kind: "backpack",
+          itemId: item.id,
+          defaultPrice: Number(item.value) || 0,
+          defaultLost: 0,
+          defaultMax: 6,
+        });
+      }
+    });
+  });
+  const selectedSellItem = sellableItems.find((i) => i.key === sellKey) || null;
+
+  const pickSellItem = (key) => {
+    setSellKey(key);
+    setSellResult(null);
+    const item = sellableItems.find((i) => i.key === key);
+    if (item) {
+      setSellPrice(item.defaultPrice);
+      setSellLostDur(item.defaultLost);
+      setSellMaxDur(item.defaultMax);
+    }
+  };
+
   const doSell = () => {
+    const item = selectedSellItem;
+    if (!item) {
+      setSellResult({ ok: false, line: "Pick an item the party actually has first." });
+      return;
+    }
     if (sellPrice < 10) {
       setSellResult({ ok: false, line: "Items worth less than 10c cannot be sold." });
       return;
@@ -2732,21 +2795,67 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       return;
     }
     const value = sellValue(sellPrice, sellLostDur);
+    const hero = heroes.find((h) => h.id === item.heroId);
+    if (!hero) return;
+    if (item.kind === "weapon") {
+      updateHero({ ...hero, weapon: { name: "", dmg: "", enc: 0, dur: { cur: 6, max: 6 } } });
+    } else {
+      updateHero({ ...hero, backpack: hero.backpack.filter((it) => it.id !== item.itemId) });
+    }
     setParty((prev) => ({ ...prev, coins: prev.coins + value }));
-    setSellResult({ ok: true, line: `Sold for ${value}c (party now has ${party.coins + value}c).` });
-    addLog(`Sold an item (${sellPrice}c base, ${sellLostDur} durability lost) for ${value}c.`);
+    setSellResult({ ok: true, line: `Sold ${item.label.split(" — ")[1]} for ${value}c (party now has ${party.coins + value}c).` });
+    addLog(`Sold ${item.label} for ${value}c (${sellPrice}c base, ${sellLostDur} durability lost).`);
+    setSellKey("");
+  };
+
+  // Only equipped weapons have real cur/max durability to repair — backpack items store
+  // a single free-text durability field, so there's nothing structured to restore there.
+  const repairableWeapons = [];
+  heroes.forEach((h) => {
+    if (h.weapon && h.weapon.name && h.weapon.dur.cur < h.weapon.dur.max) {
+      const ref = WEAPONS.find((w) => w.name === h.weapon.name);
+      repairableWeapons.push({
+        key: `${h.id}:weapon`,
+        label: `${h.name} — ${h.weapon.name} (${h.weapon.dur.cur}/${h.weapon.dur.max})`,
+        heroId: h.id,
+        defaultPrice: ref ? ref.cost : 0,
+        maxPoints: h.weapon.dur.max - h.weapon.dur.cur,
+      });
+    }
+  });
+  const selectedRepairItem = repairableWeapons.find((i) => i.key === repairKey) || null;
+
+  const pickRepairItem = (key) => {
+    setRepairKey(key);
+    setRepairResult(null);
+    const item = repairableWeapons.find((i) => i.key === key);
+    if (item) {
+      setRepairPrice(item.defaultPrice);
+      setRepairPoints(Math.min(1, item.maxPoints) || 1);
+    }
   };
 
   const doRepair = () => {
-    const perPoint = repairCostPerPoint(repairPrice);
-    const total = perPoint * repairPoints;
-    if (total > party.coins) {
-      setRepairResult({ ok: false, line: `Can't afford it: repairing ${repairPoints} point${repairPoints === 1 ? "" : "s"} costs ${total}c, party only has ${party.coins}c.` });
+    const item = selectedRepairItem;
+    if (!item) {
+      setRepairResult({ ok: false, line: "Pick a damaged weapon the party actually has first." });
       return;
     }
+    const points = Math.min(repairPoints, item.maxPoints);
+    const perPoint = repairCostPerPoint(repairPrice);
+    const total = perPoint * points;
+    if (total > party.coins) {
+      setRepairResult({ ok: false, line: `Can't afford it: repairing ${points} point${points === 1 ? "" : "s"} costs ${total}c, party only has ${party.coins}c.` });
+      return;
+    }
+    const hero = heroes.find((h) => h.id === item.heroId);
+    if (!hero) return;
+    const newCur = Math.min(hero.weapon.dur.max, hero.weapon.dur.cur + points);
+    updateHero({ ...hero, weapon: { ...hero.weapon, dur: { ...hero.weapon.dur, cur: newCur } } });
     setParty((prev) => ({ ...prev, coins: prev.coins - total }));
-    setRepairResult({ ok: true, line: `Repaired ${repairPoints} point${repairPoints === 1 ? "" : "s"} for ${total}c (${perPoint}c/point). Party now has ${party.coins - total}c.` });
-    addLog(`Repaired ${repairPoints} durability point${repairPoints === 1 ? "" : "s"} on an item (${repairPrice}c base) for ${total}c.`);
+    setRepairResult({ ok: true, line: `Repaired ${points} point${points === 1 ? "" : "s"} on ${hero.weapon.name} for ${total}c (now ${newCur}/${hero.weapon.dur.max}). Party now has ${party.coins - total}c.` });
+    addLog(`Repaired ${points} durability point${points === 1 ? "" : "s"} on ${hero.name}'s ${hero.weapon.name} for ${total}c.`);
+    setRepairKey("");
   };
 
   return (
@@ -2921,33 +3030,46 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       <Panel className="mb-4">
         <SectionTitle icon={Coins}>Sell & Repair</SectionTitle>
         <p className="text-xs mb-3" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-          Blacksmith only, settlements only. Sell value = purchase price × 70% at full durability, dropping 10% per point lost (min 20% at 5+ lost). Repair costs the same 20%-of-price rate per point.
+          Blacksmith only, settlements only. Sell value = purchase price × 70% at full durability, dropping 10% per point lost (min 20% at 5+ lost). Repair costs the same 20%-of-price rate per point. Both work on items the party actually has — selling removes the item, so it can't be sold twice.
         </p>
 
         <div className="rounded p-2 mb-3" style={{ background: "#00000008" }}>
           <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1.5">Sell an Item</div>
-          <div className="grid grid-cols-3 gap-2 mb-2">
-            <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-              Price
-              <input type="number" value={sellPrice} onChange={(e) => setSellPrice(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-            </label>
-            <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-              Lost Dur.
-              <input type="number" value={sellLostDur} onChange={(e) => setSellLostDur(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-            </label>
-            <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-              Max Dur.
-              <input type="number" value={sellMaxDur} onChange={(e) => setSellMaxDur(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-            </label>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-              Sells for <b style={{ color: palette.ink }}>{sellValue(sellPrice, sellLostDur)}c</b>
-            </span>
-            <button onClick={doSell} className="text-xs px-3 py-1.5 rounded font-semibold" style={{ background: palette.forestDark, color: palette.parchment }}>
-              Sell
-            </button>
-          </div>
+          <select
+            value={sellKey}
+            onChange={(e) => pickSellItem(e.target.value)}
+            className="w-full text-xs rounded px-2 py-1.5 mb-2"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            <option value="">{sellableItems.length === 0 ? "No weapons or named backpack items to sell" : "Pick an item the party has…"}</option>
+            {sellableItems.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
+          </select>
+          {selectedSellItem && (
+            <>
+              <div className="grid grid-cols-3 gap-2 mb-2">
+                <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                  Price
+                  <input type="number" value={sellPrice} onChange={(e) => setSellPrice(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                </label>
+                <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                  Lost Dur.
+                  <input type="number" value={sellLostDur} onChange={(e) => setSellLostDur(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                </label>
+                <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                  Max Dur.
+                  <input type="number" value={sellMaxDur} onChange={(e) => setSellMaxDur(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                </label>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+                  Sells for <b style={{ color: palette.ink }}>{sellValue(sellPrice, sellLostDur)}c</b>
+                </span>
+                <button onClick={doSell} className="text-xs px-3 py-1.5 rounded font-semibold" style={{ background: palette.forestDark, color: palette.parchment }}>
+                  Sell
+                </button>
+              </div>
+            </>
+          )}
           {sellResult && (
             <p className="text-xs mt-1.5 font-semibold" style={{ color: sellResult.ok ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif" }}>
               {sellResult.line}
@@ -2957,24 +3079,40 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
 
         <div className="rounded p-2" style={{ background: "#00000008" }}>
           <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1.5">Repair an Item</div>
-          <div className="grid grid-cols-2 gap-2 mb-2">
-            <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-              Price
-              <input type="number" value={repairPrice} onChange={(e) => setRepairPrice(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-            </label>
-            <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-              Points to Repair
-              <input type="number" value={repairPoints} onChange={(e) => setRepairPoints(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-            </label>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-              Costs <b style={{ color: palette.ink }}>{repairCostPerPoint(repairPrice) * repairPoints}c</b> ({repairCostPerPoint(repairPrice)}c/point)
-            </span>
-            <button onClick={doRepair} className="text-xs px-3 py-1.5 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>
-              Repair
-            </button>
-          </div>
+          <p className="text-[10px] mb-1.5 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            Weapons only — backpack items don't track current/max durability separately, so there's nothing structured to restore there yet.
+          </p>
+          <select
+            value={repairKey}
+            onChange={(e) => pickRepairItem(e.target.value)}
+            className="w-full text-xs rounded px-2 py-1.5 mb-2"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            <option value="">{repairableWeapons.length === 0 ? "No damaged weapons to repair" : "Pick a damaged weapon…"}</option>
+            {repairableWeapons.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
+          </select>
+          {selectedRepairItem && (
+            <>
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                  Price
+                  <input type="number" value={repairPrice} onChange={(e) => setRepairPrice(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                </label>
+                <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                  Points (max {selectedRepairItem.maxPoints})
+                  <input type="number" value={repairPoints} onChange={(e) => setRepairPoints(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                </label>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+                  Costs <b style={{ color: palette.ink }}>{repairCostPerPoint(repairPrice) * Math.min(repairPoints, selectedRepairItem.maxPoints)}c</b> ({repairCostPerPoint(repairPrice)}c/point)
+                </span>
+                <button onClick={doRepair} className="text-xs px-3 py-1.5 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>
+                  Repair
+                </button>
+              </div>
+            </>
+          )}
           {repairResult && (
             <p className="text-xs mt-1.5 font-semibold" style={{ color: repairResult.ok ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif" }}>
               {repairResult.line}

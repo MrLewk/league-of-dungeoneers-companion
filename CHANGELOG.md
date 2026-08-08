@@ -3,6 +3,16 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.18.0] — 2026-08-08
+
+### Added
+- Temporary Effects tracker — Temple boons and Curses now actually apply to the hero (not just a log message), show up in a red "Temporary Effects (until next dungeon exit)" box on the hero's card, and clear with a single tap per effect or all at once with "Left dungeon — clear all"
+- Curse! (the settlement event) now genuinely applies the rolled curse to every hero, matching the book ("apply the curse to all heroes"), instead of leaving it as a manual note
+- Fortune Teller's roll-1 result ("treat one enemy hit as a miss next quest") is now logged as a reminder in Temporary Effects too, even though there's no stat to reverse
+
+### Changed
+- Refactored the Talents auto-apply system (v1.6.0) and the new Temple/Curse effects to share one applyEffectDelta() function, so both work identically and reverse cleanly
+
 ## [1.17.1] — 2026-08-08
 
 ### Added

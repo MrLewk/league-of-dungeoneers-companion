@@ -75,6 +75,7 @@ const defaultHero = () => ({
   specialRules: [],
   conditions: [],
   backpackUpgrade: "",
+  tempEffects: [],
   backpack: [],
   notes: "",
 });
@@ -501,16 +502,16 @@ const SETTLEMENT_EVENTS = [
 
 // Curses Table (1d10) — Appendix III, referenced by several settlement/magic-item events.
 const CURSES_TABLE = [
-  { roll: 1, text: "-2 Hit Points" },
-  { roll: 2, text: "-5 Wisdom" },
-  { roll: 3, text: "-5 Constitution" },
-  { roll: 4, text: "-5 Strength" },
-  { roll: 5, text: "-5 Dexterity" },
-  { roll: 6, text: "-3 Hit Points" },
-  { roll: 7, text: "-10 Resolve" },
-  { roll: 8, text: "-5 on a Random Skill" },
-  { roll: 9, text: "-1 Luck" },
-  { roll: 10, text: "-1 Energy" },
+  { roll: 1, text: "-2 Hit Points", effect: { hp: -2 } },
+  { roll: 2, text: "-5 Wisdom", effect: { stat: "WIS", amount: -5 } },
+  { roll: 3, text: "-5 Constitution", effect: { stat: "CON", amount: -5 } },
+  { roll: 4, text: "-5 Strength", effect: { stat: "STR", amount: -5 } },
+  { roll: 5, text: "-5 Dexterity", effect: { stat: "DEX", amount: -5 } },
+  { roll: 6, text: "-3 Hit Points", effect: { hp: -3 } },
+  { roll: 7, text: "-10 Resolve", effect: { stat: "RES", amount: -10 } },
+  { roll: 8, text: "-5 on a Random Skill", effect: "randomSkill" },
+  { roll: 9, text: "-1 Luck", effect: { luck: -1 } },
+  { roll: 10, text: "-1 Energy", effect: { energy: -1 } },
 ];
 
 // Available Quests roll (1d6) — quest count by settlement type, per the Settlements chapter.
@@ -1190,9 +1191,10 @@ function adjustCurMax(cm, amount, sign) {
   return { cur: Math.min(cm.cur, max), max };
 }
 
-// Builds the hero patch for applying (sign=1) or reversing (sign=-1) a talent's effect.
-function talentEffectPatch(hero, talentName, sign) {
-  const eff = TALENT_EFFECTS[talentName];
+// Applies (sign=1) or reverses (sign=-1) a generic {stat|skill|hp|mana|sanity|luck|energy
+// |movement, amount} effect descriptor to a hero, returning just the patch. Shared by the
+// Talents auto-apply feature and the Temporary Effects tracker (Temple boons, Curses).
+function applyEffectDelta(hero, eff, sign) {
   if (!eff) return {};
   const patch = {};
   if (eff.stat) patch.stats = { ...hero.stats, [eff.stat]: Math.max(0, (Number(hero.stats[eff.stat]) || 0) + sign * eff.amount) };
@@ -1201,7 +1203,41 @@ function talentEffectPatch(hero, talentName, sign) {
   if (eff.mana) patch.mana = adjustCurMax(hero.mana, eff.mana, sign);
   if (eff.sanity) patch.sanity = adjustCurMax(hero.sanity, eff.sanity, sign);
   if (eff.luck) patch.luck = adjustCurMax(hero.luck, eff.luck, sign);
+  if (eff.energy) patch.energy = adjustCurMax(hero.energy, eff.energy, sign);
   if (eff.movement) patch.movement = Math.max(0, (hero.movement ?? 4) + sign * eff.movement);
+  return patch;
+}
+
+// Builds the hero patch for applying (sign=1) or reversing (sign=-1) a talent's effect.
+function talentEffectPatch(hero, talentName, sign) {
+  return applyEffectDelta(hero, TALENT_EFFECTS[talentName], sign);
+}
+
+// Temporary Effects — Temple boons and Curses that last "until the hero next leaves a
+// dungeon" (per the Settlements chapter). Tracked on hero.tempEffects so they can be
+// seen and cleared in one tap instead of relying on memory. `effect` uses the same shape
+// as TALENT_EFFECTS; entries with effect:null are reminder-only (no number to reverse).
+function addTempEffect(hero, label, effect) {
+  const patch = applyEffectDelta(hero, effect, 1);
+  return { ...patch, tempEffects: [...(hero.tempEffects || []), { id: uid(), label, effect }] };
+}
+function removeTempEffect(hero, effectId) {
+  const entry = (hero.tempEffects || []).find((e) => e.id === effectId);
+  if (!entry) return {};
+  const patch = entry.effect ? applyEffectDelta(hero, entry.effect, -1) : {};
+  return { ...patch, tempEffects: hero.tempEffects.filter((e) => e.id !== effectId) };
+}
+function clearAllTempEffects(hero) {
+  let patch = {};
+  let cur = hero;
+  (hero.tempEffects || []).forEach((entry) => {
+    if (entry.effect) {
+      const p = applyEffectDelta(cur, entry.effect, -1);
+      patch = { ...patch, ...p };
+      cur = { ...cur, ...p };
+    }
+  });
+  patch.tempEffects = [];
   return patch;
 }
 
@@ -1423,6 +1459,20 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.18.0",
+    date: "2026-08-08",
+    sections: {
+      "Added": [
+        "Temporary Effects tracker — Temple boons and Curses now actually apply to the hero (not just a log message), show up in a red 'Temporary Effects (until next dungeon exit)' box on the hero's card, and clear with a single tap per effect or all at once with 'Left dungeon — clear all'",
+        "Curse! (the settlement event) now genuinely applies the rolled curse to every hero, matching the book ('apply the curse to all heroes'), instead of leaving it as a manual note",
+        "Fortune Teller's roll-1 result ('treat one enemy hit as a miss next quest') is now logged as a reminder in Temporary Effects too, even though there's no stat to reverse",
+      ],
+      "Changed": [
+        "Refactored the Talents auto-apply system (v1.6.0) and the new Temple/Curse effects to share one applyEffectDelta() function, so both work identically and reverse cleanly",
+      ],
+    },
+  },
   {
     version: "1.17.1",
     date: "2026-08-08",
@@ -2183,6 +2233,7 @@ function normalizeHero(h) {
     conditions: h.conditions || base.conditions,
     backpack: h.backpack || base.backpack,
     backpackUpgrade: h.backpackUpgrade || "",
+    tempEffects: h.tempEffects || [],
     armour: {
       head: armourPiece("head"),
       arms: armourPiece("arms"),
@@ -2620,6 +2671,35 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
             onChange={(v) => set({ mana: { ...hero.mana, cur: v } })} onMaxChange={(v) => set({ mana: { ...hero.mana, max: v } })} />
           <StatBar label="Luck" icon={Dice5} cur={hero.luck.cur} max={hero.luck.max} color={palette.gold}
             onChange={(v) => set({ luck: { ...hero.luck, cur: v } })} onMaxChange={(v) => set({ luck: { ...hero.luck, max: v } })} />
+
+          {/* Temporary Effects — Temple boons and Curses that last "until next dungeon exit" */}
+          {hero.tempEffects && hero.tempEffects.length > 0 && (
+            <div className="rounded p-2 mb-3" style={{ background: "#7A1F2B11", border: `1px solid ${palette.crimson}` }}>
+              <div className="flex items-center justify-between mb-1">
+                <span style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.crimson }} className="uppercase font-bold">
+                  Temporary Effects (until next dungeon exit)
+                </span>
+                <button
+                  onClick={() => set(clearAllTempEffects(hero))}
+                  className="text-[10px] flex items-center gap-0.5 px-1.5 py-0.5 rounded font-semibold"
+                  style={{ background: palette.crimsonDark, color: palette.parchment }}
+                  title="Left the dungeon — clear all"
+                >
+                  <RotateCcw size={10} /> Left dungeon — clear all
+                </button>
+              </div>
+              <div className="space-y-1">
+                {hero.tempEffects.map((eff) => (
+                  <div key={eff.id} className="flex items-center justify-between text-xs rounded px-2 py-1" style={{ background: "#fff", fontFamily: "Crimson Pro, serif" }}>
+                    <span style={{ color: palette.ink }}>{eff.label}</span>
+                    <button onClick={() => set(removeTempEffect(hero, eff.id))} style={{ color: palette.crimson }} title="Clear this effect">
+                      <X size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Sanity quick event */}
           <div className="flex gap-2 items-center mt-2 mb-3">
@@ -3338,9 +3418,19 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
     } else if (event.resolve === "curse") {
       const roll = rollDie(10);
       const curse = CURSES_TABLE.find((c) => c.roll === roll);
-      const line = `Rolled ${roll} → ${curse.text}. Apply to all heroes manually until they next exit a dungeon (no duration tracking in-app yet).`;
+      let effect = curse.effect;
+      let detail = curse.text;
+      if (effect === "randomSkill") {
+        const key = Object.keys(SKILL_LABELS)[Math.floor(Math.random() * Object.keys(SKILL_LABELS).length)];
+        effect = { skill: key, amount: -5 };
+        detail = `${SKILL_LABELS[key]} -5`;
+      }
+      heroes.forEach((h) => {
+        updateHero({ ...h, ...addTempEffect(h, `Curse: ${detail}`, effect) });
+      });
+      const line = `Rolled ${roll} → ${detail}. Applied to all ${heroes.length} hero${heroes.length === 1 ? "" : "es"} — see Temporary Effects on each hero's card to clear it after the next dungeon.`;
       setEventResolution([line]);
-      addLog(`Curse!: rolled ${roll} → ${curse.text} (applies to all heroes until next dungeon exit).`);
+      addLog(`Curse!: rolled ${roll} → ${detail} (applied to all heroes until next dungeon exit).`);
     } else if (event.resolve === "sidequest") {
       const roll = rollDie(6);
       const quest = SIDE_QUESTS[roll - 1];
@@ -3644,21 +3734,23 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         return;
       }
       const boon = TEMPLE_BOONS[resolverTemple];
+      let effect;
       let line = boon.label;
       if (boon.kind === "stat") {
-        updateHero({ ...resolvedHero, stats: { ...resolvedHero.stats, [boon.stat]: (Number(resolvedHero.stats[boon.stat]) || 0) + boon.amount } });
+        effect = { stat: boon.stat, amount: boon.amount };
       } else if (boon.kind === "hp") {
-        updateHero({ ...resolvedHero, hp: { cur: resolvedHero.hp.cur + boon.amount, max: resolvedHero.hp.max + boon.amount } });
+        effect = { hp: boon.amount };
       } else if (boon.kind === "luck") {
-        updateHero({ ...resolvedHero, luck: { cur: resolvedHero.luck.cur + boon.amount, max: resolvedHero.luck.max + boon.amount } });
+        effect = { luck: boon.amount };
       } else if (boon.kind === "energy") {
-        updateHero({ ...resolvedHero, energy: { cur: resolvedHero.energy.cur + boon.amount, max: resolvedHero.energy.max + boon.amount } });
+        effect = { energy: boon.amount };
       } else if (boon.kind === "choice") {
         const skillKey = resolverOhlnirChoice === "CS" ? "cs" : "rs";
-        updateHero({ ...resolvedHero, skills: { ...resolvedHero.skills, [skillKey]: (Number(resolvedHero.skills[skillKey]) || 0) + boon.amount } });
+        effect = { skill: skillKey, amount: boon.amount };
         line = `+5 ${resolverOhlnirChoice}`;
       }
-      setResolverResult({ ok: true, lines: [`Rolled ${roll} — ${resolverTemple} answers! ${line} applied. Lasts until ${resolvedHero.name} next leaves a dungeon — remove manually afterward. (Paid 50c.)`] });
+      updateHero({ ...resolvedHero, ...addTempEffect(resolvedHero, `${resolverTemple}: ${line}`, effect) });
+      setResolverResult({ ok: true, lines: [`Rolled ${roll} — ${resolverTemple} answers! ${line} applied — see Temporary Effects on ${resolvedHero.name}'s card to clear it after the next dungeon. (Paid 50c.)`] });
       addLog(`${resolvedHero.name} prays at the Temple of ${resolverTemple}: success (${roll}). ${line}.`);
     } else if (resolverActivity === "Fortune Teller") {
       if (party.coins < 50) { setResolverResult({ ok: false, lines: ["Can't afford the 50c fee."] }); return; }
@@ -3666,10 +3758,21 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       const roll = rollDie(6);
       const entry = FORTUNE_TELLER_TABLE.find((e) => e.roll === roll);
       let line = `Rolled ${roll} — ${entry.text}`;
-      if (roll === 6) {
+      if (roll === 1) {
+        updateHero({ ...resolvedHero, ...addTempEffect(resolvedHero, "Fortune: treat one enemy hit as a miss (next quest)", null) });
+        line += ` — added as a reminder to ${resolvedHero.name}'s Temporary Effects.`;
+      } else if (roll === 6) {
         const curseRoll = rollDie(10);
         const curse = CURSES_TABLE.find((c) => c.roll === curseRoll);
-        line += ` Curse roll: ${curseRoll} → ${curse.text} (applies next quest, manual).`;
+        let effect = curse.effect;
+        let detail = curse.text;
+        if (effect === "randomSkill") {
+          const key = Object.keys(SKILL_LABELS)[Math.floor(Math.random() * Object.keys(SKILL_LABELS).length)];
+          effect = { skill: key, amount: -5 };
+          detail = `${SKILL_LABELS[key]} -5`;
+        }
+        updateHero({ ...resolvedHero, ...addTempEffect(resolvedHero, `Curse: ${detail}`, effect) });
+        line += ` Curse roll: ${curseRoll} → ${detail} — applied, see Temporary Effects on ${resolvedHero.name}'s card to clear it after the next dungeon.`;
       }
       setResolverResult({ ok: true, lines: [line] });
       addLog(`${resolvedHero.name} visits the Fortune Teller: ${line}`);

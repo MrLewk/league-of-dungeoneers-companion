@@ -45,6 +45,7 @@ const defaultHero = () => ({
   luck: 0,
   background: "",
   improvementPoints: 0,
+  ipSpentThisLevel: {},
   creationPoints: 15,
   freeSkill: "",
   hp: { cur: 10, max: 10 },
@@ -150,6 +151,69 @@ const PROFESSION_SKILLS = {
   Druid: { cs: -5, rs: 0, dodge: -10, pickLocks: -20, barter: 0, heal: 5, alchemy: 0, perception: -5, foraging: 0, arcaneArts: 5 },
 };
 
+const STAT_KEYS = ["STR", "CON", "DEX", "WIS", "RES"];
+
+// Damage Bonus (from STR) and Natural Armour (from CON) — Character Creation chapter.
+// Take the highest threshold met; 0 below the first threshold.
+function damageBonus(str) {
+  const s = Number(str) || 0;
+  if (s >= 70) return 3;
+  if (s >= 60) return 2;
+  if (s >= 50) return 1;
+  return 0;
+}
+function naturalArmour(con) {
+  const c = Number(con) || 0;
+  if (c >= 70) return 5;
+  if (c >= 65) return 4;
+  if (c >= 60) return 3;
+  if (c >= 55) return 2;
+  if (c >= 50) return 1;
+  return 0;
+}
+
+// Levelling table — XP requirement (from a settlement, to level up) plus the automatic
+// Hit Point/Luck/Energy gains for reaching that level, from the Levelling Up chapter.
+const XP_LEVELLING = [
+  { level: 1, xp: 0, hpDie: false, luck: false, energy: false },
+  { level: 2, xp: 2000, hpDie: true, luck: true, energy: true },
+  { level: 3, xp: 5000, hpDie: true, luck: false, energy: false },
+  { level: 4, xp: 10000, hpDie: true, luck: false, energy: true },
+  { level: 5, xp: 25000, hpDie: true, luck: true, energy: false },
+  { level: 6, xp: 50000, hpDie: true, luck: false, energy: false },
+  { level: 7, xp: 75000, hpDie: true, luck: false, energy: true },
+  { level: 8, xp: 110000, hpDie: true, luck: true, energy: false },
+  { level: 9, xp: 160000, hpDie: true, luck: false, energy: true },
+  { level: 10, xp: 220000, hpDie: true, luck: false, energy: false },
+];
+
+// Improvement Point cost table (p54) — cost to raise a stat/skill by +1, per profession.
+// Knight and Druid aren't in the official QRS table (they're extra professions this app
+// added beyond the base 8), so they're left out — IP spending for them stays manual.
+const IMPROVEMENT_COSTS = {
+  Barbarian: { STR: 2, DEX: 2, CON: 2, WIS: 5, RES: 3, cs: 1, rs: 3, dodge: 3, pickLocks: 5, perception: 4, heal: 4, foraging: 4, barter: 5, alchemy: 5, hp: 5 },
+  Warrior: { STR: 2, DEX: 2, CON: 2, WIS: 5, RES: 3, cs: 1, rs: 2, dodge: 3, pickLocks: 5, perception: 4, heal: 4, foraging: 4, barter: 4, alchemy: 5, hp: 5 },
+  Ranger: { STR: 3, DEX: 2, CON: 1, WIS: 4, RES: 3, cs: 3, rs: 1, dodge: 3, pickLocks: 5, perception: 2, heal: 2, foraging: 1, barter: 3, alchemy: 4, hp: 10 },
+  "Warrior Priest": { STR: 3, DEX: 3, CON: 3, WIS: 3, RES: 2, cs: 2, rs: 2, dodge: 3, pickLocks: 5, perception: 4, heal: 2, battlePrayers: 1, foraging: 4, barter: 3, alchemy: 4, hp: 10 },
+  Wizard: { STR: 5, DEX: 4, CON: 4, WIS: 2, RES: 3, cs: 5, rs: 4, dodge: 3, pickLocks: 4, perception: 2, heal: 2, arcaneArts: 1, foraging: 5, barter: 1, alchemy: 3, hp: 10 },
+  Thief: { STR: 5, DEX: 2, CON: 4, WIS: 3, RES: 3, cs: 5, rs: 2, dodge: 1, pickLocks: 1, perception: 1, heal: 4, foraging: 1, barter: 2, alchemy: 4, hp: 10 },
+  Rogue: { STR: 3, DEX: 2, CON: 3, WIS: 4, RES: 3, cs: 3, rs: 3, dodge: 3, pickLocks: 3, perception: 3, heal: 3, foraging: 3, barter: 3, alchemy: 4, hp: 10 },
+  Alchemist: { STR: 5, DEX: 4, CON: 4, WIS: 2, RES: 3, cs: 3, rs: 3, dodge: 4, pickLocks: 4, perception: 2, heal: 3, arcaneArts: 1, foraging: 4, barter: 3, alchemy: 1, hp: 10 },
+};
+const IP_STAT_SKILL_CAP_PER_LEVEL = 5; // no stat/skill may rise more than +5 per level
+const IP_HP_CAP_PER_LEVEL = 2; // HP may only rise +2 per level via IP spend (separate from the automatic level-up roll)
+const IP_DOUBLE_COST_THRESHOLD = 70; // cost doubles once the stat/skill has passed 70
+
+function ipCostFor(hero, key) {
+  const table = IMPROVEMENT_COSTS[hero.profession];
+  if (!table || table[key] == null) return null;
+  const base = table[key];
+  if (key === "hp") return base;
+  const current = STAT_KEYS.includes(key) ? Number(hero.stats[key]) || 0 : Number(hero.skills[key]) || 0;
+  return current >= IP_DOUBLE_COST_THRESHOLD ? base * 2 : base;
+}
+
+
 // Recomputes a hero's skills from their profession's modifiers + current stats,
 // re-applying the Free Skill +10 on top so it's never lost on recalculation.
 // Skills the profession doesn't define are left untouched.
@@ -182,6 +246,7 @@ const defaultParty = () => ({
   settlementName: "",
   settlementAP: {}, // heroId -> { spent: number, log: [{label, cost}] }
   innCostPerNight: 0,
+  startingMorale: 0,
 });
 
 // Fills in any fields missing from a party saved before this update.
@@ -976,6 +1041,21 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.5.0",
+    date: "2026-08-07",
+    sections: {
+      "Added": [
+        "Level Up now rolls the actual per-level table: +1d2 HP, and +1 Luck / +1 Energy on the levels that grant them (not just the flat +15 Improvement Points) — hero card also shows XP remaining to the next level",
+        "Spend Improvement Points directly on a hero's card: tap a stat/skill to raise it, cost shown live (doubles past 70), with the +5/stat-skill and +2/HP per-level caps enforced automatically. Knight/Druid aren't in the official QRS cost table, so they stay manual with a note",
+        "Damage Bonus (STR) and Natural Armour (CON) now show as auto-computed badges on the hero stat grid, and the Combat tab's damage calculator has one-tap buttons to fill DB from a hero's STR",
+        "Set Starting Morale from RES button on the Party tab — PM = sum of floor(RES/10) across all heroes; the −10 RES threshold note now shows the real computed half-value once set",
+      ],
+      "Fixed": [
+        "Improvement Point note incorrectly said the cost-doubling threshold was 80 — the QRS says 70",
+      ],
+    },
+  },
+  {
     version: "1.4.2",
     date: "2026-08-07",
     sections: {
@@ -1373,6 +1453,7 @@ function normalizeHero(h) {
     sanity: { ...base.sanity, ...(h.sanity || {}) },
     mana: { ...base.mana, ...(h.mana || {}) },
     skills: { ...base.skills, ...(h.skills || {}) },
+    ipSpentThisLevel: h.ipSpentThisLevel || {},
     weapon: { ...base.weapon, ...(h.weapon || {}), dur: mergeDur(h.weapon && h.weapon.dur) },
     talents: h.talents || base.talents,
     perks: h.perks || base.perks,
@@ -1500,8 +1581,55 @@ function HeroCard({ hero, update, remove, addLog }) {
   };
 
   const levelUp = () => {
-    update({ ...hero, level: hero.level + 1, improvementPoints: hero.improvementPoints + 15 });
-    addLog && addLog(`${hero.name} leveled up to ${hero.level + 1} (+15 Improvement Points)`);
+    const nextLevel = hero.level + 1;
+    const entry = XP_LEVELLING.find((l) => l.level === nextLevel);
+    const patch = { level: nextLevel, improvementPoints: hero.improvementPoints + 15, ipSpentThisLevel: {} };
+    const notes = ["+15 Improvement Points"];
+    if (entry) {
+      if (entry.hpDie) {
+        const roll = rollDie(2);
+        patch.hp = { ...hero.hp, cur: hero.hp.cur + roll, max: hero.hp.max + roll };
+        notes.push(`+${roll} HP (max now ${patch.hp.max})`);
+      }
+      if (entry.luck) {
+        patch.luck = hero.luck + 1;
+        notes.push("+1 Luck");
+      }
+      if (entry.energy) {
+        patch.energy = { ...hero.energy, cur: hero.energy.cur + 1, max: hero.energy.max + 1 };
+        notes.push("+1 Energy");
+      }
+    }
+    update({ ...hero, ...patch });
+    addLog && addLog(`${hero.name} leveled up to ${nextLevel}: ${notes.join(", ")}`);
+  };
+
+  const nextLevelEntry = XP_LEVELLING.find((l) => l.level === hero.level + 1);
+  const xpToNext = nextLevelEntry ? Math.max(0, nextLevelEntry.xp - hero.xp) : null;
+
+  const spendIP = (key) => {
+    const cost = ipCostFor(hero, key);
+    if (cost == null || hero.improvementPoints < cost) return;
+    const cap = key === "hp" ? IP_HP_CAP_PER_LEVEL : IP_STAT_SKILL_CAP_PER_LEVEL;
+    const spentSoFar = hero.ipSpentThisLevel?.[key] || 0;
+    if (spentSoFar >= cap) return;
+    const patch = {
+      improvementPoints: hero.improvementPoints - cost,
+      ipSpentThisLevel: { ...hero.ipSpentThisLevel, [key]: spentSoFar + 1 },
+    };
+    let label;
+    if (key === "hp") {
+      patch.hp = { ...hero.hp, cur: hero.hp.cur + 1, max: hero.hp.max + 1 };
+      label = "Hit Points";
+    } else if (STAT_KEYS.includes(key)) {
+      patch.stats = { ...hero.stats, [key]: (Number(hero.stats[key]) || 0) + 1 };
+      label = key;
+    } else {
+      patch.skills = { ...hero.skills, [key]: (Number(hero.skills[key]) || 0) + 1 };
+      label = SKILL_LABELS[key] || key;
+    }
+    update({ ...hero, ...patch });
+    addLog && addLog(`${hero.name}: spent ${cost} IP on ${label} (+1)`);
   };
 
   const addBackpackItem = () => {
@@ -1585,11 +1713,16 @@ function HeroCard({ hero, update, remove, addLog }) {
               onClick={levelUp}
               className="text-xs px-2 py-1 rounded font-semibold"
               style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Crimson Pro, serif" }}
-              title="Level +1, and +15 Improvement Points"
+              title="Level +1, +15 Improvement Points, and the automatic HP/Luck/Energy gains for the new level"
             >
               Level Up
             </button>
           </div>
+          {nextLevelEntry && (
+            <p className="text-[10px] mt-1" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+              {xpToNext > 0 ? `${xpToNext} XP to level ${nextLevelEntry.level}` : `XP requirement for level ${nextLevelEntry.level} met`}
+            </p>
+          )}
           {hero.profession && (
             <p className="text-xs mt-1" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
               {PROFESSIONS.find((p) => p.name === hero.profession)?.desc}
@@ -1712,6 +1845,16 @@ function HeroCard({ hero, update, remove, addLog }) {
                       eff {v - 10}
                     </div>
                   )}
+                  {k === "STR" && damageBonus(v) > 0 && (
+                    <div className="text-[9px] font-bold" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.crimson }}>
+                      DB +{damageBonus(v)}
+                    </div>
+                  )}
+                  {k === "CON" && naturalArmour(v) > 0 && (
+                    <div className="text-[9px] font-bold" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.forestDark }}>
+                      NA +{naturalArmour(v)}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -1764,8 +1907,52 @@ function HeroCard({ hero, update, remove, addLog }) {
               </div>
             </div>
           </div>
+
+          {IMPROVEMENT_COSTS[hero.profession] ? (
+            <div className="rounded p-2 mb-3" style={{ background: "#00000008" }}>
+              <div className="flex items-center justify-between mb-1.5">
+                <span style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase">Spend Improvement Points</span>
+                <span className="text-xs font-bold" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.ink }}>{hero.improvementPoints} IP</span>
+              </div>
+              <div className="grid grid-cols-2 gap-1">
+                {Object.keys(IMPROVEMENT_COSTS[hero.profession]).map((key) => {
+                  const cost = ipCostFor(hero, key);
+                  const cap = key === "hp" ? IP_HP_CAP_PER_LEVEL : IP_STAT_SKILL_CAP_PER_LEVEL;
+                  const spent = hero.ipSpentThisLevel?.[key] || 0;
+                  const atCap = spent >= cap;
+                  const canAfford = hero.improvementPoints >= cost;
+                  const disabled = atCap || !canAfford;
+                  const label = key === "hp" ? "Hit Points" : (STAT_KEYS.includes(key) ? key : (SKILL_LABELS[key] || key));
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => spendIP(key)}
+                      disabled={disabled}
+                      className="text-[10px] px-1.5 py-1 rounded flex items-center justify-between gap-1"
+                      style={{
+                        background: disabled ? "#00000010" : "#fff",
+                        border: `1px solid ${palette.line}`,
+                        color: palette.ink,
+                        fontFamily: "Crimson Pro, serif",
+                        opacity: disabled ? 0.5 : 1,
+                      }}
+                      title={atCap ? `Already at the +${cap}/level cap` : !canAfford ? "Not enough IP" : `Spend ${cost} IP for +1`}
+                    >
+                      <span className="truncate">{label}</span>
+                      <span className="shrink-0" style={{ fontFamily: "JetBrains Mono, monospace" }}>{cost}{spent > 0 ? ` (${spent}/${cap})` : ""}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : hero.profession && (
+            <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+              No official Improvement Point cost table for {hero.profession} (it's not one of the QRS's 8 base professions) — spend the IP counter above manually.
+            </p>
+          )}
+
           <p className="text-[10px] mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
-            Creation Points: 15 to spend on the rolled stats/HP above at creation, no more than 10 into any single one. Improvement Points: +15 each level-up, spent via the stat/skill cost table (p54) — max +5 per stat/skill per level, +2 HP per level, skill cap 80 (cost doubles past 80). Both are just counters here — apply the actual increases to the fields above yourself.
+            Creation Points: 15 to spend on the rolled stats/HP above at creation, no more than 10 into any single one. Improvement Points: +15 each level-up (Level Up also rolls the automatic HP/Luck/Energy gains for the new level) — the buttons above apply the actual increase and enforce the +5/stat-skill and +2/HP per-level caps; cost doubles once a stat/skill has passed 70.
           </p>
 
           <div className="rounded p-2 mb-3 flex items-center justify-between" style={{ background: "#00000008" }}>
@@ -2452,7 +2639,11 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero }) {
     addLog(`Morale ${ev.delta > 0 ? "+" : ""}${ev.delta} → ${next} (${ev.label})`);
   };
 
-  const halfRes = Math.floor(party.morale / 2); // rough visual only; real threshold is PM<half of starting total
+  const setStartingMorale = () => {
+    const pm = heroes.reduce((s, h) => s + Math.floor((Number(h.stats.RES) || 0) / 10), 0);
+    setParty({ ...party, morale: pm, startingMorale: pm });
+    addLog(`Starting Party Morale set to ${pm} (sum of floor(RES/10) across ${heroes.length} hero${heroes.length === 1 ? "" : "es"}).`);
+  };
 
   const awardXP = () => {
     if (!heroes || heroes.length === 0 || !xpAmount) return;
@@ -2524,10 +2715,22 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero }) {
           <div className="flex-1">
             <Stepper value={party.morale} onChange={(v) => setParty({ ...party, morale: clamp(v, 0, 999) })} min={0} max={999} />
             <p className="text-xs mt-1" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-              Below half of starting PM: all heroes at −10 RES. At 0: leave the dungeon once out of combat.
+              {party.startingMorale > 0
+                ? `Below ${Math.floor(party.startingMorale / 2)} (half of starting PM): all heroes at −10 RES. At 0: leave the dungeon once out of combat.`
+                : "Below half of starting PM: all heroes at −10 RES. At 0: leave the dungeon once out of combat."}
             </p>
           </div>
         </div>
+        {heroes && heroes.length > 0 && (
+          <button
+            onClick={setStartingMorale}
+            className="text-xs mb-3 w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded font-semibold"
+            style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Crimson Pro, serif" }}
+            title="PM = sum of floor(RES/10) across all heroes"
+          >
+            <RotateCcw size={11} /> Set Starting Morale from RES ({heroes.reduce((s, h) => s + Math.floor((Number(h.stats.RES) || 0) / 10), 0)})
+          </button>
+        )}
         <div className="flex gap-2 items-center">
           <select
             value={moraleEvent}
@@ -2815,6 +3018,21 @@ function CombatCalc({ heroes, updateHero, addLog }) {
           <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
             Damage = Weapon DMG + DB − Natural Armour − Armour
           </p>
+          {heroes && heroes.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {heroes.map((h) => (
+                <button
+                  key={h.id}
+                  onClick={() => setDb(damageBonus(h.stats.STR))}
+                  className="text-xs px-2 py-1 rounded"
+                  style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Crimson Pro, serif" }}
+                  title={`Fill DB from ${h.name}'s STR (${h.stats.STR})`}
+                >
+                  {h.name}'s DB ({damageBonus(h.stats.STR)})
+                </button>
+              ))}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3 mb-3">
             {[
               ["Weapon DMG rolled", weaponDmg, setWeaponDmg],

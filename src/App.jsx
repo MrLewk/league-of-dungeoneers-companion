@@ -1041,6 +1041,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.5.1",
+    date: "2026-08-07",
+    sections: {
+      "Fixed": [
+        "Rest at Inn applied the HP/Mana/Energy recovery even when the party couldn't afford the inn cost — it now checks affordability first and blocks the whole action with a clear message if the party is short on coins",
+      ],
+    },
+  },
+  {
     version: "1.5.0",
     date: "2026-08-07",
     sections: {
@@ -2373,6 +2382,10 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const restAtInn = () => {
     const selected = heroes.filter((h) => !restExcluded.has(h.id));
     if (selected.length === 0) return;
+    if (party.innCostPerNight > party.coins) {
+      setRestResult({ ok: false, lines: [`Can't afford the inn: costs ${party.innCostPerNight}c, party only has ${party.coins}c.`] });
+      return;
+    }
     const summary = [];
     selected.forEach((hero) => {
       const roll = rollDie(6) + rollDie(6);
@@ -2388,11 +2401,11 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       addLog(`${hero.name} rests at the inn: +${roll} HP (${newHp}/${hero.hp.max}), Mana & Energy refilled.`);
     });
     if (party.innCostPerNight > 0) {
-      setParty((prev) => ({ ...prev, coins: Math.max(0, prev.coins - prev.innCostPerNight) }));
+      setParty((prev) => ({ ...prev, coins: prev.coins - prev.innCostPerNight }));
       summary.push(`Paid ${party.innCostPerNight}c for the inn.`);
       addLog(`Paid ${party.innCostPerNight}c for the inn (whole party).`);
     }
-    setRestResult(summary);
+    setRestResult({ ok: true, lines: summary });
   };
 
   return (
@@ -2600,12 +2613,15 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
           Rest Selected Heroes
         </button>
         {restResult && (
-          <div className="rounded p-2 mt-2 text-xs" style={{ background: "#fff", border: `1px solid ${palette.forest}`, fontFamily: "Crimson Pro, serif" }}>
-            <div className="flex items-center gap-1 mb-1 font-bold" style={{ color: palette.forestDark }}>
-              <Check size={14} /> Rested
+          <div
+            className="rounded p-2 mt-2 text-xs"
+            style={{ background: "#fff", border: `1px solid ${restResult.ok ? palette.forest : palette.crimson}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            <div className="flex items-center gap-1 mb-1 font-bold" style={{ color: restResult.ok ? palette.forestDark : palette.crimson }}>
+              {restResult.ok ? <Check size={14} /> : <X size={14} />} {restResult.ok ? "Rested" : "Can't Rest"}
             </div>
             <ul style={{ color: palette.inkSoft }}>
-              {restResult.map((line, i) => <li key={i}>• {line}</li>)}
+              {restResult.lines.map((line, i) => <li key={i}>• {line}</li>)}
             </ul>
           </div>
         )}

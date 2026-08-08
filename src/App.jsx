@@ -1164,6 +1164,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.8.1",
+    date: "2026-08-07",
+    sections: {
+      "Fixed": [
+        "Armour row on the hero card wrapped DUR onto a second line on narrow phones — each location (Head, Arms, Torso, Legs, Shield) now gets its own sub-header line, with DEF/ENC/DUR fields in a single row underneath that fits within the card width",
+      ],
+    },
+  },
+  {
     version: "1.8.0",
     date: "2026-08-07",
     sections: {
@@ -2253,22 +2262,24 @@ function HeroCard({ hero, update, remove, addLog }) {
           {/* Armour */}
           <div className="mb-2">
             <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">Armour</div>
-            <div className="space-y-1">
+            <div className="space-y-2">
               {[["head", "Head"], ["arms", "Arms"], ["torso", "Torso"], ["legs", "Legs"], ["shield", "Shield"]].map(([loc, label]) => (
-                <div key={loc} className="flex items-center gap-1.5 text-xs flex-wrap" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
-                  <span className="w-12 shrink-0">{label}</span>
-                  <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>DEF</span>
-                  <input type="number" value={hero.armour[loc].def} onChange={(e) => setArmourPiece(loc, { def: Number(e.target.value) || 0 })}
-                    className="w-10 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-                  <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>ENC</span>
-                  <input type="number" value={hero.armour[loc].enc} onChange={(e) => setArmourPiece(loc, { enc: Number(e.target.value) || 0 })}
-                    className="w-9 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-                  <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>DUR</span>
-                  <input type="number" value={hero.armour[loc].dur.cur} onChange={(e) => setArmourPiece(loc, { dur: { ...hero.armour[loc].dur, cur: Number(e.target.value) || 0 } })}
-                    className="w-9 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-                  <span style={{ color: palette.inkSoft }}>/</span>
-                  <input type="number" value={hero.armour[loc].dur.max} onChange={(e) => setArmourPiece(loc, { dur: { ...hero.armour[loc].dur, max: Number(e.target.value) || 0 } })}
-                    className="w-9 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                <div key={loc}>
+                  <div className="text-xs font-semibold mb-0.5" style={{ fontFamily: "Cinzel, serif", color: palette.inkSoft }}>{label}</div>
+                  <div className="flex items-center gap-1 text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+                    <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>DEF</span>
+                    <input type="number" value={hero.armour[loc].def} onChange={(e) => setArmourPiece(loc, { def: Number(e.target.value) || 0 })}
+                      className="w-9 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                    <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>ENC</span>
+                    <input type="number" value={hero.armour[loc].enc} onChange={(e) => setArmourPiece(loc, { enc: Number(e.target.value) || 0 })}
+                      className="w-9 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                    <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>DUR</span>
+                    <input type="number" value={hero.armour[loc].dur.cur} onChange={(e) => setArmourPiece(loc, { dur: { ...hero.armour[loc].dur, cur: Number(e.target.value) || 0 } })}
+                      className="w-8 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                    <span style={{ color: palette.inkSoft }}>/</span>
+                    <input type="number" value={hero.armour[loc].dur.max} onChange={(e) => setArmourPiece(loc, { dur: { ...hero.armour[loc].dur, max: Number(e.target.value) || 0 } })}
+                      className="w-8 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                  </div>
                 </div>
               ))}
             </div>

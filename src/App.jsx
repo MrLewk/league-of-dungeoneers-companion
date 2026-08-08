@@ -935,6 +935,21 @@ const PERKS = [
   { name: "Taunt", type: "Common", effect: "Forces an enemy not locked in melee to attack this hero, ignoring normal targeting. Chosen before rolling." },
 ];
 
+// Returns a hero's attached Talents/Perks of type "Combat", for the Combat tab's quick
+// reference panel — so players don't have to flip back to the hero sheet mid-fight.
+function combatTalentsAndPerks(hero) {
+  const items = [];
+  (hero.talents || []).forEach((name) => {
+    const t = TALENTS.find((x) => x.name === name);
+    if (t && t.type === "Combat") items.push({ source: "Talent", name: t.name, effect: t.effect });
+  });
+  (hero.perks || []).forEach((name) => {
+    const p = PERKS.find((x) => x.name === name);
+    if (p && p.type === "Combat") items.push({ source: "Perk", name: p.name, effect: p.effect });
+  });
+  return items;
+}
+
 // ---------- Compendium (searchable Talents/Perks/Prayers/Spells/Special Rules) ----------
 function CompendiumList({ items, showLevel, showType, onAdd, addedNames }) {
   const [query, setQuery] = useState("");
@@ -1092,6 +1107,15 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.6.1",
+    date: "2026-08-07",
+    sections: {
+      "Added": [
+        "Combat Talents & Perks quick-reference panel on the Combat tab (Close Combat, Ranged, and Damage modes) — lists every hero's attached Combat-type Talents and Perks with their effect text, so you don't have to flip back to the hero sheet mid-fight",
+      ],
+    },
+  },
   {
     version: "1.6.0",
     date: "2026-08-07",
@@ -3025,6 +3049,37 @@ function CombatCalc({ heroes, updateHero, addLog }) {
           </button>
         ))}
       </div>
+
+      {(mode === "cc" || mode === "ranged" || mode === "damage") && heroes.some((h) => combatTalentsAndPerks(h).length > 0) && (
+        <Panel className="mb-4">
+          <SectionTitle icon={Swords}>Combat Talents & Perks</SectionTitle>
+          <p className="text-xs mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            Quick reference — only applies to the hero listed. Perks still cost their usual Energy/AP to activate; Talents are always on.
+          </p>
+          {heroes.map((h) => {
+            const items = combatTalentsAndPerks(h);
+            if (items.length === 0) return null;
+            return (
+              <div key={h.id} className="mb-2 last:mb-0">
+                <div className="text-xs font-bold mb-1" style={{ fontFamily: "Cinzel, serif", color: palette.crimson }}>{h.name}</div>
+                <div className="space-y-1">
+                  {items.map((it) => (
+                    <div
+                      key={it.source + it.name}
+                      className="text-xs rounded p-1.5"
+                      style={{ background: "#00000008", borderLeft: `3px solid ${it.source === "Talent" ? palette.forestDark : palette.gold}` }}
+                    >
+                      <span className="font-semibold" style={{ color: palette.ink }}>{it.name}</span>{" "}
+                      <span style={{ fontSize: 9, color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>({it.source})</span>
+                      <p style={{ color: palette.inkSoft }}>{it.effect}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </Panel>
+      )}
 
       {(mode === "cc" || mode === "ranged") && (
         <Panel className="mb-4">

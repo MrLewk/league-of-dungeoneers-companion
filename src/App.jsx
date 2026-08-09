@@ -1571,6 +1571,19 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.26.1",
+    date: "2026-08-09",
+    sections: {
+      "Fixed": [
+        "Diagnosing a mental condition was only capping current Sanity down if needed, instead of actually resetting it — the book says Sanity 'will go back up to 8 minus the number of current conditions,' so it now genuinely resets to that new value rather than staying at 0",
+      ],
+      "Added": [
+        "Every diagnosed mental condition on a hero's card now shows its full rule text as a reminder, not just conditions with an extra rolled detail (which enemy, which faction, which trigger) — so it's clear what each one actually does at a glance",
+        "Clarified that Settlement Activity Points (used for things like Treat Mental Conditions, 5 of them) are a completely separate pool from a hero's combat Action Points on the Turn tab — they share the 'AP' abbreviation in the book, which reads as a bug but is actually two unrelated resources",
+      ],
+    },
+  },
+  {
     version: "1.26.0",
     date: "2026-08-09",
     sections: {
@@ -2701,9 +2714,9 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
       ...hero,
       ...patch,
       mentalConditions: newConditions,
-      sanity: { cur: Math.min(hero.sanity.cur, newMax), max: newMax },
+      sanity: { cur: newMax, max: newMax },
     });
-    addLog && addLog(`${hero.name} develops a mental condition: ${entry.name}.${detail ? ` (${detail})` : ""} Max Sanity is now ${newMax}.`);
+    addLog && addLog(`${hero.name} develops a mental condition: ${entry.name}.${detail ? ` (${detail})` : ""} Sanity resets to ${newMax}/${newMax}.`);
     setPendingCondition(null);
     setHateEnemyInput("");
   };
@@ -3165,17 +3178,23 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
                 Mental Conditions (max Sanity {hero.sanity.max} — cure to raise it)
               </span>
               <div className="space-y-1 mt-1">
-                {hero.mentalConditions.map((c) => (
-                  <div key={c.id} className="flex items-start justify-between gap-2 text-xs rounded px-2 py-1.5" style={{ background: "#fff", fontFamily: "Crimson Pro, serif" }}>
-                    <div>
-                      <span className="font-bold" style={{ color: palette.ink }}>{c.name}</span>
-                      {c.detail && <span style={{ color: palette.inkSoft }}> — {c.detail}</span>}
+                {hero.mentalConditions.map((c) => {
+                  const ruleText = MENTAL_CONDITIONS_TABLE.find((m) => m.name === c.name)?.text;
+                  return (
+                    <div key={c.id} className="flex items-start justify-between gap-2 text-xs rounded px-2 py-1.5" style={{ background: "#fff", fontFamily: "Crimson Pro, serif" }}>
+                      <div className="flex-1 min-w-0">
+                        <div>
+                          <span className="font-bold" style={{ color: palette.ink }}>{c.name}</span>
+                          {c.detail && <span style={{ color: palette.inkSoft }}> — {c.detail}</span>}
+                        </div>
+                        {ruleText && <p className="text-[10px] mt-0.5" style={{ color: palette.inkSoft }}>{ruleText}</p>}
+                      </div>
+                      <button onClick={() => cureMentalCondition(c.id)} className="shrink-0 text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: "#00000015", color: palette.inkSoft }} title="Manual override — the proper way to cure a condition is Treat Mental Conditions at the Asylum (Settlement tab), 1000c, 1-5 on 1d6">
+                        Clear
+                      </button>
                     </div>
-                    <button onClick={() => cureMentalCondition(c.id)} className="shrink-0 text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: "#00000015", color: palette.inkSoft }} title="Manual override — the proper way to cure a condition is Treat Mental Conditions at the Asylum (Settlement tab), 1000c, 1-5 on 1d6">
-                      Clear
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -4619,7 +4638,10 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       {openMap && <MapViewer map={openMap} onClose={() => setOpenMap(null)} />}
 
       <Panel className="mb-4">
-        <SectionTitle icon={ClipboardList}>Activities (1 AP / hero / day)</SectionTitle>
+        <SectionTitle icon={ClipboardList}>Activities (Activity Points)</SectionTitle>
+        <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+          These Activity Points track time spent during a settlement stay — a separate pool from a hero's combat Action Points on the Turn tab, despite the shared "AP" abbreviation in the book.
+        </p>
         <select
           value={currentActivityHero}
           onChange={(e) => setActivityHero(e.target.value)}

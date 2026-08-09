@@ -3,6 +3,15 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.26.1] — 2026-08-09
+
+### Fixed
+- Diagnosing a mental condition was only capping current Sanity down if needed, instead of actually resetting it — the book says Sanity "will go back up to 8 minus the number of current conditions," so it now genuinely resets to that new value rather than staying at 0
+
+### Added
+- Every diagnosed mental condition on a hero's card now shows its full rule text as a reminder, not just conditions with an extra rolled detail (which enemy, which faction, which trigger) — so it's clear what each one actually does at a glance
+- Clarified that Settlement Activity Points (used for things like Treat Mental Conditions, 5 of them) are a completely separate pool from a hero's combat Action Points on the Turn tab — they share the "AP" abbreviation in the book, which reads as a bug but is actually two unrelated resources
+
 ## [1.26.0] — 2026-08-09
 
 ### Added

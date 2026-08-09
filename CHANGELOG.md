@@ -3,14 +3,19 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.20.1] — 2026-08-09
+
+### Changed
+- Cleaned up wording throughout the changelog to focus on what changed in the app rather than how it was researched
+
 ## [1.20.0] — 2026-08-09
 
 ### Added
-- Door / Chest Opener on the Dice tab — the mechanic from the previously-blurry page. One button rolls the lock check (1d10) and trap check (1d6) together and raises Threat +1 automatically. If locked, shows the Pick Lock penalty and HP, with buttons for Pick the Lock (2 AP, no extra Threat, jams on a fumble), Force Open (+2 Threat per attempt, enter your damage roll), and Use a Crowbar (fixed 8+DB damage, +1 Threat) — each tracking the door/chest's remaining HP until it breaks open
+- Door / Chest Opener on the Dice tab — one button rolls the lock check (1d10) and trap check (1d6) together and raises Threat +1 automatically. If locked, shows the Pick Lock penalty and HP, with buttons for Pick the Lock (2 AP, no extra Threat, jams on a fumble), Force Open (+2 Threat per attempt, enter your damage roll), and Use a Crowbar (fixed 8+DB damage, +1 Threat) — each tracking the door/chest's remaining HP until it breaks open
 
 ### Notes
 - Trap resolution itself (drawing a trap card) stays manual — the app doesn't have trap card data, so a trapped result just flags it as a reminder
-- The lock-pick fumble threshold isn't stated explicitly in the pages I have; used a natural 00 (100 on d100) as the fumble trigger, matching the common convention elsewhere in the system — worth double-checking against the book if you spot the exact rule
+- The lock-pick fumble threshold isn't stated explicitly in the rulebook excerpt this is based on; a natural 00 (100 on d100) is used as the fumble trigger, matching the common convention elsewhere in the system
 
 ## [1.19.0] — 2026-08-08
 
@@ -18,7 +23,7 @@ All notable changes to this project are documented here, following
 - Banking added to Resolve an Activity — each hero can hold a separate balance in all three Silver City banks (Chamberlings Reserve, Smartfall Bank, The Vault), with Deposit/Withdraw buttons and a "Roll It" that runs the 1d20 profit/loss check for the selected bank (each bank has its own slice of the roll range, including a "Robbed!" result that wipes that bank's balance)
 
 ### Notes
-- This closes out the settlement-related backlog from the last batch of photos — next up is the older list: Start of Turn/Threat Table, the Door/Chest opener, Sanity automation, the Alchemy potion-maker, and fixing Backgrounds to have real mechanical effects
+- This completes the settlement feature set (settlement services, activities, and events). Remaining roadmap: Start of Turn/Threat Table, the Door/Chest opener, Sanity automation, the Alchemy potion-maker, and Backgrounds mechanical effects
 
 ## [1.18.1] — 2026-08-08
 
@@ -38,8 +43,8 @@ All notable changes to this project are documented here, following
 ## [1.17.1] — 2026-08-08
 
 ### Added
-- Arena Fighting now resolves the full result, not just win/lose — the "Betting, Odds, and Winning" page turned out to have the missing prize data: winning pays out entry fee x a level/bracket multiplier plus XP (50/100/150 for Group/Semi/Final) straight to the hero, a Final win rolls for a bonus treasure, and losing costs HP (2/4/6 by bracket) and 2 Sanity
-- The entry fee is only charged on the Group round, matching the book ("you pay once to attend all three levels") — rolling Semi or Final afterward for the same attempt assumes it's already paid, while still using the same fee amount as the payout base for that bracket's multiplier
+- Arena Fighting now resolves the full result, not just win/lose: winning pays out entry fee x a level/bracket multiplier plus XP (50/100/150 for Group/Semi/Final) straight to the hero, a Final win rolls for a bonus treasure, and losing costs HP (2/4/6 by bracket) and 2 Sanity
+- The entry fee is only charged on the Group round, matching the rule that it covers all three brackets — rolling Semi or Final afterward for the same attempt assumes it's already paid, while still using the same fee amount as the payout base for that bracket's multiplier
 
 ## [1.17.0] — 2026-08-08
 
@@ -47,7 +52,7 @@ All notable changes to this project are documented here, following
 - Resolve an Activity panel on the Settlement tab — rolls and applies 7 settlement activities that previously had no mechanic behind them: Pray at Temple (all 6 gods' boons, auto-filtered to whichever temples the current settlement actually has), Fortune Teller, Gambling (Luck reduces the roll without spending it, per the rule), Horse Racing (DEX test, level-based payout multiplier, catastrophe-strikes failure), Arena Fighting (CS check with HP/STR/bracket modifiers), Tending to Those Memories (free Sanity + optional paid top-up), and Treat Mental Conditions (cures a listed condition)
 
 ### Notes
-- Arena Fighting resolves win/lose but the book doesn't list prize money for winning, so that part's still on you
+- Arena Fighting resolves win/lose, but there's no prize-money data for it, so payout amounts are still up to you
 - Temple/Curse/Feast-style boons that last "until the next dungeon exit" are applied immediately with a reminder in the result — there's no duration-tracking system yet, so remove them manually when the dungeon ends
 
 ## [1.16.0] — 2026-08-08
@@ -65,7 +70,7 @@ All notable changes to this project are documented here, following
 ### Added
 - Real per-settlement data from "The Settlements of the Southern Part of the Kingdom" (p134-137): actual Inn cost for all 11 settlements (15c-65c, not a flat guess), which auto-fills when you pick a settlement instead of needing to type it in
 - Each settlement now shows its available Services and which gods' Temples are present, plus settlement-specific notes (Durburim/Birnheim's +2 Durability on locally-made gear, the Outpost's 100c/hero Ancient Lands toll)
-- The Activities picker now only shows what the current settlement actually offers — no more seeing "Learn a Spell" at a village with no Wizards' Guild. Guild-based activities (Charge/Identify Magic Item, Learn a Spell, Guild Business, Skill Training) turned out to only exist in Silver City at all, per the book ("the only place... where the Guilds have settled")
+- The Activities picker now only shows what the current settlement actually offers — no more seeing "Learn a Spell" at a village with no Wizards' Guild. Guild-based activities (Charge/Identify Magic Item, Learn a Spell, Guild Business, Skill Training) only exist in Silver City, since it's the only settlement with Guilds at all
 
 ## [1.14.1] — 2026-08-08
 

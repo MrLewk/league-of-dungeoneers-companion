@@ -1536,6 +1536,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.25.2",
+    date: "2026-08-09",
+    sections: {
+      "Fixed": [
+        "Door / Chest Opener's 'not enough AP' message was invisible on the very first attempt — it only rendered inside the results box, which itself only appears after a door has actually been opened. Now shows in its own spot above the button whenever no door has been rolled yet, so the message is never silently swallowed",
+      ],
+    },
+  },
+  {
     version: "1.25.1",
     date: "2026-08-09",
     sections: {
@@ -6219,6 +6228,20 @@ function DiceTray({ party, setParty, heroes, updateHero, addLog }) {
         >
           Open a Door / Chest (1 AP)
         </button>
+
+        {doorFeedback && !doorResult && (
+          <div
+            className="rounded p-2 mb-3 text-xs font-semibold"
+            style={{
+              background: "#fff",
+              border: `1px solid ${doorFeedback.tone === "good" ? palette.forest : doorFeedback.tone === "bad" ? palette.crimson : palette.gold}`,
+              color: doorFeedback.tone === "good" ? palette.forestDark : doorFeedback.tone === "bad" ? palette.crimson : palette.charcoal,
+              fontFamily: "Crimson Pro, serif",
+            }}
+          >
+            {doorFeedback.text}
+          </div>
+        )}
 
         {doorResult && (
           <div className="rounded p-3" style={{ background: "#00000010" }}>

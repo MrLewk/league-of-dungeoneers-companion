@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.25.2] — 2026-08-09
+
+### Fixed
+- Door / Chest Opener's "not enough AP" message was invisible on the very first attempt — it only rendered inside the results box, which itself only appears after a door has actually been opened. Now shows in its own spot above the button whenever no door has been rolled yet, so the message is never silently swallowed
+
 ## [1.25.1] — 2026-08-09
 
 ### Fixed

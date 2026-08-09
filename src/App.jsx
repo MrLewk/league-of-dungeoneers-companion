@@ -835,6 +835,23 @@ const DOOR_LOCK_TABLE = [
   { roll: [10, 10], locked: true, pickMod: -20, hp: 25 },
 ];
 
+// Searching a Tile — 2 AP, Perception test (+10 if 2 heroes search together, +5 more per
+// hero beyond that). On a success, roll 1d100 on this table; add +10 to the roll if the
+// tile is a corridor.
+const SEARCH_TILE_TABLE = [
+  { roll: [1, 15], text: "Secret door leading to a small Treasure Chamber. Place a new tile adjacent (re-roll if that spot's in use) and add a door as usual. Once the heroes leave the treasure chamber, the door closes up and the tile can be removed." },
+  { roll: [16, 25], text: "A Fine Treasure." },
+  { roll: [26, 40], text: "A Mundane Treasure." },
+  { roll: [41, 45], text: "A set of levers are intricately hidden in the wall. They may be operated." },
+  { roll: [46, 50], text: "4d20 coins." },
+  { roll: [51, 90], text: "Nothing." },
+  { roll: [91, 100], text: "You've sprung a trap! Draw a trap card." },
+];
+function searchTileResult(roll) {
+  const clamped = Math.min(100, roll);
+  return SEARCH_TILE_TABLE.find((r) => clamped >= r.roll[0] && clamped <= r.roll[1]);
+}
+
 const LOOT_TABLES = {
   T1: [
     { roll: "1", result: "Weapon used by the enemy (1d4 DUR loss)" },
@@ -1518,6 +1535,15 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.25.0",
+    date: "2026-08-09",
+    sections: {
+      "Added": [
+        "Search a Tile on the Dice tab — 2 AP, rolls a Perception test (with the group bonus: +10 for 2 heroes searching together, +5 more per hero beyond that) and, on success, rolls the full 1d100 outcome table (secret door to a treasure chamber, fine/mundane treasure, hidden levers, coins, a sprung trap, or nothing), with a toggle to add the +10 corridor modifier",
+      ],
+    },
+  },
   {
     version: "1.24.4",
     date: "2026-08-09",
@@ -5967,13 +5993,41 @@ function DiceTray({ party, setParty, heroes, updateHero, addLog }) {
   const [doorFeedback, setDoorFeedback] = useState(null);
   const activeDoorHero = heroes.find((h) => h.id === doorHero) || heroes[0];
 
+  const [searchHeroId, setSearchHeroId] = useState("");
+  const [searchersCount, setSearchersCount] = useState(1);
+  const [inCorridor, setInCorridor] = useState(false);
+  const [searchResult, setSearchResult] = useState(null);
+  const [searchFeedback, setSearchFeedback] = useState(null);
+  const activeSearchHero = heroes.find((h) => h.id === searchHeroId) || heroes[0];
+
+  const searchTile = () => {
+    if (!activeSearchHero) return;
+    if (!trySpendAP(activeSearchHero, 2, setSearchFeedback)) return;
+    setSearchFeedback(null);
+    const searchers = Math.max(1, Number(searchersCount) || 1);
+    const bonus = searchers >= 2 ? 10 + Math.max(0, searchers - 2) * 5 : 0;
+    const target = (Number(activeSearchHero.skills.perception) || 0) + bonus;
+    const perRoll = rollPercent();
+    if (perRoll > target) {
+      setSearchResult({ perRoll, target, success: false });
+      addLog(`${activeSearchHero.name} searches the tile: Perception ${perRoll} vs ${target} (${bonus > 0 ? `base + ${bonus} group bonus` : "no group bonus"}) — nothing found.`);
+      return;
+    }
+    let tableRoll = rollPercent();
+    if (inCorridor) tableRoll = Math.min(100, tableRoll + 10);
+    const entry = searchTileResult(tableRoll);
+    setSearchResult({ perRoll, target, success: true, tableRoll, entry });
+    addLog(`${activeSearchHero.name} searches the tile: Perception ${perRoll} vs ${target} — success! Rolled ${tableRoll}${inCorridor ? " (+10 corridor)" : ""} on the table: ${entry.text}`);
+  };
+
   // Every model has a flat 2 AP per the QRS. Spends from the acting hero's pool
   // (tracked on the Turn tab) and blocks the action with feedback if they're short.
-  const trySpendAP = (hero, amount) => {
+  const trySpendAP = (hero, amount, onFail) => {
     if (!hero) return false;
     const ap = hero.ap ?? 2;
     if (ap < amount) {
-      setDoorFeedback({ text: `${hero.name} doesn't have enough AP (needs ${amount}, has ${ap}). Check the Turn tab.`, tone: "bad" });
+      const msg = `${hero.name} doesn't have enough AP (needs ${amount}, has ${ap}). Check the Turn tab.`;
+      (onFail || setDoorFeedback)({ text: msg, tone: "bad" });
       return false;
     }
     updateHero({ ...hero, ap: ap - amount });
@@ -6251,6 +6305,68 @@ function DiceTray({ party, setParty, heroes, updateHero, addLog }) {
             >
               Close / Dismiss (1 AP to close a door)
             </button>
+          </div>
+        )}
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={ClipboardList}>Search a Tile</SectionTitle>
+        <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
+          2 AP, Perception test. On a success, rolls 1d100 on the outcome table (+10 if the tile is a corridor).
+        </p>
+        {heroes.length > 0 && (
+          <select
+            value={activeSearchHero?.id || ""}
+            onChange={(e) => setSearchHeroId(e.target.value)}
+            className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            {heroes.map((h) => <option key={h.id} value={h.id}>{h.name} (Perception {h.skills.perception ?? 0}, {h.ap ?? 2} AP)</option>)}
+          </select>
+        )}
+        <div className="flex gap-1.5 mb-1.5">
+          <label className="flex-1 flex items-center gap-1.5 text-xs rounded px-2 py-1.5" style={{ border: `1px solid ${palette.line}`, color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            Heroes searching
+            <input
+              type="number"
+              value={searchersCount}
+              onChange={(e) => setSearchersCount(Number(e.target.value) || 1)}
+              className="w-10 rounded px-1"
+              style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+              title="2 = +10 Perception, +5 more per hero beyond that"
+            />
+          </label>
+          <button
+            onClick={() => setInCorridor((v) => !v)}
+            className="px-3 py-1.5 rounded text-xs font-semibold active:scale-95 transition-transform"
+            style={{ background: inCorridor ? palette.crimsonDark : "#00000010", color: inCorridor ? palette.parchment : palette.ink, fontFamily: "Cinzel, serif" }}
+          >
+            {inCorridor ? "Corridor (+10)" : "Room"}
+          </button>
+        </div>
+        <button
+          onClick={searchTile}
+          className="w-full mb-2 px-3 py-2 rounded font-bold text-sm active:scale-95 transition-transform"
+          style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+        >
+          Search (2 AP)
+        </button>
+        {searchFeedback && (
+          <p className="text-xs mb-2 font-semibold" style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif" }}>{searchFeedback.text}</p>
+        )}
+        {searchResult && (
+          <div className="rounded p-3" style={{ background: "#00000010" }}>
+            <p className="text-xs mb-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+              Perception: rolled <b>{searchResult.perRoll}</b> vs <b>{searchResult.target}</b>
+            </p>
+            {!searchResult.success ? (
+              <p className="text-sm font-bold" style={{ color: palette.inkSoft, fontFamily: "Cinzel, serif" }}>Nothing found.</p>
+            ) : (
+              <>
+                <p className="text-xs mb-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>Table roll: <b>{searchResult.tableRoll}</b></p>
+                <p className="text-sm font-bold" style={{ color: palette.forestDark, fontFamily: "Cinzel, serif" }}>{searchResult.entry.text}</p>
+              </>
+            )}
           </div>
         )}
       </Panel>

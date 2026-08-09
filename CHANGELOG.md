@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.25.0] — 2026-08-09
+
+### Added
+- Search a Tile on the Dice tab — 2 AP, rolls a Perception test (with the group bonus: +10 for 2 heroes searching together, +5 more per hero beyond that) and, on success, rolls the full 1d100 outcome table (secret door to a treasure chamber, fine/mundane treasure, hidden levers, coins, a sprung trap, or nothing), with a toggle to add the +10 corridor modifier
+
 ## [1.24.4] — 2026-08-09
 
 ### Fixed

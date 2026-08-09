@@ -3,6 +3,14 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.24.0] — 2026-08-09
+
+### Added
+- Short Rest on the Turn tab — one button resolves every numeric step: -1 food ration, Threat -5 followed by a threat roll (same Threat Table logic as Start of Turn), Party Morale +2, +1d6 HP per hero, Energy regen (1d6 per missing point, recovered on 1-3 — or fully restored automatically if the hero's carrying a Bed Roll), and full Mana for any caster
+
+### Notes
+- Board-state steps from the checklist (arranging heroes, barring the door, moving Wandering Monsters, brewing potions, and the Ambush roll — no data found yet for that one) still need doing by hand; the full checklist stays in Reference
+
 ## [1.23.0] — 2026-08-09
 
 ### Added

@@ -1519,6 +1519,18 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.24.0",
+    date: "2026-08-09",
+    sections: {
+      "Added": [
+        "Short Rest on the Turn tab — one button resolves every numeric step: -1 food ration, Threat -5 followed by a threat roll (same Threat Table logic as Start of Turn), Party Morale +2, +1d6 HP per hero, Energy regen (1d6 per missing point, recovered on 1-3 — or fully restored automatically if the hero's carrying a Bed Roll), and full Mana for any caster",
+      ],
+      "Notes": [
+        "Board-state steps from the checklist (arranging heroes, barring the door, moving Wandering Monsters, brewing potions, and the Ambush roll — no data found yet for that one) still need doing by hand; the full checklist stays in Reference",
+      ],
+    },
+  },
+  {
     version: "1.23.0",
     date: "2026-08-09",
     sections: {
@@ -4717,6 +4729,65 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog }) {
     setTradeItem("");
   };
 
+  // In-Dungeon Short Rest — automates every numeric step from REST_STEPS (Reference tab).
+  // Board-state steps (arranging heroes, moving Wandering Monsters, barring the door,
+  // brewing potions, rolling for Ambush — no data for that roll) stay manual reminders.
+  const [restSummary, setRestSummary] = useState(null);
+  const takeShortRest = () => {
+    const lines = [];
+    const newFood = Math.max(0, party.food - 1);
+    lines.push(`Food: −1 ration (now ${newFood}).${newFood === 0 ? " Party is out of food!" : ""}`);
+
+    const lowered = clamp(party.threat - 5, party.threatFloor, 999);
+    const threatRoll = rollDie(20);
+    let newThreat = lowered;
+    if (threatRoll === 20) {
+      newThreat = clamp(lowered - 5, party.threatFloor, 999);
+      lines.push(`Threat −5 (now ${lowered}), then a natural 20 on the follow-up roll — Threat −5 again (now ${newThreat}).`);
+    } else if (threatRoll > lowered) {
+      newThreat = clamp(lowered + 1, party.threatFloor, 999);
+      lines.push(`Threat −5 (now ${lowered}), then rolled ${threatRoll} (above ${lowered}) — Threat +1 (now ${newThreat}).`);
+    } else {
+      const tableRoll = rollDie(20);
+      const entry = findThreatEntry(THREAT_TABLE_NOT_IN_BATTLE, tableRoll);
+      newThreat = clamp(lowered + entry.decrease, party.threatFloor, 999);
+      lines.push(`Threat −5 (now ${lowered}), then rolled ${threatRoll} (at/below ${lowered}) — ${entry.title}: ${entry.text} Threat ${entry.decrease} (now ${newThreat}).`);
+    }
+
+    const newMorale = party.morale + 2;
+    lines.push(`Party Morale +2 (now ${newMorale}).`);
+
+    heroes.forEach((h) => {
+      const hpRoll = rollDie(6);
+      const newHp = Math.min(h.hp.max, h.hp.cur + hpRoll);
+      const hasBedroll = (h.backpack || []).some((it) => it.name === "Bed Roll");
+      let newEnergyCur = h.energy.cur;
+      let energyLine;
+      if (hasBedroll) {
+        newEnergyCur = h.energy.max;
+        energyLine = "Energy fully regained (Bed Roll).";
+      } else {
+        const missing = h.energy.max - h.energy.cur;
+        let regained = 0;
+        for (let i = 0; i < missing; i++) if (rollDie(6) <= 3) regained++;
+        newEnergyCur = Math.min(h.energy.max, h.energy.cur + regained);
+        energyLine = missing > 0 ? `+${regained}/${missing} Energy.` : "Energy already full.";
+      }
+      const isCaster = h.mana.max > 0;
+      updateHero(h.id, {
+        ...h,
+        hp: { ...h.hp, cur: newHp },
+        energy: { ...h.energy, cur: newEnergyCur },
+        mana: isCaster ? { ...h.mana, cur: h.mana.max } : h.mana,
+      });
+      lines.push(`${h.name}: +${hpRoll} HP (${newHp}/${h.hp.max}). ${energyLine}${isCaster ? " Mana fully regained." : ""}`);
+    });
+
+    setParty((prev) => ({ ...prev, food: newFood, threat: newThreat, morale: newMorale }));
+    setRestSummary(lines);
+    addLog(`Short Rest: ${lines.join(" ")}`);
+  };
+
   const resetRound = () => {
     heroes.forEach((h) => updateHero(h.id, { ...h, ap: 2 }));
     setParty((prev) => ({ ...prev, round: 1 }));
@@ -4903,6 +4974,27 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog }) {
         {turnResult && (
           <div className="rounded p-2" style={{ background: "#00000010" }}>
             {turnResult.lines.map((line, i) => (
+              <p key={i} className="text-xs" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>{line}</p>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      <Panel className="mb-4">
+        <SectionTitle icon={Bed}>Short Rest</SectionTitle>
+        <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+          Automates the numeric steps: −1 food, Threat −5 then a follow-up roll, Party Morale +2, +1d6 HP per hero, Energy regen (or full with a Bed Roll), full Mana for casters. Arranging heroes, barring the door, moving Wandering Monsters, brewing potions, and the Ambush roll still need doing by hand — see the full checklist in Reference.
+        </p>
+        <button
+          onClick={takeShortRest}
+          className="w-full mb-2 text-sm px-3 py-2 rounded font-bold active:scale-95 transition-transform"
+          style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
+        >
+          Take a Short Rest
+        </button>
+        {restSummary && (
+          <div className="rounded p-2" style={{ background: "#00000010" }}>
+            {restSummary.map((line, i) => (
               <p key={i} className="text-xs" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>{line}</p>
             ))}
           </div>

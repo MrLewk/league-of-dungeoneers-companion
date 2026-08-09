@@ -3,6 +3,15 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.20.0] — 2026-08-09
+
+### Added
+- Door / Chest Opener on the Dice tab — the mechanic from the previously-blurry page. One button rolls the lock check (1d10) and trap check (1d6) together and raises Threat +1 automatically. If locked, shows the Pick Lock penalty and HP, with buttons for Pick the Lock (2 AP, no extra Threat, jams on a fumble), Force Open (+2 Threat per attempt, enter your damage roll), and Use a Crowbar (fixed 8+DB damage, +1 Threat) — each tracking the door/chest's remaining HP until it breaks open
+
+### Notes
+- Trap resolution itself (drawing a trap card) stays manual — the app doesn't have trap card data, so a trapped result just flags it as a reminder
+- The lock-pick fumble threshold isn't stated explicitly in the pages I have; used a natural 00 (100 on d100) as the fumble trigger, matching the common convention elsewhere in the system — worth double-checking against the book if you spot the exact rule
+
 ## [1.19.0] — 2026-08-08
 
 ### Added

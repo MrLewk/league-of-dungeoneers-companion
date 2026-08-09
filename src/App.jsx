@@ -786,6 +786,17 @@ const REST_STEPS = [
   "Roll for Ambush",
 ];
 
+// Opening a Door or Chest (p98) — roll 1d10 (lock check) + 1d6 (trap check) together,
+// simultaneously raising Threat +1. On the d10: 1-6 open, 7-10 locked with an increasing
+// Pick Lock penalty and door/chest HP for forcing it. "0" on the d10 reads as 10.
+const DOOR_LOCK_TABLE = [
+  { roll: [1, 6], locked: false, pickMod: 0, hp: 0 },
+  { roll: [7, 7], locked: true, pickMod: 0, hp: 10 },
+  { roll: [8, 8], locked: true, pickMod: -10, hp: 15 },
+  { roll: [9, 9], locked: true, pickMod: -15, hp: 20 },
+  { roll: [10, 10], locked: true, pickMod: -20, hp: 25 },
+];
+
 const LOOT_TABLES = {
   T1: [
     { roll: "1", result: "Weapon used by the enemy (1d4 DUR loss)" },
@@ -1469,6 +1480,19 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.20.0",
+    date: "2026-08-09",
+    sections: {
+      "Added": [
+        "Door / Chest Opener on the Dice tab — the mechanic from the previously-blurry page. One button rolls the lock check (1d10) and trap check (1d6) together and raises Threat +1 automatically. If locked, shows the Pick Lock penalty and HP, with buttons for Pick the Lock (2 AP, no extra Threat, jams on a fumble), Force Open (+2 Threat per attempt, enter your damage roll), and Use a Crowbar (fixed 8+DB damage, +1 Threat) — each tracking the door/chest's remaining HP until it breaks open",
+      ],
+      "Notes": [
+        "Trap resolution itself (drawing a trap card) stays manual — the app doesn't have trap card data, so a trapped result just flags it as a reminder",
+        "The lock-pick fumble threshold isn't stated explicitly in the pages I have; used a natural 00 (100 on d100) as the fumble trigger, matching the common convention elsewhere in the system — worth double-checking against the book if you spot the exact rule",
+      ],
+    },
+  },
   {
     version: "1.19.0",
     date: "2026-08-08",
@@ -5143,7 +5167,7 @@ function CombatCalc({ heroes, updateHero, addLog }) {
 }
 
 // ---------- Dice Tray ----------
-function DiceTray() {
+function DiceTray({ party, setParty, heroes, addLog }) {
   const [rolls, setRolls] = useState([]);
   const doRoll = (sides, label) => {
     const r = sides === 100 ? rollPercent() : rollDie(sides);
@@ -5165,6 +5189,61 @@ function DiceTray() {
     const r = rollDie(10);
     const result = lootLookup(tableKey, r);
     setLootRolls((prev) => [{ tableKey, r, result, id: uid() }, ...prev].slice(0, 8));
+  };
+
+  const [doorResult, setDoorResult] = useState(null);
+  const [doorHero, setDoorHero] = useState("");
+  const [doorDamageInput, setDoorDamageInput] = useState(0);
+  const activeDoorHero = heroes.find((h) => h.id === doorHero) || heroes[0];
+
+  const openDoorOrChest = () => {
+    setParty((prev) => ({ ...prev, threat: prev.threat + 1 }));
+    const openRoll = rollDie(10);
+    const trapRoll = rollDie(6);
+    const trapped = trapRoll === 6;
+    const row = DOOR_LOCK_TABLE.find((r) => openRoll >= r.roll[0] && openRoll <= r.roll[1]);
+    setDoorResult({ openRoll, trapRoll, trapped, locked: row.locked, pickMod: row.pickMod, hp: row.hp, hpRemaining: row.hp, jammed: false });
+    addLog(`Opened a door/chest: rolled ${openRoll} (d10)${trapped ? " + TRAPPED (d6: 6) — draw a trap card" : ""} — ${row.locked ? `Locked (Pick Lock ${row.pickMod}, HP ${row.hp})` : "Open"}. Threat +1.`);
+  };
+
+  const forceOpen = () => {
+    if (!doorResult || !doorResult.locked) return;
+    setParty((prev) => ({ ...prev, threat: prev.threat + 2 }));
+    const dmg = Math.max(0, doorDamageInput);
+    const newHp = Math.max(0, doorResult.hpRemaining - dmg);
+    const broken = newHp <= 0;
+    setDoorResult((prev) => ({ ...prev, hpRemaining: newHp, locked: !broken, jammed: false }));
+    addLog(`Forced the door/chest: -${dmg} HP (now ${newHp}/${doorResult.hp})${broken ? " — broken open!" : ""}. Threat +2.`);
+  };
+
+  const useCrowbar = () => {
+    if (!doorResult || !doorResult.locked || !activeDoorHero) return;
+    const dmg = 8 + damageBonus(Number(activeDoorHero.stats.STR) || 0);
+    setParty((prev) => ({ ...prev, threat: prev.threat + 1 }));
+    const newHp = Math.max(0, doorResult.hpRemaining - dmg);
+    const broken = newHp <= 0;
+    setDoorResult((prev) => ({ ...prev, hpRemaining: newHp, locked: !broken, jammed: false }));
+    addLog(`${activeDoorHero.name} uses a crowbar: -${dmg} HP (8+DB) (now ${newHp}/${doorResult.hp})${broken ? " — broken open!" : ""}. Threat +1.`);
+  };
+
+  const pickTheLock = () => {
+    if (!doorResult || !doorResult.locked || !activeDoorHero) return;
+    const skill = (Number(activeDoorHero.skills.pickLocks) || 0) + doorResult.pickMod;
+    const roll = rollPercent();
+    if (roll === 100) {
+      setDoorResult((prev) => ({ ...prev, jammed: true }));
+      addLog(`${activeDoorHero.name} fumbles picking the lock (${roll}) — jammed! Must be forced open now.`);
+    } else if (roll <= skill) {
+      setDoorResult((prev) => ({ ...prev, locked: false, hpRemaining: 0 }));
+      addLog(`${activeDoorHero.name} picks the lock (${roll} vs ${skill}) — opened! (2 AP, no Threat increase.)`);
+    } else {
+      addLog(`${activeDoorHero.name} fails to pick the lock (${roll} vs ${skill}) — the pick breaks.`);
+    }
+  };
+
+  const closeDoor = () => {
+    addLog("Closed a door (1 AP).");
+    setDoorResult(null);
   };
 
   return (
@@ -5254,6 +5333,102 @@ function DiceTray() {
             </div>
           ))}
         </div>
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={ClipboardList}>Door / Chest Opener</SectionTitle>
+        <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
+          1 AP, model must be adjacent. Rolls the lock check + trap check together and raises Threat +1, per the book.
+        </p>
+        <button
+          onClick={openDoorOrChest}
+          className="w-full mb-3 px-3 py-2 rounded font-bold text-sm"
+          style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+        >
+          Open a Door / Chest
+        </button>
+
+        {doorResult && (
+          <div className="rounded p-3" style={{ background: "#00000010" }}>
+            <p className="text-xs mb-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+              Rolled <b>{doorResult.openRoll}</b> (d10) / <b>{doorResult.trapRoll}</b> (d6)
+            </p>
+            {doorResult.trapped && (
+              <p className="text-xs mb-2 font-bold" style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif" }}>
+                TRAPPED! Draw a trap card and resolve it (Perception roll to spot it first).
+              </p>
+            )}
+            {!doorResult.locked ? (
+              <p className="text-sm font-bold" style={{ color: palette.forestDark, fontFamily: "Cinzel, serif" }}>
+                Open! Flip the top Exploration Card. If it's a chest, roll on the Furniture Treasure Table (Dice tab, Loot Roller).
+              </p>
+            ) : (
+              <>
+                <p className="text-sm font-bold mb-1" style={{ color: palette.crimson, fontFamily: "Cinzel, serif" }}>
+                  Locked — Pick Lock {doorResult.pickMod >= 0 ? "+" : ""}{doorResult.pickMod}, HP {doorResult.hpRemaining}/{doorResult.hp}
+                </p>
+                {doorResult.jammed && (
+                  <p className="text-xs mb-2 font-bold" style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif" }}>
+                    Jammed! The lock can no longer be picked — it must be forced open.
+                  </p>
+                )}
+                <select
+                  value={activeDoorHero?.id || ""}
+                  onChange={(e) => setDoorHero(e.target.value)}
+                  className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                >
+                  {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                </select>
+
+                {!doorResult.jammed && (
+                  <button
+                    onClick={pickTheLock}
+                    className="w-full mb-1.5 text-xs px-2 py-2 rounded font-semibold"
+                    style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
+                    title="2 AP, no Threat increase — breaks the pick on a fail, jams on a fumble (natural 00)"
+                  >
+                    Pick the Lock ({activeDoorHero ? (Number(activeDoorHero.skills.pickLocks) || 0) + doorResult.pickMod : "—"})
+                  </button>
+                )}
+
+                <div className="flex gap-1.5 mb-1.5">
+                  <input
+                    type="number"
+                    value={doorDamageInput}
+                    onChange={(e) => setDoorDamageInput(Number(e.target.value) || 0)}
+                    placeholder="Damage"
+                    className="w-20 text-xs rounded px-2 py-1.5"
+                    style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+                  />
+                  <button
+                    onClick={forceOpen}
+                    className="flex-1 text-xs px-2 py-1.5 rounded font-semibold"
+                    style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+                    title="1 AP, +2 Threat per attempt — enter the damage your attack rolled"
+                  >
+                    Force Open (+2 Threat)
+                  </button>
+                </div>
+                <button
+                  onClick={useCrowbar}
+                  className="w-full text-xs px-2 py-1.5 rounded font-semibold"
+                  style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+                  title="1 AP, +1 Threat — fixed 8+DB damage instead of a weapon roll"
+                >
+                  Use a Crowbar (8+DB, +1 Threat)
+                </button>
+              </>
+            )}
+            <button
+              onClick={closeDoor}
+              className="w-full mt-2 text-xs px-2 py-1.5 rounded font-semibold"
+              style={{ background: "#00000015", color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}
+            >
+              Close / Dismiss (1 AP to close a door)
+            </button>
+          </div>
+        )}
       </Panel>
     </div>
   );
@@ -6005,7 +6180,7 @@ export default function App() {
           <HeroesTab heroes={heroes} updateHero={updateHero} removeHero={removeHero} addHero={addHero} addLog={addLog} pushToast={pushToast} />
         )}
         {tab === "combat" && <CombatCalc heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
-        {tab === "dice" && <DiceTray />}
+        {tab === "dice" && <DiceTray party={party} setParty={setParty} heroes={heroes} addLog={addLog} />}
         {tab === "quest" && <QuestRollerPanel />}
         {tab === "compendium" && <CompendiumTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
         {tab === "campaigns" && (

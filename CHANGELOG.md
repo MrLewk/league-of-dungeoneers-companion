@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.27.0] — 2026-08-09
+
+### Added
+- A successful roll in Resolve an Activity now automatically logs the matching Activity Points to the Activities panel above — no more separate manual "Log Activity" click needed for Pray, Fortune Teller, Gambling, Horse Racing, Arena Fighting, Tending to Those Memories, Treat Mental Conditions, or Banking. Only logs on an actual attempt (affordability/precondition checks still block first, same as before) — a bad roll still logs the time spent, since the activity happened either way, just the outcome was unlucky
+
 ## [1.26.2] — 2026-08-09
 
 ### Fixed

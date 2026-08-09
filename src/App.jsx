@@ -1571,6 +1571,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.27.0",
+    date: "2026-08-09",
+    sections: {
+      "Added": [
+        "A successful roll in Resolve an Activity now automatically logs the matching Activity Points to the Activities panel above — no more separate manual 'Log Activity' click needed for Pray, Fortune Teller, Gambling, Horse Racing, Arena Fighting, Tending to Those Memories, Treat Mental Conditions, or Banking. Only logs on an actual attempt (affordability/precondition checks still block first, same as before) — a bad roll still logs the time spent, since the activity happened either way, just the outcome was unlucky",
+      ],
+    },
+  },
+  {
     version: "1.26.2",
     date: "2026-08-09",
     sections: {
@@ -3915,6 +3924,21 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
     setResolverResult(null);
     resolvePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
+  const settlementActivityFor = (resolverName) => SETTLEMENT_ACTIVITIES.find((a) => a.resolverName === resolverName);
+  const logResolverAP = () => {
+    const match = settlementActivityFor(resolverActivity);
+    if (!match || !resolvedHero) return;
+    setParty((prev) => {
+      const cur = prev.settlementAP?.[resolvedHero.id] || { spent: 0, log: [] };
+      return {
+        ...prev,
+        settlementAP: {
+          ...(prev.settlementAP || {}),
+          [resolvedHero.id]: { spent: cur.spent + match.ap, log: [...cur.log, { name: match.name, ap: match.ap }] },
+        },
+      };
+    });
+  };
   const [resolverHero, setResolverHero] = useState("");
   const [resolverTemple, setResolverTemple] = useState("");
   const [resolverOhlnirChoice, setResolverOhlnirChoice] = useState("CS");
@@ -4305,6 +4329,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
 
   const resolveActivity = () => {
     if (!resolvedHero) return;
+    let succeeded = false;
     if (resolverActivity === "Pray") {
       if (!resolverTemple) { setResolverResult({ ok: false, lines: ["Pick a temple first."] }); return; }
       if (party.coins < 50) { setResolverResult({ ok: false, lines: ["Can't afford the 50c offering."] }); return; }
@@ -4312,7 +4337,9 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       const roll = rollDie(6);
       if (roll > 3) {
         setResolverResult({ ok: true, lines: [`Rolled ${roll} — ${resolverTemple} doesn't answer this time. (Paid 50c.)`] });
+        succeeded = true;
         addLog(`${resolvedHero.name} prays at the Temple of ${resolverTemple}: no answer (rolled ${roll}).`);
+        logResolverAP();
         return;
       }
       const boon = TEMPLE_BOONS[resolverTemple];
@@ -4333,6 +4360,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       }
       updateHero({ ...resolvedHero, ...addTempEffect(resolvedHero, `${resolverTemple}: ${line}`, effect) });
       setResolverResult({ ok: true, lines: [`Rolled ${roll} — ${resolverTemple} answers! ${line} applied — see Temporary Effects on ${resolvedHero.name}'s card to clear it after the next dungeon. (Paid 50c.)`] });
+      succeeded = true;
       addLog(`${resolvedHero.name} prays at the Temple of ${resolverTemple}: success (${roll}). ${line}.`);
     } else if (resolverActivity === "Fortune Teller") {
       if (party.coins < 50) { setResolverResult({ ok: false, lines: ["Can't afford the 50c fee."] }); return; }
@@ -4357,6 +4385,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         line += ` Curse roll: ${curseRoll} → ${detail} — applied, see Temporary Effects on ${resolvedHero.name}'s card to clear it after the next dungeon.`;
       }
       setResolverResult({ ok: true, lines: [line] });
+      succeeded = true;
       addLog(`${resolvedHero.name} visits the Fortune Teller: ${line}`);
     } else if (resolverActivity === "Gambling") {
       const bet = Math.max(50, Math.min(500, resolverBet));
@@ -4370,6 +4399,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       setParty((prev) => ({ ...prev, coins: prev.coins + net }));
       const line = `Bet ${bet}c. Rolled ${raw}${luckBonus > 0 && raw !== 10 ? ` (-${luckBonus} Luck → ${modified})` : ""} — ${row.label} Net ${net >= 0 ? "+" : ""}${net}c.`;
       setResolverResult({ ok: true, lines: [line] });
+      succeeded = true;
       addLog(`${resolvedHero.name} gambles: ${line}`);
     } else if (resolverActivity === "Horse Racing") {
       const bet = Math.max(50, Math.min(300, resolverBet));
@@ -4382,14 +4412,18 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         updateHero({ ...resolvedHero, hp: { ...resolvedHero.hp, cur: Math.max(0, resolvedHero.hp.cur - hpLoss) }, sanity: { ...resolvedHero.sanity, cur: Math.max(0, resolvedHero.sanity.cur - 1) } });
         const line = `Rolled ${roll} — Catastrophe strikes! Lost the horse (remove it manually), -${hpLoss} HP, -1 Sanity. Bet (${bet}c) lost.`;
         setResolverResult({ ok: true, lines: [line] });
+        succeeded = true;
         addLog(`${resolvedHero.name} races a horse: ${line}`);
+        logResolverAP();
         return;
       }
       const place = roll <= Math.floor(dex / 2) ? "first" : roll <= dex - 10 ? "second" : null;
       if (!place) {
         const line = `Rolled ${roll} (DEX ${dex}) — you lose. Bet (${bet}c) lost.`;
         setResolverResult({ ok: true, lines: [line] });
+        succeeded = true;
         addLog(`${resolvedHero.name} races a horse: ${line}`);
+        logResolverAP();
         return;
       }
       const level = Math.min(10, Math.max(1, resolvedHero.level));
@@ -4401,6 +4435,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       const lines = [`Rolled ${roll} (DEX ${dex}) — ${place === "first" ? "1st place!" : "2nd place!"} Won ${winnings}c (x${mult}).`];
       if (extraRow.prize) lines.push(`Extra prize roll (${extraRoll}): 1 ${extraRow.prize}!`);
       setResolverResult({ ok: true, lines });
+      succeeded = true;
       addLog(`${resolvedHero.name} races a horse: ${lines.join(" ")}`);
     } else if (resolverActivity === "Arena Fighting") {
       const fee = Math.max(50, Math.min(200, resolverBet));
@@ -4438,6 +4473,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         lines.push(`Lost: -${hpLoss} HP, -2 Sanity.`);
       }
       setResolverResult({ ok: true, lines });
+      succeeded = true;
       addLog(`${resolvedHero.name} fights in the ${resolverArenaLevel} arena bracket: rolled ${roll} vs target ${target} — ${lines.slice(1).join(" ")}`);
     } else if (resolverActivity === "Tending to Those Memories") {
       const roll = rollDie(3);
@@ -4458,6 +4494,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       updateHero({ ...resolvedHero, sanity: { ...resolvedHero.sanity, cur: newSanity } });
       if (coinsSpent > 0) setParty((prev) => ({ ...prev, coins: prev.coins - coinsSpent }));
       setResolverResult({ ok: true, lines });
+      succeeded = true;
       addLog(`${resolvedHero.name} tends to those memories: ${lines.join(" ")}`);
     } else if (resolverActivity === "Treat Mental Conditions") {
       if (party.coins < 1000) { setResolverResult({ ok: false, lines: ["Can't afford the 1000c treatment."] }); return; }
@@ -4480,10 +4517,12 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         });
         const line = `Rolled ${roll} — treatment succeeds! "${targetCond.name}" cured. Max Sanity is now ${newMax}. Takes 5 days. (Paid 1000c.)`;
         setResolverResult({ ok: true, lines: [line] });
+        succeeded = true;
         addLog(`${resolvedHero.name} is treated at the Asylum: cured "${targetCond.name}" (rolled ${roll}). Max Sanity now ${newMax}.`);
       } else {
         const line = `Rolled ${roll} — the treatment fails this time. Takes 5 days. (Paid 1000c.)`;
         setResolverResult({ ok: true, lines: [line] });
+        succeeded = true;
         addLog(`${resolvedHero.name} is treated at the Asylum: failed (rolled ${roll}).`);
       }
     } else if (resolverActivity === "Banking") {
@@ -4504,8 +4543,10 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       }
       updateHero({ ...resolvedHero, bankBalances: { ...balances, [bankKey]: newBalance } });
       setResolverResult({ ok: true, lines: [line] });
+      succeeded = true;
       addLog(`${resolvedHero.name} checks ${resolverBank}: ${line}`);
     }
+    if (succeeded) logResolverAP();
   };
 
   const depositToBank = () => {
@@ -4832,7 +4873,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       <Panel className="mb-4">
         <SectionTitle icon={Sparkles}>Resolve an Activity</SectionTitle>
         <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-          Pray, Fortune Teller, Gambling, Horse Racing, Arena Fighting, Tending to Those Memories, Treat Mental Conditions, Banking. This is where the actual dice get rolled and effects applied — separate from the Activities log above, which only tracks AP/time spent.
+          Pray, Fortune Teller, Gambling, Horse Racing, Arena Fighting, Tending to Those Memories, Treat Mental Conditions, Banking. This is where the dice actually get rolled and effects applied — a successful roll here also logs the matching Activity Points automatically, so there's no need to log it again above.
         </p>
         <div className="grid grid-cols-2 gap-1.5 mb-1.5">
           <select

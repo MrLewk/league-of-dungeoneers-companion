@@ -752,6 +752,30 @@ const DOOR_TABLE = [
   { roll: "0", result: "Locked", extra: "Pick lock: −20%, Wounds 25" },
 ];
 
+// Threat Table — rolled on when a Threat roll (1d20) lands at or below the current
+// Threat Level. Two versions depending on whether the party is currently in combat.
+function findThreatEntry(table, roll) {
+  return table.find((e) => (Array.isArray(e.roll) ? roll >= e.roll[0] && roll <= e.roll[1] : e.roll === roll));
+}
+const THREAT_TABLE_NOT_IN_BATTLE = [
+  { roll: [1, 12], title: "Wandering Monster", text: "A wandering monster has appeared.", decrease: -5 },
+  { roll: [13, 15], title: "Extra Exploration Card", text: "Add one extra Exploration Card on top of each pile on the table.", decrease: -5 },
+  { roll: [16, 17], title: "Rising Danger", text: "The risk of encounters goes up by 10 in all rooms and corridors for the rest of the quest. Cumulative, max 70%.", decrease: -6 },
+  { roll: [18, 19], title: "Trap Sprung", text: "A hero has sprung a trap! Randomise which hero — the square they occupy is also the disarm location.", decrease: -7 },
+  { roll: [20, 20], title: "Rising Tension", text: "Add +1 to all Scenario die rolls for the remainder of the dungeon. Only happens once.", decrease: -10 },
+];
+const THREAT_TABLE_IN_COMBAT = [
+  { roll: 1, title: "A Disturbance in the Void", text: "Spell Casters may do nothing during the coming turn, not even dodge or parry.", decrease: -2 },
+  { roll: 2, title: "Greenish Tint", text: "The enemy gains the Poisonous Special Rule.", decrease: -2 },
+  { roll: 3, title: "Forged Under Pressure", text: "One enemy gains +15 CS until dead.", decrease: -3 },
+  { roll: [4, 5], title: "Healing", text: "One wounded enemy (highest XP level, or random) heals 1d10 HP.", decrease: -3 },
+  { roll: 6, title: "Frenzy", text: "One enemy gains the Frenzy Special Rule until dead.", decrease: -3 },
+  { roll: 7, title: "Disarmed!", text: "A random hero drops their weapon — a DEX Test retrieves it (1 action); on a fail they have no weapon, and each further try costs 1 AP.", decrease: -3 },
+  { roll: 8, title: "Fearsome!", text: "One enemy gains the Fear Special Rule — no level cap, though Talents that ignore fear still work.", decrease: -4 },
+  { roll: 9, title: "Reinforcements", text: "Roll on the Encounter Table and place the result just outside a random door (open or not); it acts last this turn. If the door was previously unopened, it's now unlocked and untrapped.", decrease: -4 },
+  { roll: 10, title: "Onwards!", text: "All enemies gain +10 CS until end of battle.", decrease: -6 },
+];
+
 const DAMAGE_TYPES = [
   { type: "Fire", effect: "Ignores NA & Armour. 50% chance of auto-damage next turn (roll again, half — round down)." },
   { type: "Frost", effect: "50% chance of stun (lose 1 AP next turn)." },
@@ -1480,6 +1504,15 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.21.0",
+    date: "2026-08-09",
+    sections: {
+      "Added": [
+        "Start of Turn resolver on the Party tab — rolls the Scenario die (1d10) and, on a 9-10, automatically rolls Threat (1d20) against the current level: a natural 20 lowers Threat -5, a roll above the current level raises it +1, and anything at or below rolls on the matching Threat Table (In Battle / Not in Battle, toggled with one button) and applies the result's Threat change automatically",
+      ],
+    },
+  },
   {
     version: "1.20.1",
     date: "2026-08-09",
@@ -4516,6 +4549,46 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
     addLog(`Threat ${delta > 0 ? "+" : ""}${delta} → ${next} (${label})`);
   };
 
+  const [inBattle, setInBattle] = useState(false);
+  const [turnResult, setTurnResult] = useState(null);
+
+  const rollStartOfTurn = () => {
+    const lines = [];
+    const scenarioRoll = rollDie(10);
+    lines.push(`Scenario die: ${scenarioRoll}`);
+    if (scenarioRoll < 9) {
+      lines.push("No Threat roll this turn.");
+      setTurnResult({ lines });
+      addLog(`Start of turn — Scenario die ${scenarioRoll}: no Threat roll.`);
+      return;
+    }
+    const threatRoll = rollDie(20);
+    lines.push(`Threat roll: ${threatRoll} (current Threat ${party.threat})`);
+    let newThreat = party.threat;
+    if (threatRoll === 20) {
+      newThreat = clamp(party.threat - 5, party.threatFloor, 999);
+      lines.push(`Natural 20 — Threat −5 (now ${newThreat}).`);
+    } else if (threatRoll > party.threat) {
+      newThreat = clamp(party.threat + 1, party.threatFloor, 999);
+      lines.push(`Above current Threat — Threat +1 (now ${newThreat}).`);
+    } else if (inBattle) {
+      const tableRoll = rollDie(10);
+      const entry = findThreatEntry(THREAT_TABLE_IN_COMBAT, tableRoll);
+      newThreat = clamp(party.threat + entry.decrease, party.threatFloor, 999);
+      lines.push(`At/below Threat — In-Combat table (${tableRoll}): ${entry.title}. ${entry.text}`);
+      lines.push(`Threat ${entry.decrease} (now ${newThreat}).`);
+    } else {
+      const tableRoll = rollDie(20);
+      const entry = findThreatEntry(THREAT_TABLE_NOT_IN_BATTLE, tableRoll);
+      newThreat = clamp(party.threat + entry.decrease, party.threatFloor, 999);
+      lines.push(`At/below Threat — Not-in-Battle table (${tableRoll}): ${entry.title}. ${entry.text}`);
+      lines.push(`Threat ${entry.decrease} (now ${newThreat}).`);
+    }
+    setParty((prev) => ({ ...prev, threat: newThreat }));
+    setTurnResult({ lines });
+    addLog(`Start of turn: ${lines.join(" ")}`);
+  };
+
   const applyMorale = () => {
     const ev = MORALE_EVENTS.find((e) => e.label === moraleEvent);
     if (!ev) return;
@@ -4551,6 +4624,34 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
 
   return (
     <div>
+      <Panel className="mb-4">
+        <SectionTitle icon={Dice5}>Start of Turn</SectionTitle>
+        <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+          Rolls the Scenario die (1d10); on a 9-10 it rolls Threat (1d20) and, if triggered, the matching Threat Table — applying the result to Threat automatically.
+        </p>
+        <button
+          onClick={() => setInBattle((v) => !v)}
+          className="w-full mb-2 text-xs px-2 py-2 rounded font-semibold"
+          style={{ background: inBattle ? palette.crimsonDark : "#00000010", color: inBattle ? palette.parchment : palette.ink, fontFamily: "Cinzel, serif" }}
+        >
+          {inBattle ? "In Battle — rolls the In-Combat table" : "Not in Battle — rolls the Wandering/Exploration table"}
+        </button>
+        <button
+          onClick={rollStartOfTurn}
+          className="w-full mb-2 text-sm px-3 py-2 rounded font-bold"
+          style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
+        >
+          Roll It
+        </button>
+        {turnResult && (
+          <div className="rounded p-2" style={{ background: "#00000010" }}>
+            {turnResult.lines.map((line, i) => (
+              <p key={i} className="text-xs" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>{line}</p>
+            ))}
+          </div>
+        )}
+      </Panel>
+
       <Panel className="mb-4">
         <SectionTitle icon={Flame}>Threat Level</SectionTitle>
         <div className="flex items-center gap-3 mb-3">
@@ -4597,7 +4698,7 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
           ))}
         </div>
         <p className="text-xs mt-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-          Roll the scenario die each turn once the party is past the first door. On a 9 or 0 (or the quest's level), make a threat roll — check the Threat Table in Reference.
+          Use "Start of Turn" above to roll the Scenario die and Threat automatically each turn, or the buttons below for one-off Threat changes.
         </p>
       </Panel>
 

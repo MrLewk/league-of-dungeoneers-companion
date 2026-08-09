@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.24.1] — 2026-08-09
+
+### Fixed
+- Clearing an equipped weapon or armour piece deleted it entirely instead of keeping the item — it now moves into the backpack (with its price looked up automatically if it matches a table entry) so unequipping something doesn't lose it
+
 ## [1.24.0] — 2026-08-09
 
 ### Added

@@ -1519,6 +1519,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.24.1",
+    date: "2026-08-09",
+    sections: {
+      "Fixed": [
+        "Clearing an equipped weapon or armour piece deleted it entirely instead of keeping the item — it now moves into the backpack (with its price looked up automatically if it matches a table entry) so unequipping something doesn't lose it",
+      ],
+    },
+  },
+  {
     version: "1.24.0",
     date: "2026-08-09",
     sections: {
@@ -2506,6 +2515,38 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
     setArmourPiece(loc, { name: a.name, def: a.def, enc: a.enc, dur: { cur: 6, max: 6 } });
   };
 
+  // Clearing an equipped weapon/armour piece doesn't destroy it — the hero still has the
+  // physical item, so it moves into the backpack instead of just vanishing.
+  const clearWeapon = () => {
+    if (!hero.weapon.name) return;
+    const ref = WEAPONS.find((w) => w.name === hero.weapon.name);
+    const item = {
+      id: uid(),
+      name: hero.weapon.name,
+      value: ref ? ref.cost : "",
+      enc: hero.weapon.enc,
+      dur: `${hero.weapon.dur.cur}/${hero.weapon.dur.max}`,
+      slot: "backpack",
+    };
+    update({ ...hero, weapon: { name: "", dmg: "", enc: 0, dur: { cur: 6, max: 6 } }, backpack: [...hero.backpack, item] });
+    addLog && addLog(`${hero.name} unequips ${item.name} — moved to the backpack.`);
+  };
+  const clearArmourPiece = (loc) => {
+    const piece = hero.armour[loc];
+    if (!piece.name) return;
+    const ref = ARMOUR_AND_SHIELDS.find((a) => a.name === piece.name);
+    const item = {
+      id: uid(),
+      name: piece.name,
+      value: ref ? ref.cost : "",
+      enc: piece.enc,
+      dur: `${piece.dur.cur}/${piece.dur.max}`,
+      slot: "backpack",
+    };
+    update({ ...hero, armour: { ...hero.armour, [loc]: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 } } }, backpack: [...hero.backpack, item] });
+    addLog && addLog(`${hero.name} unequips ${item.name} — moved to the backpack.`);
+  };
+
   const extraSkillKey = CASTER_SKILL[hero.profession] || PRAYER_SKILL[hero.profession] || null;
   const visibleSkills = [
     "cs", "rs", "dodge", "pickLocks", "barter", "heal", "alchemy", "perception", "foraging",
@@ -3160,7 +3201,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
               <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase">Weapon</div>
               {hero.weapon.name && (
                 <button
-                  onClick={() => setWeapon({ name: "", dmg: "", enc: 0, dur: { cur: 6, max: 6 } })}
+                  onClick={clearWeapon}
                   className="text-[10px] flex items-center gap-0.5 px-1.5 py-0.5 rounded"
                   style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif" }}
                 >
@@ -3235,7 +3276,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
                       <div className="text-xs font-semibold" style={{ fontFamily: "Cinzel, serif", color: palette.inkSoft }}>{label}</div>
                       {piece.name && (
                         <button
-                          onClick={() => setArmourPiece(loc, { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 } })}
+                          onClick={() => clearArmourPiece(loc)}
                           className="text-[10px] flex items-center gap-0.5 px-1.5 py-0.5 rounded"
                           style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif" }}
                         >

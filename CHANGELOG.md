@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.25.1] — 2026-08-09
+
+### Fixed
+- AP wasn't actually being deducted for Door/Chest Opener or Search a Tile actions — both let you keep clicking indefinitely. The Dice tab receives updateHero(id, next) as a two-argument function, but the shared AP-spending helper was calling it with just one merged object, so the hero id never matched and the update silently did nothing. Fixed the one call site — everything AP-related on the Dice tab now actually spends it
+
 ## [1.25.0] — 2026-08-09
 
 ### Added

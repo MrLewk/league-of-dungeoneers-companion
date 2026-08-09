@@ -3,6 +3,12 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.24.4] — 2026-08-09
+
+### Fixed
+- Tapping the Q/B badge on a backpack item silently did nothing when the hero didn't have the 2 AP for it, or when Quick Slots were already full — there was no restriction by item type, the feedback just wasn't visible anywhere except the History log. Both cases now show a clear message right where you tapped
+- Backpack item name was a cramped inline text field competing with Value/ENC/Dur for space — it's now its own full-width line above the stats, matching how the equipped Weapon/Armour sections already work
+
 ## [1.24.3] — 2026-08-09
 
 ### Added

@@ -1519,6 +1519,16 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.24.4",
+    date: "2026-08-09",
+    sections: {
+      "Fixed": [
+        "Tapping the Q/B badge on a backpack item silently did nothing when the hero didn't have the 2 AP for it, or when Quick Slots were already full — there was no restriction by item type, the feedback just wasn't visible anywhere except the History log. Both cases now show a clear message right where you tapped",
+        "Backpack item name was a cramped inline text field competing with Value/ENC/Dur for space — it's now its own full-width line above the stats, matching how the equipped Weapon/Armour sections already work",
+      ],
+    },
+  },
+  {
     version: "1.24.3",
     date: "2026-08-09",
     sections: {
@@ -2730,14 +2740,19 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
   const removeBackpackItem = (id) => set({ backpack: hero.backpack.filter((it) => it.id !== id) });
   const quickSlotUsed = hero.backpack.filter((it) => it.slot === "quickslot").length;
   const quickSlotMax = quickSlotCapacity(hero);
+  const [backpackFeedback, setBackpackFeedback] = useState(null);
   const moveSlot = (item) => {
     const movingToQuick = item.slot !== "quickslot";
     if (movingToQuick && quickSlotUsed >= quickSlotMax) {
-      addLog && addLog(`${hero.name}: no room in Quick Slots (${quickSlotUsed}/${quickSlotMax}) for ${item.name}.`);
+      const msg = `No room in Quick Slots (${quickSlotUsed}/${quickSlotMax}) for ${item.name}. Move something else out first, or clear it.`;
+      setBackpackFeedback({ text: msg, tone: "bad" });
+      addLog && addLog(`${hero.name}: ${msg}`);
       return;
     }
     const ap = hero.ap ?? 2;
     if (ap < 2) {
+      const msg = `${hero.name} doesn't have enough AP to rearrange gear (needs 2, has ${ap}). Check the Turn tab.`;
+      setBackpackFeedback({ text: msg, tone: "bad" });
       addLog && addLog(`${hero.name}: not enough AP to rearrange gear (needs 2, has ${ap}).`);
       return;
     }
@@ -2746,6 +2761,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
       ap: ap - 2,
       backpack: hero.backpack.map((it) => (it.id === item.id ? { ...it, slot: movingToQuick ? "quickslot" : "backpack" } : it)),
     });
+    setBackpackFeedback({ text: `${item.name} moved to ${movingToQuick ? "a Quick Slot" : "the Backpack"}.`, tone: "good" });
     addLog && addLog(`${hero.name} moves ${item.name} to ${movingToQuick ? "a Quick Slot" : "the backpack"} (2 AP).`);
   };
 
@@ -2765,6 +2781,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
         backpack = [...backpack, { id: uid(), name: hero.weapon.name, value: oldRef ? oldRef.cost : "", enc: hero.weapon.enc, dur: `${hero.weapon.dur.cur}/${hero.weapon.dur.max}`, slot: "backpack" }];
       }
       update({ ...hero, weapon: { name: wpn.name, dmg: wpn.dmg, enc: wpn.enc, dur: parseDur(item.dur) }, backpack });
+      setBackpackFeedback({ text: `${wpn.name} equipped.${hero.weapon.name ? ` ${hero.weapon.name} moved to the backpack.` : ""}`, tone: "good" });
       addLog && addLog(`${hero.name} equips ${wpn.name} from the backpack.${hero.weapon.name ? ` ${hero.weapon.name} moved to the backpack.` : ""}`);
       return;
     }
@@ -2778,6 +2795,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
         backpack = [...backpack, { id: uid(), name: oldPiece.name, value: oldRef ? oldRef.cost : "", enc: oldPiece.enc, dur: `${oldPiece.dur.cur}/${oldPiece.dur.max}`, slot: "backpack" }];
       }
       update({ ...hero, armour: { ...hero.armour, [loc]: { name: arm.name, def: arm.def, enc: arm.enc, dur: parseDur(item.dur) } }, backpack });
+      setBackpackFeedback({ text: `${arm.name} equipped (${loc}).${arm.covers.length > 1 ? ` Also covers ${arm.covers.filter((c) => c !== loc).join(", ")} — check those slots too.` : ""}${oldPiece.name ? ` ${oldPiece.name} moved to the backpack.` : ""}`, tone: "good" });
       addLog && addLog(`${hero.name} equips ${arm.name} (${loc}) from the backpack.${arm.covers.length > 1 ? ` Also covers ${arm.covers.filter((c) => c !== loc).join(", ")} — check those slots too.` : ""}${oldPiece.name ? ` ${oldPiece.name} moved to the backpack.` : ""}`);
     }
   };
@@ -3470,64 +3488,71 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
           <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
             <span className="font-semibold" style={{ color: palette.ink }}>Quick Slots: {quickSlotUsed}/{quickSlotMax}</span> — tap Q/B on an item to move it (2 AP). {quickSlotMax > 3 ? "Capacity raised by an owned Combat Harness/Extended Battle Belt." : "Base 3; a Combat Harness or Extended Battle Belt raises this."}
           </p>
+          {backpackFeedback && (
+            <p className="text-[10px] mb-1.5 font-semibold" style={{ color: backpackFeedback.tone === "good" ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif" }}>
+              {backpackFeedback.text}
+            </p>
+          )}
           <div className="rounded overflow-hidden mb-1.5" style={{ border: `1px solid ${palette.line}` }}>
-            <div className="flex gap-1 px-1.5 py-1 text-xs font-bold uppercase" style={{ background: palette.charcoal, color: palette.goldSoft, fontFamily: "Cinzel, serif" }}>
-              <span className="w-6 shrink-0"></span>
-              <span className="flex-1 min-w-0">Item</span>
-              <span className="w-14 shrink-0">Value</span>
-              <span className="w-12 shrink-0">ENC</span>
-              <span className="w-12 shrink-0">Dur</span>
-              <span className="w-6 shrink-0"></span>
-              <span className="w-6 shrink-0"></span>
-            </div>
             {hero.backpack.length === 0 && (
               <p className="text-xs px-2 py-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>Empty.</p>
             )}
             {hero.backpack.map((item, idx) => (
-              <div key={item.id} className="flex gap-1 px-1.5 py-1 items-center" style={{ background: idx % 2 ? "#00000006" : "transparent", borderTop: `1px solid ${palette.line}55` }}>
-                <button
-                  onClick={() => moveSlot(item)}
-                  className="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] font-bold"
-                  style={{ background: item.slot === "quickslot" ? palette.gold : "#00000010", color: item.slot === "quickslot" ? palette.charcoal : palette.inkSoft }}
-                  title={item.slot === "quickslot" ? "In a Quick Slot — tap to move to Backpack (2 AP)" : "In the Backpack — tap to move to a Quick Slot (2 AP)"}
-                >
-                  {item.slot === "quickslot" ? "Q" : "B"}
-                </button>
-                <input
-                  value={item.name}
-                  onChange={(e) => updateBackpackItem(item.id, { name: e.target.value })}
-                  placeholder="Item name"
-                  className="flex-1 min-w-0 text-xs rounded px-1 py-0.5"
-                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-                />
-                <input
-                  value={item.value}
-                  onChange={(e) => updateBackpackItem(item.id, { value: e.target.value })}
-                  className="w-14 shrink-0 text-xs rounded px-1 py-0.5"
-                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
-                />
-                <input
-                  value={item.enc}
-                  onChange={(e) => updateBackpackItem(item.id, { enc: e.target.value })}
-                  className="w-12 shrink-0 text-xs rounded px-1 py-0.5"
-                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
-                />
-                <input
-                  value={item.dur}
-                  onChange={(e) => updateBackpackItem(item.id, { dur: e.target.value })}
-                  className="w-12 shrink-0 text-xs rounded px-1 py-0.5"
-                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
-                />
-                {isEquippable(item) ? (
-                  <button onClick={() => equipFromBackpack(item)} className="w-6 shrink-0 flex justify-center" style={{ color: palette.forestDark }} title={`Equip ${item.name}`}>
-                    <Swords size={12} />
+              <div key={item.id} className="p-1.5" style={{ background: idx % 2 ? "#00000006" : "transparent", borderTop: idx > 0 ? `1px solid ${palette.line}55` : "none" }}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <button
+                    onClick={() => moveSlot(item)}
+                    className="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] font-bold"
+                    style={{ background: item.slot === "quickslot" ? palette.gold : "#00000010", color: item.slot === "quickslot" ? palette.charcoal : palette.inkSoft }}
+                    title={item.slot === "quickslot" ? "In a Quick Slot — tap to move to Backpack (2 AP)" : "In the Backpack — tap to move to a Quick Slot (2 AP)"}
+                  >
+                    {item.slot === "quickslot" ? "Q" : "B"}
                   </button>
-                ) : (
-                  <span className="w-6 shrink-0" />
-                )}
-                <button onClick={() => removeBackpackItem(item.id)} className="w-6 shrink-0 flex justify-center" style={{ color: palette.crimson }}>
-                  <Trash2 size={12} />
-                </button>
+                  <input
+                    value={item.name}
+                    onChange={(e) => updateBackpackItem(item.id, { name: e.target.value })}
+                    placeholder="Item name"
+                    className="flex-1 min-w-0 text-sm font-bold rounded px-2 py-1"
+                    style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Cinzel, serif", color: palette.ink }}
+                  />
+                  {isEquippable(item) && (
+                    <button onClick={() => equipFromBackpack(item)} className="w-6 h-6 shrink-0 flex items-center justify-center" style={{ color: palette.forestDark }} title={`Equip ${item.name}`}>
+                      <Swords size={14} />
+                    </button>
+                  )}
+                  <button onClick={() => removeBackpackItem(item.id)} className="w-6 h-6 shrink-0 flex items-center justify-center" style={{ color: palette.crimson }}>
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+                <div className="flex items-center gap-1.5 pl-[30px]">
+                  <label className="flex items-center gap-1 text-[10px]" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+                    Val
+                    <input
+                      value={item.value}
+                      onChange={(e) => updateBackpackItem(item.id, { value: e.target.value })}
+                      className="w-12 rounded px-1 py-0.5"
+                      style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+                    />
+                  </label>
+                  <label className="flex items-center gap-1 text-[10px]" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+                    ENC
+                    <input
+                      value={item.enc}
+                      onChange={(e) => updateBackpackItem(item.id, { enc: e.target.value })}
+                      className="w-10 rounded px-1 py-0.5"
+                      style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+                    />
+                  </label>
+                  <label className="flex items-center gap-1 text-[10px]" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+                    Dur
+                    <input
+                      value={item.dur}
+                      onChange={(e) => updateBackpackItem(item.id, { dur: e.target.value })}
+                      className="w-12 rounded px-1 py-0.5"
+                      style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+                    />
+                  </label>
+                </div>
               </div>
             ))}
           </div>

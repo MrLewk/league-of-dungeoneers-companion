@@ -76,6 +76,7 @@ const defaultHero = () => ({
   conditions: [],
   backpackUpgrade: "",
   tempEffects: [],
+  mentalConditions: [], // [{id, name, detail, effect}] — see MENTAL_CONDITIONS_TABLE
   bankBalances: { chamberlings: 0, smartfall: 0, vault: 0 },
   ap: 2,
   backpack: [],
@@ -326,9 +327,43 @@ const SANITY_EVENTS = [
   { label: "Reduced to 0 HP", delta: -1 },
   { label: "Contracted a disease", delta: -1 },
   { label: "Got poisoned", delta: -1 },
+  { label: "Miscast a spell", delta: "-1d3" },
   { label: "Rest between quests", delta: "1d3", positive: true },
   { label: "Drinking & carousing (costs 1d3×100 coins)", delta: "1d6", positive: true },
 ];
+
+// Mental Conditions (p55) — rolled once a hero's Sanity hits 0. Re-roll on a duplicate.
+// Once diagnosed, max Sanity becomes 8 minus the hero's current condition count (not a
+// flat 8), and it stays that way until the condition is cured (Treat Mental Conditions).
+// `effect` (where present) uses the same shape as TALENT_EFFECTS/tempEffects and is
+// applied via applyEffectDelta on diagnosis, reversed on cure. Conditions with only a
+// situational/behavioural effect (Hate, Arachnophobia, Jumpy, Irrational Fear,
+// Claustrophobia's corridor-only penalty, Lingering Trauma) have no `effect` — they're
+// tracked and shown as a reminder instead, since there's nothing safe to automate.
+const MENTAL_CONDITIONS_TABLE = [
+  { roll: [1, 1], name: "Hate", text: "Gains the Hate Talent against the type of enemy last fought (it must appear in the Bestiary's Monster List).", needsDetail: "enemy" },
+  { roll: [2, 3], name: "Acute Stress", text: "RES −10 for the rest of the quest. The hero screams during every battle, alerting everyone — Threat +1 per battle for the rest of the quest.", effect: { stat: "RES", amount: -10 } },
+  { roll: [4, 4], name: "Lingering Trauma", text: "Dormant until triggered by a specific situation next dungeon (roll below). Once triggered: all Resolve Tests and CS at −10 until the dungeon is left.", needsDetail: "trauma" },
+  { roll: [5, 5], name: "Fear of the Dark", text: "All Resolve Tests at −10.", effect: { stat: "RES", amount: -10 } },
+  { roll: [6, 6], name: "Arachnophobia", text: "Treats all encounters as causing Terror." },
+  { roll: [7, 7], name: "Jumpy", text: "A Scenario roll of 10 spooks the hero — the scream raises Threat by 2." },
+  { roll: [8, 8], name: "Irrational Fear", text: "Irrationally afraid of a random monster faction — all monsters of that faction now cause Fear.", needsDetail: "faction" },
+  { roll: [9, 9], name: "Claustrophobia", text: "All skills and stats at −10 while in corridors." },
+  { roll: [10, 10], name: "Depression", text: "Energy pool reduced by 2.", effect: { energy: -2 } },
+];
+function rollMentalCondition() {
+  const r = rollDie(10);
+  return MENTAL_CONDITIONS_TABLE.find((c) => r >= c.roll[0] && r <= c.roll[1]);
+}
+const LINGERING_TRAUMA_TABLE = [
+  { roll: 1, text: "A trap is sprung by the party." },
+  { roll: 2, text: "A portcullis falls down." },
+  { roll: 3, text: "A companion is reduced to 0 Hit Points." },
+  { roll: 4, text: "A miscast in the party." },
+  { roll: 5, text: "Party takes a short break." },
+  { roll: 6, text: "The party opens a chest." },
+];
+const IRRATIONAL_FEAR_FACTIONS = ["Orcs and Goblins", "Beasts", "Undead", "Reptiles", "Dark Elves"];
 
 // Values per QRS v2.24 (a couple differ slightly from the core rulebook — QRS is the current reference)
 const MORALE_EVENTS = [
@@ -1536,6 +1571,19 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.26.0",
+    date: "2026-08-09",
+    sections: {
+      "Added": [
+        "Mental Conditions — when a hero's Sanity hits 0, a 'Roll a Mental Condition' button appears on their card. Rolls the real 1d10 table (Hate, Acute Stress, Lingering Trauma, Fear of the Dark, Arachnophobia, Jumpy, Irrational Fear, Claustrophobia, Depression), re-rolling on a duplicate diagnosis. Conditions with a clean stat/energy effect (Fear of the Dark and Acute Stress: -10 RES, Depression: -2 Energy) apply automatically; the rest are tracked with a reminder of their effect since they're situational rather than a number to change",
+        "Diagnosing Hate asks which enemy the hero last fought; Lingering Trauma and Irrational Fear roll their own sub-tables automatically (the trigger situation, and the feared monster faction)",
+        "Max Sanity now correctly follows the rule '8 minus current condition count' instead of a flat 8 — gets tighter with each diagnosis, and loosens back up as conditions are cured",
+        "Treat Mental Conditions (Settlement tab) now actually treats a specific diagnosed condition — picks which one if a hero has more than one, and on a success (1-5 on 1d6, 1000c) reverses its effect and recalculates max Sanity, instead of operating on the generic conditions list it was using as a placeholder before this table was available",
+        "Added the missing 'Miscasting a spell: -1d3 Sanity' trigger to the Sanity event picker",
+      ],
+    },
+  },
+  {
     version: "1.25.2",
     date: "2026-08-09",
     sections: {
@@ -2473,6 +2521,7 @@ function normalizeHero(h) {
     backpack: (h.backpack || base.backpack).map((it) => ({ slot: "backpack", ...it })),
     backpackUpgrade: h.backpackUpgrade || "",
     tempEffects: h.tempEffects || [],
+    mentalConditions: h.mentalConditions || [],
     bankBalances: { ...base.bankBalances, ...(h.bankBalances || {}) },
     ap: h.ap != null ? h.ap : 2,
     armour: {
@@ -2548,6 +2597,8 @@ function AttachedItemList({ label, names, dataset, color, onRemove, groupKey, ef
 
 function HeroCard({ hero, update, remove, addLog, pushToast }) {
   const [sanityEvent, setSanityEvent] = useState(SANITY_EVENTS[0].label);
+  const [pendingCondition, setPendingCondition] = useState(null);
+  const [hateEnemyInput, setHateEnemyInput] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const set = (patch) => update({ ...hero, ...patch });
@@ -2629,10 +2680,70 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
     const ev = SANITY_EVENTS.find((e) => e.label === sanityEvent);
     if (!ev) return;
     let d = ev.delta;
-    if (d === "1d3") d = rollDie(3);
-    if (d === "1d6") d = rollDie(6);
+    if (typeof d === "string") {
+      const neg = d.startsWith("-");
+      const m = d.match(/(\d+)d(\d+)/);
+      const rolled = m ? rollDie(Number(m[2])) : 0;
+      d = neg ? -rolled : rolled;
+    }
     const cur = clamp(hero.sanity.cur + d, 0, hero.sanity.max);
     set({ sanity: { ...hero.sanity, cur } });
+  };
+
+  // Mental Conditions — rolled once Sanity hits 0. Re-rolls on a duplicate. Confirming a
+  // condition applies its stat/energy effect (if any) immediately, records the diagnosis,
+  // and drops max Sanity to 8 minus the hero's current condition count.
+  const confirmMentalCondition = (entry, detail) => {
+    const newConditions = [...hero.mentalConditions, { id: uid(), name: entry.name, detail, effect: entry.effect || null }];
+    const patch = entry.effect ? applyEffectDelta(hero, entry.effect, 1) : {};
+    const newMax = Math.max(0, 8 - newConditions.length);
+    update({
+      ...hero,
+      ...patch,
+      mentalConditions: newConditions,
+      sanity: { cur: Math.min(hero.sanity.cur, newMax), max: newMax },
+    });
+    addLog && addLog(`${hero.name} develops a mental condition: ${entry.name}.${detail ? ` (${detail})` : ""} Max Sanity is now ${newMax}.`);
+    setPendingCondition(null);
+    setHateEnemyInput("");
+  };
+  const rollMentalConditionForHero = () => {
+    const have = hero.mentalConditions.map((c) => c.name);
+    if (have.length >= MENTAL_CONDITIONS_TABLE.length) {
+      addLog && addLog(`${hero.name} already has every mental condition — nothing new to roll.`);
+      return;
+    }
+    let entry;
+    do { entry = rollMentalCondition(); } while (have.includes(entry.name));
+    if (entry.needsDetail === "enemy") {
+      setPendingCondition(entry);
+      return;
+    }
+    let detail = "";
+    if (entry.needsDetail === "trauma") {
+      detail = `Triggers on: ${LINGERING_TRAUMA_TABLE[rollDie(6) - 1].text}`;
+    } else if (entry.needsDetail === "faction") {
+      detail = `Faction: ${IRRATIONAL_FEAR_FACTIONS[Math.floor(Math.random() * IRRATIONAL_FEAR_FACTIONS.length)]}`;
+    }
+    confirmMentalCondition(entry, detail);
+  };
+  const confirmHate = () => {
+    if (!pendingCondition) return;
+    confirmMentalCondition(pendingCondition, hateEnemyInput.trim() || "an unspecified enemy");
+  };
+  const cureMentalCondition = (id) => {
+    const cond = hero.mentalConditions.find((c) => c.id === id);
+    if (!cond) return;
+    const remaining = hero.mentalConditions.filter((c) => c.id !== id);
+    const patch = cond.effect ? applyEffectDelta(hero, cond.effect, -1) : {};
+    const newMax = Math.max(0, 8 - remaining.length);
+    update({
+      ...hero,
+      ...patch,
+      mentalConditions: remaining,
+      sanity: { cur: Math.min(hero.sanity.cur, newMax), max: newMax },
+    });
+    addLog && addLog(`${hero.name}'s "${cond.name}" is cured. Max Sanity is now ${newMax}.`);
   };
 
   const speciesData = SPECIES_DATA.find((s) => s.name === hero.species);
@@ -3044,6 +3155,54 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Mental Conditions — diagnosed once Sanity hits 0, persist until cured */}
+          {hero.mentalConditions && hero.mentalConditions.length > 0 && (
+            <div className="rounded p-2 mb-3" style={{ background: "#3B2F5E11", border: `1px solid #6B4FA0` }}>
+              <span style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: "#6B4FA0" }} className="uppercase font-bold">
+                Mental Conditions (max Sanity {hero.sanity.max} — cure to raise it)
+              </span>
+              <div className="space-y-1 mt-1">
+                {hero.mentalConditions.map((c) => (
+                  <div key={c.id} className="flex items-start justify-between gap-2 text-xs rounded px-2 py-1.5" style={{ background: "#fff", fontFamily: "Crimson Pro, serif" }}>
+                    <div>
+                      <span className="font-bold" style={{ color: palette.ink }}>{c.name}</span>
+                      {c.detail && <span style={{ color: palette.inkSoft }}> — {c.detail}</span>}
+                    </div>
+                    <button onClick={() => cureMentalCondition(c.id)} className="shrink-0 text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: "#00000015", color: palette.inkSoft }} title="Manual override — the proper way to cure a condition is Treat Mental Conditions at the Asylum (Settlement tab), 1000c, 1-5 on 1d6">
+                      Clear
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {hero.sanity.cur <= 0 && !pendingCondition && (
+            <button
+              onClick={rollMentalConditionForHero}
+              className="w-full mb-3 text-xs px-2 py-2 rounded font-bold active:scale-95 transition-transform"
+              style={{ background: "#6B4FA0", color: "#fff", fontFamily: "Cinzel, serif" }}
+            >
+              Sanity at 0 — Roll a Mental Condition
+            </button>
+          )}
+          {pendingCondition && (
+            <div className="rounded p-2 mb-3" style={{ background: "#3B2F5E11", border: `1px solid #6B4FA0` }}>
+              <p className="text-xs mb-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+                Rolled <b>Hate</b> — which enemy did {hero.name} last fight?
+              </p>
+              <input
+                value={hateEnemyInput}
+                onChange={(e) => setHateEnemyInput(e.target.value)}
+                placeholder="Enemy type (must be in the Bestiary)"
+                className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+              />
+              <button onClick={confirmHate} className="w-full text-xs px-2 py-1.5 rounded font-semibold" style={{ background: "#6B4FA0", color: "#fff", fontFamily: "Cinzel, serif" }}>
+                Confirm
+              </button>
             </div>
           )}
 
@@ -3729,6 +3888,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const [resolverArenaLevel, setResolverArenaLevel] = useState("Group");
   const [resolverDrinkAle, setResolverDrinkAle] = useState(false);
   const [resolverBank, setResolverBank] = useState("");
+  const [resolverConditionId, setResolverConditionId] = useState("");
   const [resolverBankAmount, setResolverBankAmount] = useState(100);
   const [resolverResult, setResolverResult] = useState(null);
   // Tracks opted-OUT heroes rather than opted-in, so heroes added later still default to selected.
@@ -4267,18 +4427,26 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       addLog(`${resolvedHero.name} tends to those memories: ${lines.join(" ")}`);
     } else if (resolverActivity === "Treat Mental Conditions") {
       if (party.coins < 1000) { setResolverResult({ ok: false, lines: ["Can't afford the 1000c treatment."] }); return; }
-      if (!resolvedHero.conditions || resolvedHero.conditions.length === 0) {
-        setResolverResult({ ok: false, lines: [`${resolvedHero.name} has no conditions listed to treat.`] });
+      const targetCond = (resolvedHero.mentalConditions || []).find((c) => c.id === resolverConditionId) || (resolvedHero.mentalConditions || [])[0];
+      if (!targetCond) {
+        setResolverResult({ ok: false, lines: [`${resolvedHero.name} has no mental conditions to treat.`] });
         return;
       }
       const roll = rollDie(6);
       setParty((prev) => ({ ...prev, coins: prev.coins - 1000 }));
       if (roll <= 5) {
-        const cured = resolvedHero.conditions[0];
-        updateHero({ ...resolvedHero, conditions: resolvedHero.conditions.slice(1) });
-        const line = `Rolled ${roll} — treatment succeeds! "${cured}" cured. Takes 5 days. (Paid 1000c.)`;
+        const remaining = resolvedHero.mentalConditions.filter((c) => c.id !== targetCond.id);
+        const patch = targetCond.effect ? applyEffectDelta(resolvedHero, targetCond.effect, -1) : {};
+        const newMax = Math.max(0, 8 - remaining.length);
+        updateHero({
+          ...resolvedHero,
+          ...patch,
+          mentalConditions: remaining,
+          sanity: { cur: Math.min(resolvedHero.sanity.cur, newMax), max: newMax },
+        });
+        const line = `Rolled ${roll} — treatment succeeds! "${targetCond.name}" cured. Max Sanity is now ${newMax}. Takes 5 days. (Paid 1000c.)`;
         setResolverResult({ ok: true, lines: [line] });
-        addLog(`${resolvedHero.name} is treated at the Asylum: cured "${cured}" (rolled ${roll}).`);
+        addLog(`${resolvedHero.name} is treated at the Asylum: cured "${targetCond.name}" (rolled ${roll}). Max Sanity now ${newMax}.`);
       } else {
         const line = `Rolled ${roll} — the treatment fails this time. Takes 5 days. (Paid 1000c.)`;
         setResolverResult({ ok: true, lines: [line] });
@@ -4701,11 +4869,22 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         )}
 
         {resolverActivity === "Treat Mental Conditions" && resolvedHero && (
-          <p className="text-[10px] mb-1.5 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-            {resolvedHero.conditions && resolvedHero.conditions.length > 0
-              ? `Will attempt to cure: "${resolvedHero.conditions[0]}"`
-              : `${resolvedHero.name} has no conditions listed on their sheet.`}
-          </p>
+          (resolvedHero.mentalConditions || []).length > 0 ? (
+            <select
+              value={resolverConditionId || resolvedHero.mentalConditions[0].id}
+              onChange={(e) => setResolverConditionId(e.target.value)}
+              className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+              style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+            >
+              {resolvedHero.mentalConditions.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}{c.detail ? ` — ${c.detail}` : ""}</option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-[10px] mb-1.5 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+              {resolvedHero.name} has no mental conditions to treat.
+            </p>
+          )
         )}
 
         {resolverActivity === "Banking" && resolvedHero && (

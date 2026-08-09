@@ -3,6 +3,15 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.26.0] — 2026-08-09
+
+### Added
+- Mental Conditions — when a hero's Sanity hits 0, a "Roll a Mental Condition" button appears on their card. Rolls the real 1d10 table (Hate, Acute Stress, Lingering Trauma, Fear of the Dark, Arachnophobia, Jumpy, Irrational Fear, Claustrophobia, Depression), re-rolling on a duplicate diagnosis. Conditions with a clean stat/energy effect (Fear of the Dark and Acute Stress: -10 RES, Depression: -2 Energy) apply automatically; the rest are tracked with a reminder of their effect since they're situational rather than a number to change
+- Diagnosing Hate asks which enemy the hero last fought; Lingering Trauma and Irrational Fear roll their own sub-tables automatically (the trigger situation, and the feared monster faction)
+- Max Sanity now correctly follows the rule "8 minus current condition count" instead of a flat 8 — gets tighter with each diagnosis, and loosens back up as conditions are cured
+- Treat Mental Conditions (Settlement tab) now actually treats a specific diagnosed condition — picks which one if a hero has more than one, and on a success (1-5 on 1d6, 1000c) reverses its effect and recalculates max Sanity, instead of operating on the generic conditions list it was using as a placeholder before this table was available
+- Added the missing "Miscasting a spell: -1d3 Sanity" trigger to the Sanity event picker
+
 ## [1.25.2] — 2026-08-09
 
 ### Fixed

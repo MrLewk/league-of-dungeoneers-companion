@@ -1519,6 +1519,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.24.3",
+    date: "2026-08-09",
+    sections: {
+      "Added": [
+        "Equip button on backpack items — any item matching a real Weapon or Armour table entry gets a small sword icon that equips it directly, preserving its actual current durability instead of resetting to full. Whatever was previously equipped there swaps back into the backpack automatically, so nothing gets lost either direction",
+      ],
+    },
+  },
+  {
     version: "1.24.2",
     date: "2026-08-09",
     sections: {
@@ -2740,6 +2749,40 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
     addLog && addLog(`${hero.name} moves ${item.name} to ${movingToQuick ? "a Quick Slot" : "the backpack"} (2 AP).`);
   };
 
+  // Equips a backpack item that matches a real Weapon or Armour table entry, preserving
+  // its actual durability (parsed from the "cur/max" string) instead of resetting to
+  // full — and swaps whatever was previously equipped there back into the backpack.
+  const equipFromBackpack = (item) => {
+    const parseDur = (str) => {
+      const [c, m] = String(str || "6/6").split("/").map((n) => Number(n));
+      return { cur: isNaN(c) ? 6 : c, max: isNaN(m) ? 6 : m };
+    };
+    const wpn = WEAPONS.find((w) => w.name === item.name);
+    if (wpn) {
+      let backpack = hero.backpack.filter((it) => it.id !== item.id);
+      if (hero.weapon.name) {
+        const oldRef = WEAPONS.find((w) => w.name === hero.weapon.name);
+        backpack = [...backpack, { id: uid(), name: hero.weapon.name, value: oldRef ? oldRef.cost : "", enc: hero.weapon.enc, dur: `${hero.weapon.dur.cur}/${hero.weapon.dur.max}`, slot: "backpack" }];
+      }
+      update({ ...hero, weapon: { name: wpn.name, dmg: wpn.dmg, enc: wpn.enc, dur: parseDur(item.dur) }, backpack });
+      addLog && addLog(`${hero.name} equips ${wpn.name} from the backpack.${hero.weapon.name ? ` ${hero.weapon.name} moved to the backpack.` : ""}`);
+      return;
+    }
+    const arm = ARMOUR_AND_SHIELDS.find((a) => a.name === item.name);
+    if (arm) {
+      const loc = arm.covers[0];
+      let backpack = hero.backpack.filter((it) => it.id !== item.id);
+      const oldPiece = hero.armour[loc];
+      if (oldPiece.name) {
+        const oldRef = ARMOUR_AND_SHIELDS.find((a) => a.name === oldPiece.name);
+        backpack = [...backpack, { id: uid(), name: oldPiece.name, value: oldRef ? oldRef.cost : "", enc: oldPiece.enc, dur: `${oldPiece.dur.cur}/${oldPiece.dur.max}`, slot: "backpack" }];
+      }
+      update({ ...hero, armour: { ...hero.armour, [loc]: { name: arm.name, def: arm.def, enc: arm.enc, dur: parseDur(item.dur) } }, backpack });
+      addLog && addLog(`${hero.name} equips ${arm.name} (${loc}) from the backpack.${arm.covers.length > 1 ? ` Also covers ${arm.covers.filter((c) => c !== loc).join(", ")} — check those slots too.` : ""}${oldPiece.name ? ` ${oldPiece.name} moved to the backpack.` : ""}`);
+    }
+  };
+  const isEquippable = (item) => WEAPONS.some((w) => w.name === item.name) || ARMOUR_AND_SHIELDS.some((a) => a.name === item.name);
+
   const [conditionInput, setConditionInput] = useState("");
   const addCondition = () => {
     const v = conditionInput.trim();
@@ -3422,7 +3465,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
             </select>
           )}
           <p className="text-[10px] mb-1.5 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-            To actually equip a weapon/armour piece, use the pickers up in the Weapon/Armour sections above instead — this just adds a spare to carry.
+            Adds a spare — tap the sword icon on a weapon/armour row below to actually equip it (swaps whatever's currently worn back into the backpack).
           </p>
           <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
             <span className="font-semibold" style={{ color: palette.ink }}>Quick Slots: {quickSlotUsed}/{quickSlotMax}</span> — tap Q/B on an item to move it (2 AP). {quickSlotMax > 3 ? "Capacity raised by an owned Combat Harness/Extended Battle Belt." : "Base 3; a Combat Harness or Extended Battle Belt raises this."}
@@ -3434,6 +3477,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
               <span className="w-14 shrink-0">Value</span>
               <span className="w-12 shrink-0">ENC</span>
               <span className="w-12 shrink-0">Dur</span>
+              <span className="w-6 shrink-0"></span>
               <span className="w-6 shrink-0"></span>
             </div>
             {hero.backpack.length === 0 && (
@@ -3474,6 +3518,13 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
                   className="w-12 shrink-0 text-xs rounded px-1 py-0.5"
                   style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
                 />
+                {isEquippable(item) ? (
+                  <button onClick={() => equipFromBackpack(item)} className="w-6 shrink-0 flex justify-center" style={{ color: palette.forestDark }} title={`Equip ${item.name}`}>
+                    <Swords size={12} />
+                  </button>
+                ) : (
+                  <span className="w-6 shrink-0" />
+                )}
                 <button onClick={() => removeBackpackItem(item.id)} className="w-6 shrink-0 flex justify-center" style={{ color: palette.crimson }}>
                   <Trash2 size={12} />
                 </button>

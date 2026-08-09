@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.24.3] — 2026-08-09
+
+### Added
+- Equip button on backpack items — any item matching a real Weapon or Armour table entry gets a small sword icon that equips it directly, preserving its actual current durability instead of resetting to full. Whatever was previously equipped there swaps back into the backpack automatically, so nothing gets lost either direction
+
 ## [1.24.2] — 2026-08-09
 
 ### Added

@@ -586,8 +586,8 @@ const QUEST_AVAILABILITY = [
 // Settlement tab can filter this list down to what's actually offered at the current
 // settlement. "Any" means it doesn't depend on a specific shop/building.
 const SETTLEMENT_ACTIVITIES = [
-  { name: "Arena Fighting", where: "Arena", ap: 1, locations: ["Arena"] },
-  { name: "Banking", where: "Banks", ap: 1, locations: ["Banks"] },
+  { name: "Arena Fighting", where: "Arena", ap: 1, locations: ["Arena"], resolverName: "Arena Fighting" },
+  { name: "Banking", where: "Banks", ap: 1, locations: ["Banks"], resolverName: "Banking" },
   { name: "Buy a Dog", where: "Kennel", ap: 1, locations: ["Kennel"], note: "requires the Companions' Expansion — no mechanical effect in this app without it" },
   { name: "Buy a Familiar", where: "Alberta's Magnificent Animals", ap: 1, locations: ["Alberta's Magnificent Animals"], note: "requires the Companions' Expansion — no mechanical effect in this app without it" },
   { name: "Buy or Sell Armour", where: "Blacksmith", ap: 1, locations: ["Blacksmith"] },
@@ -600,21 +600,21 @@ const SETTLEMENT_ACTIVITIES = [
   { name: "Cure Disease", where: "Sick Wards or Temple of Metheia", ap: 1, locations: ["Sick Ward", "Temples"] },
   { name: "Cure Poison", where: "Sick Wards", ap: 1, locations: ["Sick Ward"] },
   { name: "Enchant Objects", where: "Inn", ap: 1, note: "max once", locations: ["Inn"] },
-  { name: "Gamble", where: "Inn", ap: 0, note: "requires stay at inn", locations: ["Inn"] },
+  { name: "Gamble", where: "Inn", ap: 0, note: "requires stay at inn", locations: ["Inn"], resolverName: "Gambling" },
   { name: "Guild Business", where: "Guilds", ap: 1, locations: ["Guilds"] },
-  { name: "Horse Racing", where: "Horse tracks", ap: 1, locations: ["Horse Racing Track"] },
+  { name: "Horse Racing", where: "Horse tracks", ap: 1, locations: ["Horse Racing Track"], resolverName: "Horse Racing" },
   { name: "Identify a Magic Item", where: "Scryer or Wizards' Guild", ap: 1, locations: ["Scryer", "Guilds"] },
   { name: "Identify a Potion", where: "Alchemist Guild, The Magic Brewery, General Store", ap: 1, locations: ["Guilds", "Magic Brewery", "General Store"] },
   { name: "Learn a Prayer", where: "Temple Grounds", ap: 1, locations: ["Temples"] },
   { name: "Learn a Spell", where: "Wizards' Guild", ap: 3, locations: ["Guilds"] },
   { name: "Level Up", where: "Any Settlement", ap: 0, locations: ["Any"] },
-  { name: "Pray", where: "Temple", ap: 1, locations: ["Temples"] },
-  { name: "Read your Fortune", where: "Fortune Teller", ap: 1, locations: ["Fortune Teller"] },
+  { name: "Pray", where: "Temple", ap: 1, locations: ["Temples"], resolverName: "Pray" },
+  { name: "Read your Fortune", where: "Fortune Teller", ap: 1, locations: ["Fortune Teller"], resolverName: "Fortune Teller" },
   { name: "Repair Equipment", where: "Blacksmith", ap: 1, locations: ["Blacksmith"] },
   { name: "Rest and Recuperation", where: "Inn", ap: 0, note: "requires stay at inn", locations: ["Inn"] },
   { name: "Skill Training", where: "Guilds", ap: 1, locations: ["Guilds"] },
-  { name: "Tend to those Memories", where: "Inn", ap: 0, note: "requires stay at inn", locations: ["Inn"] },
-  { name: "Treat Mental Conditions", where: "The Asylum", ap: 5, locations: ["Asylum"] },
+  { name: "Tend to those Memories", where: "Inn", ap: 0, note: "requires stay at inn", locations: ["Inn"], resolverName: "Tending to Those Memories" },
+  { name: "Treat Mental Conditions", where: "The Asylum", ap: 5, locations: ["Asylum"], resolverName: "Treat Mental Conditions" },
 ];
 
 // Sell & Repair pricing (Equipment chapter) — only doable in a settlement (Blacksmith,
@@ -1570,6 +1570,15 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.26.2",
+    date: "2026-08-09",
+    sections: {
+      "Fixed": [
+        "The Settlement tab had two separate mechanisms with no link between them — Activities (a log of AP/time spent) and Resolve an Activity (where dice actually get rolled and effects applied) — with no indication that picking, say, Treat Mental Conditions or Pray in the Activities list wouldn't actually do anything mechanical. Picking an activity that has a real dice-roll counterpart now shows a button that jumps straight to it in Resolve an Activity, pre-selected. The two lists also used different names for the same thing (Gamble/Gambling, Read your Fortune/Fortune Teller, Tend to those Memories/Tending to Those Memories) which made it harder to notice the connection even if you were looking for it",
+      ],
+    },
+  },
   {
     version: "1.26.1",
     date: "2026-08-09",
@@ -3900,6 +3909,12 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const [repairPoints, setRepairPoints] = useState(1);
   const [repairResult, setRepairResult] = useState(null);
   const [resolverActivity, setResolverActivity] = useState("Pray");
+  const resolvePanelRef = useRef(null);
+  const jumpToResolver = (name) => {
+    setResolverActivity(name);
+    setResolverResult(null);
+    resolvePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const [resolverHero, setResolverHero] = useState("");
   const [resolverTemple, setResolverTemple] = useState("");
   const [resolverOhlnirChoice, setResolverOhlnirChoice] = useState("CS");
@@ -4670,6 +4685,15 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
             {selectedActivity.where}{selectedActivity.note ? ` · ${selectedActivity.note}` : ""}
           </p>
         )}
+        {selectedActivity?.resolverName && (
+          <button
+            onClick={() => jumpToResolver(selectedActivity.resolverName)}
+            className="w-full text-xs px-2 py-2 rounded font-semibold mb-2 active:scale-95 transition-transform"
+            style={{ background: "#00000010", color: palette.ink, fontFamily: "Crimson Pro, serif", border: `1px dashed ${palette.line}` }}
+          >
+            Logging this doesn't roll anything — jump to Resolve an Activity below to actually do it ↓
+          </button>
+        )}
         <button
           onClick={addActivity}
           className="w-full flex items-center justify-center gap-1 text-xs px-2 py-2 rounded font-semibold mb-2"
@@ -4804,10 +4828,11 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         </div>
       </Panel>
 
+      <div ref={resolvePanelRef}>
       <Panel className="mb-4">
         <SectionTitle icon={Sparkles}>Resolve an Activity</SectionTitle>
         <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-          Pray, Fortune Teller, Gambling, Horse Racing, Arena Fighting, Tending to Those Memories, Treat Mental Conditions, Banking.
+          Pray, Fortune Teller, Gambling, Horse Racing, Arena Fighting, Tending to Those Memories, Treat Mental Conditions, Banking. This is where the actual dice get rolled and effects applied — separate from the Activities log above, which only tracks AP/time spent.
         </p>
         <div className="grid grid-cols-2 gap-1.5 mb-1.5">
           <select
@@ -4967,6 +4992,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
           </div>
         )}
       </Panel>
+      </div>
 
       <Panel className="mb-4">
         <SectionTitle icon={Bed}>Rest at Inn</SectionTitle>

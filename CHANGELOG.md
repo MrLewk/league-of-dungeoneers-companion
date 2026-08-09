@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.26.2] — 2026-08-09
+
+### Fixed
+- The Settlement tab had two separate mechanisms with no link between them — Activities (a log of AP/time spent) and Resolve an Activity (where dice actually get rolled and effects applied) — with no indication that picking, say, Treat Mental Conditions or Pray in the Activities list wouldn't actually do anything mechanical. Picking an activity that has a real dice-roll counterpart now shows a button that jumps straight to it in Resolve an Activity, pre-selected. The two lists also used different names for the same thing (Gamble/Gambling, Read your Fortune/Fortune Teller, Tend to those Memories/Tending to Those Memories) which made it harder to notice the connection even if you were looking for it
+
 ## [1.26.1] — 2026-08-09
 
 ### Fixed

@@ -3,6 +3,18 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.22.0] — 2026-08-09
+
+### Added
+- New Turn tab — Round counter with a "Next Round" button that resets every hero's AP to 2 (per the QRS: "All models have 2 AP") and counts down tracked light sources, removing any that go out
+- Action Points tracker, 2 per hero, with quick -1 AP buttons and a per-hero reset — this is the first place in the app that tracks combat AP at all, separate from Settlement Activity Points
+- Light Sources tracker — add a torch/lantern with however many turns it has left, and it counts down automatically each round
+- Initiative Bag — builds the actual hero/enemy token bag (with all the modifiers: named/large monsters, Perfect Hearing, Swift Leader, Sneaky, a bashed door, an ambush) and draws tokens one at a time to build turn order, instead of just listing the rules as reference text
+- Door / Chest Opener (Dice tab) now actually spends AP from the acting hero — 1 AP to open/force/pry, 2 AP to pick a lock — and blocks the action with a clear message if they're out
+
+### Changed
+- The Start of Turn resolver moved from the Party tab to the new Turn tab, since it's step 1 of the Turn Sequence rather than persistent party state
+
 ## [1.21.1] — 2026-08-09
 
 ### Fixed

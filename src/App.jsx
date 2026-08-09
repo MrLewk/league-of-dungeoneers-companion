@@ -3,7 +3,7 @@ import {
   Plus, Minus, Trash2, Flame, Heart, Zap, Brain, Sparkles, Dice5,
   Swords, Shield, BookOpen, Users, Skull,
   RotateCcw, Coins, Wheat, ScrollText, Pencil, Check, X, FolderOpen, Loader2, Map, Download, Upload,
-  Landmark, Bed, ClipboardList
+  Landmark, Bed, ClipboardList, Timer, Flashlight
 } from "lucide-react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
@@ -77,6 +77,7 @@ const defaultHero = () => ({
   backpackUpgrade: "",
   tempEffects: [],
   bankBalances: { chamberlings: 0, smartfall: 0, vault: 0 },
+  ap: 2,
   backpack: [],
   notes: "",
 });
@@ -297,6 +298,8 @@ const defaultParty = () => ({
   settlementAP: {}, // heroId -> { spent: number, log: [{label, cost}] }
   innCostPerNight: 25,
   startingMorale: 0,
+  round: 1,
+  lightSources: [], // [{id, name, remaining}] — turns left before it goes out
 });
 
 // Fills in any fields missing from a party saved before this update.
@@ -788,10 +791,11 @@ const INITIATIVE_TOKENS = [
   "1 hero token per hero/companion, 1 enemy token per enemy",
   "+1 enemy token per named monster",
   "+1 enemy token per large monster",
-  "+1 enemy/hero token for Perfect Hearing",
+  "+1 hero token if a hero has Perfect Hearing",
   "+1 hero token for Swift Leader talent",
   "+1 enemy token for Sneaky",
   "+2 enemy tokens if the door was bashed down",
+  "+3 enemy tokens if the party was ambushed",
   "Heroes on overwatch do not add a token to the bag",
 ];
 
@@ -1504,6 +1508,22 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.22.0",
+    date: "2026-08-09",
+    sections: {
+      "Added": [
+        "New Turn tab — Round counter with a 'Next Round' button that resets every hero's AP to 2 (per the QRS: 'All models have 2 AP') and counts down tracked light sources, removing any that go out",
+        "Action Points tracker, 2 per hero, with quick -1 AP buttons and a per-hero reset — this is the first place in the app that tracks combat AP at all, separate from Settlement Activity Points",
+        "Light Sources tracker — add a torch/lantern with however many turns it has left, and it counts down automatically each round",
+        "Initiative Bag — builds the actual hero/enemy token bag (with all the modifiers: named/large monsters, Perfect Hearing, Swift Leader, Sneaky, a bashed door, an ambush) and draws tokens one at a time to build turn order, instead of just listing the rules as reference text",
+        "Door / Chest Opener (Dice tab) now actually spends AP from the acting hero — 1 AP to open/force/pry, 2 AP to pick a lock — and blocks the action with a clear message if they're out",
+      ],
+      "Changed": [
+        "The Start of Turn resolver moved from the Party tab to the new Turn tab, since it's step 1 of the Turn Sequence rather than persistent party state",
+      ],
+    },
+  },
   {
     version: "1.21.1",
     date: "2026-08-09",
@@ -2341,6 +2361,7 @@ function normalizeHero(h) {
     backpackUpgrade: h.backpackUpgrade || "",
     tempEffects: h.tempEffects || [],
     bankBalances: { ...base.bankBalances, ...(h.bankBalances || {}) },
+    ap: h.ap != null ? h.ap : 2,
     armour: {
       head: armourPiece("head"),
       arms: armourPiece("arms"),
@@ -4541,23 +4562,9 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   );
 }
 
-function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToast }) {
-  const [moraleEvent, setMoraleEvent] = useState(MORALE_EVENTS[0].label);
-  const [xpAmount, setXpAmount] = useState(50);
-
-  const threatColor = (t) => {
-    if (t <= 4) return palette.forest;
-    if (t <= 7) return palette.gold;
-    if (t <= 9) return palette.ember;
-    return palette.crimson;
-  };
-
-  const bumpThreat = (delta, label) => {
-    const next = clamp(party.threat + delta, party.threatFloor, 999);
-    setParty({ ...party, threat: next });
-    addLog(`Threat ${delta > 0 ? "+" : ""}${delta} → ${next} (${label})`);
-  };
-
+function TurnTab({ party, setParty, heroes, updateHero, addLog }) {
+  // Start of Turn resolver (moved here from the Party tab — it's step 1 of the Turn
+  // Sequence, not persistent party state).
   const [inBattle, setInBattle] = useState(false);
   const [turnResult, setTurnResult] = useState(null);
 
@@ -4598,6 +4605,303 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
     addLog(`Start of turn: ${lines.join(" ")}`);
   };
 
+  // Round / AP tracker — the QRS confirms every model (hero or enemy) gets a flat 2 AP.
+  const spendAP = (heroId, amount) => {
+    const hero = heroes.find((h) => h.id === heroId);
+    if (!hero) return;
+    const nextAP = Math.max(0, (hero.ap ?? 2) - amount);
+    updateHero(hero.id, { ...hero, ap: nextAP });
+  };
+  const setAP = (heroId, value) => {
+    const hero = heroes.find((h) => h.id === heroId);
+    if (!hero) return;
+    updateHero(hero.id, { ...hero, ap: Math.max(0, value) });
+  };
+
+  const nextRound = () => {
+    heroes.forEach((h) => updateHero(h.id, { ...h, ap: 2 }));
+    const wentOut = [];
+    const surviving = [];
+    (party.lightSources || []).forEach((l) => {
+      const remaining = l.remaining - 1;
+      if (remaining <= 0) wentOut.push(l.name);
+      else surviving.push({ ...l, remaining });
+    });
+    const nextRoundNum = party.round + 1;
+    setParty((prev) => ({ ...prev, round: nextRoundNum, lightSources: surviving }));
+    addLog(`Round ${nextRoundNum} begins — AP reset for all heroes.${wentOut.length ? ` Light source(s) went out: ${wentOut.join(", ")}.` : ""}`);
+  };
+
+  const resetRound = () => {
+    heroes.forEach((h) => updateHero(h.id, { ...h, ap: 2 }));
+    setParty((prev) => ({ ...prev, round: 1 }));
+    setTurnResult(null);
+    addLog("Round counter reset to 1 — AP reset for all heroes.");
+  };
+
+  // Light sources
+  const [lightName, setLightName] = useState("Torch");
+  const [lightDuration, setLightDuration] = useState(6);
+  const addLightSource = () => {
+    setParty((prev) => ({ ...prev, lightSources: [...(prev.lightSources || []), { id: uid(), name: lightName || "Light", remaining: Math.max(1, Number(lightDuration) || 1) }] }));
+    addLog(`Added a light source: ${lightName || "Light"} (${Math.max(1, Number(lightDuration) || 1)} turns).`);
+  };
+  const removeLightSource = (id) => {
+    setParty((prev) => ({ ...prev, lightSources: (prev.lightSources || []).filter((l) => l.id !== id) }));
+  };
+
+  // Initiative Bag
+  const [enemyCount, setEnemyCount] = useState(1);
+  const [namedMonsterCount, setNamedMonsterCount] = useState(0);
+  const [largeMonsterCount, setLargeMonsterCount] = useState(0);
+  const [perfectHearing, setPerfectHearing] = useState(false);
+  const [swiftLeader, setSwiftLeader] = useState(false);
+  const [sneaky, setSneaky] = useState(false);
+  const [doorBashed, setDoorBashed] = useState(false);
+  const [ambushed, setAmbushed] = useState(false);
+  const [bag, setBag] = useState(null);
+  const [drawOrder, setDrawOrder] = useState([]);
+
+  const heroTokenCount = heroes.length + (perfectHearing ? 1 : 0) + (swiftLeader ? 1 : 0);
+  const enemyTokenCount =
+    Math.max(0, Number(enemyCount) || 0) +
+    Math.max(0, Number(namedMonsterCount) || 0) +
+    Math.max(0, Number(largeMonsterCount) || 0) +
+    (sneaky ? 1 : 0) + (doorBashed ? 2 : 0) + (ambushed ? 3 : 0);
+
+  const buildBag = () => {
+    const tokens = [...Array(heroTokenCount).fill("hero"), ...Array(enemyTokenCount).fill("enemy")];
+    setBag(tokens);
+    setDrawOrder([]);
+    addLog(`Initiative bag built: ${heroTokenCount} hero token${heroTokenCount === 1 ? "" : "s"}, ${enemyTokenCount} enemy token${enemyTokenCount === 1 ? "" : "s"}.`);
+  };
+
+  const drawToken = () => {
+    if (!bag || bag.length === 0) return;
+    const idx = Math.floor(Math.random() * bag.length);
+    const drawn = bag[idx];
+    setBag([...bag.slice(0, idx), ...bag.slice(idx + 1)]);
+    setDrawOrder((prev) => [...prev, drawn]);
+  };
+
+  return (
+    <div>
+      <Panel className="mb-4">
+        <SectionTitle icon={Timer}>Round</SectionTitle>
+        <div className="flex items-center gap-3 mb-3">
+          <div
+            className="rounded-full flex items-center justify-center font-bold text-2xl"
+            style={{ width: 64, height: 64, background: palette.forestDark, color: palette.parchment, fontFamily: "JetBrains Mono, monospace", border: `3px solid ${palette.ink}` }}
+          >
+            {party.round}
+          </div>
+          <div className="flex-1 flex gap-2">
+            <button
+              onClick={nextRound}
+              className="flex-1 text-sm px-3 py-2 rounded font-bold active:scale-95 transition-transform"
+              style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
+            >
+              Next Round
+            </button>
+            <button
+              onClick={resetRound}
+              className="px-3 py-2 rounded text-xs font-semibold active:scale-95 transition-transform"
+              style={{ background: "#00000015", color: palette.inkSoft }}
+              title="Reset round to 1 and AP for all heroes"
+            >
+              <RotateCcw size={14} />
+            </button>
+          </div>
+        </div>
+        <p className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+          "Next Round" resets every hero's AP to 2, and counts down any tracked light sources — removing any that go out.
+        </p>
+      </Panel>
+
+      <Panel className="mb-4">
+        <SectionTitle icon={Zap}>Action Points (2 per hero)</SectionTitle>
+        <div className="space-y-1.5">
+          {heroes.map((h) => {
+            const ap = h.ap ?? 2;
+            return (
+              <div key={h.id} className="flex items-center gap-2 rounded p-2" style={{ background: ap <= 0 ? "#7A1F2B15" : "#00000008" }}>
+                <span className="flex-1 text-xs font-semibold truncate" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>{h.name}</span>
+                <div className="flex gap-0.5">
+                  {[0, 1].map((i) => (
+                    <div
+                      key={i}
+                      className="rounded-full"
+                      style={{ width: 14, height: 14, background: ap > i ? palette.gold : "#00000020", border: `1px solid ${palette.line}` }}
+                    />
+                  ))}
+                </div>
+                <button onClick={() => spendAP(h.id, 1)} disabled={ap <= 0} className="text-[10px] px-2 py-1 rounded font-semibold active:scale-95 transition-transform" style={{ background: ap > 0 ? palette.crimsonDark : "#00000015", color: ap > 0 ? palette.parchment : palette.inkSoft }}>
+                  −1 AP
+                </button>
+                <button onClick={() => setAP(h.id, 2)} className="text-[10px] px-2 py-1 rounded font-semibold active:scale-95 transition-transform" style={{ background: "#00000015", color: palette.inkSoft }}>
+                  Reset
+                </button>
+              </div>
+            );
+          })}
+          {heroes.length === 0 && <p className="text-xs italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>No heroes yet.</p>}
+        </div>
+      </Panel>
+
+      <Panel className="mb-4">
+        <SectionTitle icon={Dice5}>Start of Turn</SectionTitle>
+        <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+          Rolls the Scenario die (1d10); on a 9-10 it rolls Threat (1d20) and, if triggered, the matching Threat Table — applying the result to Threat automatically.
+        </p>
+        <button
+          onClick={() => setInBattle((v) => !v)}
+          className="w-full mb-2 text-xs px-2 py-2 rounded font-semibold active:scale-95 transition-transform"
+          style={{ background: inBattle ? palette.crimsonDark : "#00000010", color: inBattle ? palette.parchment : palette.ink, fontFamily: "Cinzel, serif" }}
+        >
+          {inBattle ? "In Battle — rolls the In-Combat table" : "Not in Battle — rolls the Wandering/Exploration table"}
+        </button>
+        <button
+          onClick={rollStartOfTurn}
+          className="w-full mb-2 text-sm px-3 py-2 rounded font-bold active:scale-95 transition-transform"
+          style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
+        >
+          Roll It
+        </button>
+        {turnResult && (
+          <div className="rounded p-2" style={{ background: "#00000010" }}>
+            {turnResult.lines.map((line, i) => (
+              <p key={i} className="text-xs" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>{line}</p>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      <Panel className="mb-4">
+        <SectionTitle icon={Flashlight}>Light Sources</SectionTitle>
+        <div className="flex gap-1.5 mb-2">
+          <input
+            value={lightName}
+            onChange={(e) => setLightName(e.target.value)}
+            placeholder="Name"
+            className="flex-1 min-w-0 text-xs rounded px-2 py-1.5"
+            style={{ border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          />
+          <input
+            type="number"
+            value={lightDuration}
+            onChange={(e) => setLightDuration(Number(e.target.value) || 1)}
+            className="w-16 text-xs rounded px-2 py-1.5"
+            style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+            title="Turns remaining"
+          />
+          <button onClick={addLightSource} className="px-3 py-1.5 rounded font-semibold active:scale-95 transition-transform" style={{ background: palette.forestDark, color: palette.parchment }}>
+            <Plus size={14} />
+          </button>
+        </div>
+        {(party.lightSources || []).length === 0 ? (
+          <p className="text-xs italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>None tracked. Add a torch/lantern with however many turns it has left, per your table/card.</p>
+        ) : (
+          <div className="space-y-1">
+            {party.lightSources.map((l) => (
+              <div key={l.id} className="flex items-center justify-between text-xs rounded p-2" style={{ background: l.remaining <= 1 ? "#7A1F2B15" : "#00000008", fontFamily: "Crimson Pro, serif" }}>
+                <span style={{ color: palette.ink }}>{l.name} — {l.remaining} turn{l.remaining === 1 ? "" : "s"} left</span>
+                <button onClick={() => removeLightSource(l.id)} style={{ color: palette.crimson }}><X size={13} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={Users}>Initiative Bag</SectionTitle>
+        <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+          1 hero token per hero, 1 per enemy, plus modifiers below. Build the bag, then draw one token at a time for turn order.
+        </p>
+        <div className="grid grid-cols-3 gap-1.5 mb-2">
+          <label className="text-[10px]" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            Enemies
+            <input type="number" value={enemyCount} onChange={(e) => setEnemyCount(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+          </label>
+          <label className="text-[10px]" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            Named +1 ea.
+            <input type="number" value={namedMonsterCount} onChange={(e) => setNamedMonsterCount(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+          </label>
+          <label className="text-[10px]" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            Large +1 ea.
+            <input type="number" value={largeMonsterCount} onChange={(e) => setLargeMonsterCount(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {[
+            ["Perfect Hearing (+1 hero)", perfectHearing, setPerfectHearing],
+            ["Swift Leader (+1 hero)", swiftLeader, setSwiftLeader],
+            ["Sneaky (+1 enemy)", sneaky, setSneaky],
+            ["Door bashed (+2 enemy)", doorBashed, setDoorBashed],
+            ["Ambushed (+3 enemy)", ambushed, setAmbushed],
+          ].map(([label, val, setter]) => (
+            <button
+              key={label}
+              onClick={() => setter((v) => !v)}
+              className="text-[10px] px-2 py-1 rounded font-semibold active:scale-95 transition-transform"
+              style={{ background: val ? palette.crimsonDark : "#00000010", color: val ? palette.parchment : palette.ink, fontFamily: "Crimson Pro, serif" }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs mb-2" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
+          <b>{heroTokenCount}</b> hero token{heroTokenCount === 1 ? "" : "s"} · <b>{enemyTokenCount}</b> enemy token{enemyTokenCount === 1 ? "" : "s"}
+        </p>
+        <button onClick={buildBag} className="w-full mb-2 text-xs px-2 py-2 rounded font-semibold active:scale-95 transition-transform" style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}>
+          Build Bag
+        </button>
+        {bag && (
+          <>
+            <button
+              onClick={drawToken}
+              disabled={bag.length === 0}
+              className="w-full mb-2 text-sm px-3 py-2 rounded font-bold active:scale-95 transition-transform"
+              style={{ background: bag.length > 0 ? palette.crimsonDark : "#00000015", color: bag.length > 0 ? palette.parchment : palette.inkSoft, fontFamily: "Cinzel, serif" }}
+            >
+              {bag.length > 0 ? `Draw Token (${bag.length} left)` : "Bag Empty"}
+            </button>
+            {drawOrder.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {drawOrder.map((t, i) => (
+                  <span
+                    key={i}
+                    className="text-xs px-2 py-1 rounded-full font-bold"
+                    style={{ background: t === "hero" ? palette.forestDark : palette.crimsonDark, color: palette.parchment, fontFamily: "JetBrains Mono, monospace" }}
+                  >
+                    {i + 1}. {t === "hero" ? "Hero" : "Enemy"}
+                  </span>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToast }) {
+  const [moraleEvent, setMoraleEvent] = useState(MORALE_EVENTS[0].label);
+  const [xpAmount, setXpAmount] = useState(50);
+
+  const threatColor = (t) => {
+    if (t <= 4) return palette.forest;
+    if (t <= 7) return palette.gold;
+    if (t <= 9) return palette.ember;
+    return palette.crimson;
+  };
+
+  const bumpThreat = (delta, label) => {
+    const next = clamp(party.threat + delta, party.threatFloor, 999);
+    setParty({ ...party, threat: next });
+    addLog(`Threat ${delta > 0 ? "+" : ""}${delta} → ${next} (${label})`);
+  };
+
   const applyMorale = () => {
     const ev = MORALE_EVENTS.find((e) => e.label === moraleEvent);
     if (!ev) return;
@@ -4633,34 +4937,6 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
 
   return (
     <div>
-      <Panel className="mb-4">
-        <SectionTitle icon={Dice5}>Start of Turn</SectionTitle>
-        <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-          Rolls the Scenario die (1d10); on a 9-10 it rolls Threat (1d20) and, if triggered, the matching Threat Table — applying the result to Threat automatically.
-        </p>
-        <button
-          onClick={() => setInBattle((v) => !v)}
-          className="w-full mb-2 text-xs px-2 py-2 rounded font-semibold"
-          style={{ background: inBattle ? palette.crimsonDark : "#00000010", color: inBattle ? palette.parchment : palette.ink, fontFamily: "Cinzel, serif" }}
-        >
-          {inBattle ? "In Battle — rolls the In-Combat table" : "Not in Battle — rolls the Wandering/Exploration table"}
-        </button>
-        <button
-          onClick={rollStartOfTurn}
-          className="w-full mb-2 text-sm px-3 py-2 rounded font-bold"
-          style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
-        >
-          Roll It
-        </button>
-        {turnResult && (
-          <div className="rounded p-2" style={{ background: "#00000010" }}>
-            {turnResult.lines.map((line, i) => (
-              <p key={i} className="text-xs" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>{line}</p>
-            ))}
-          </div>
-        )}
-      </Panel>
-
       <Panel className="mb-4">
         <SectionTitle icon={Flame}>Threat Level</SectionTitle>
         <div className="flex items-center gap-3 mb-3">
@@ -5286,7 +5562,7 @@ function CombatCalc({ heroes, updateHero, addLog }) {
 }
 
 // ---------- Dice Tray ----------
-function DiceTray({ party, setParty, heroes, addLog }) {
+function DiceTray({ party, setParty, heroes, updateHero, addLog }) {
   const [rolls, setRolls] = useState([]);
   const doRoll = (sides, label) => {
     const r = sides === 100 ? rollPercent() : rollDie(sides);
@@ -5316,20 +5592,35 @@ function DiceTray({ party, setParty, heroes, addLog }) {
   const [doorFeedback, setDoorFeedback] = useState(null);
   const activeDoorHero = heroes.find((h) => h.id === doorHero) || heroes[0];
 
+  // Every model has a flat 2 AP per the QRS. Spends from the acting hero's pool
+  // (tracked on the Turn tab) and blocks the action with feedback if they're short.
+  const trySpendAP = (hero, amount) => {
+    if (!hero) return false;
+    const ap = hero.ap ?? 2;
+    if (ap < amount) {
+      setDoorFeedback({ text: `${hero.name} doesn't have enough AP (needs ${amount}, has ${ap}). Check the Turn tab.`, tone: "bad" });
+      return false;
+    }
+    updateHero({ ...hero, ap: ap - amount });
+    return true;
+  };
+
   const openDoorOrChest = () => {
+    if (!trySpendAP(activeDoorHero, 1)) return;
     setParty((prev) => ({ ...prev, threat: prev.threat + 1 }));
     const openRoll = rollDie(10);
     const trapRoll = rollDie(6);
     const trapped = trapRoll === 6;
     const row = DOOR_LOCK_TABLE.find((r) => openRoll >= r.roll[0] && openRoll <= r.roll[1]);
     setDoorResult({ openRoll, trapRoll, trapped, locked: row.locked, pickMod: row.pickMod, hp: row.hp, hpRemaining: row.hp, jammed: false });
-    const feedback = `Rolled ${openRoll} (d10)${trapped ? " + trapped!" : ""} — ${row.locked ? `Locked (HP ${row.hp})` : "Open!"} Threat +1.`;
+    const feedback = `${activeDoorHero ? activeDoorHero.name + ": r" : "R"}olled ${openRoll} (d10)${trapped ? " + trapped!" : ""} — ${row.locked ? `Locked (HP ${row.hp})` : "Open!"} Threat +1.`;
     setDoorFeedback({ text: feedback, tone: row.locked ? "warn" : "good" });
-    addLog(`Opened a door/chest: rolled ${openRoll} (d10)${trapped ? " + TRAPPED (d6: 6) — draw a trap card" : ""} — ${row.locked ? `Locked (Pick Lock ${row.pickMod}, HP ${row.hp})` : "Open"}. Threat +1.`);
+    addLog(`${activeDoorHero ? activeDoorHero.name + " opens" : "Opened"} a door/chest: rolled ${openRoll} (d10)${trapped ? " + TRAPPED (d6: 6) — draw a trap card" : ""} — ${row.locked ? `Locked (Pick Lock ${row.pickMod}, HP ${row.hp})` : "Open"}. Threat +1.`);
   };
 
   const forceOpen = () => {
     if (!doorResult || !doorResult.locked) return;
+    if (!trySpendAP(activeDoorHero, 1)) return;
     setParty((prev) => ({ ...prev, threat: prev.threat + 2 }));
     const dmg = Math.max(0, doorDamageInput);
     const newHp = Math.max(0, doorResult.hpRemaining - dmg);
@@ -5342,6 +5633,7 @@ function DiceTray({ party, setParty, heroes, addLog }) {
 
   const useCrowbar = () => {
     if (!doorResult || !doorResult.locked || !activeDoorHero) return;
+    if (!trySpendAP(activeDoorHero, 1)) return;
     const dmg = 8 + damageBonus(Number(activeDoorHero.stats.STR) || 0);
     setParty((prev) => ({ ...prev, threat: prev.threat + 1 }));
     const newHp = Math.max(0, doorResult.hpRemaining - dmg);
@@ -5354,6 +5646,7 @@ function DiceTray({ party, setParty, heroes, addLog }) {
 
   const pickTheLock = () => {
     if (!doorResult || !doorResult.locked || !activeDoorHero) return;
+    if (!trySpendAP(activeDoorHero, 2)) return;
     const skill = (Number(activeDoorHero.skills.pickLocks) || 0) + doorResult.pickMod;
     const roll = rollPercent();
     if (roll === 100) {
@@ -5371,6 +5664,7 @@ function DiceTray({ party, setParty, heroes, addLog }) {
   };
 
   const closeDoor = () => {
+    if (activeDoorHero) trySpendAP(activeDoorHero, 1);
     addLog("Closed a door (1 AP).");
     setDoorResult(null);
     setDoorFeedback(null);
@@ -5470,12 +5764,22 @@ function DiceTray({ party, setParty, heroes, addLog }) {
         <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
           1 AP, model must be adjacent. Rolls the lock check + trap check together and raises Threat +1, per the book.
         </p>
+        {heroes.length > 0 && (
+          <select
+            value={activeDoorHero?.id || ""}
+            onChange={(e) => setDoorHero(e.target.value)}
+            className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            {heroes.map((h) => <option key={h.id} value={h.id}>{h.name} ({h.ap ?? 2} AP)</option>)}
+          </select>
+        )}
         <button
           onClick={openDoorOrChest}
           className="w-full mb-3 px-3 py-2 rounded font-bold text-sm active:scale-95 transition-transform"
           style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
         >
-          Open a Door / Chest
+          Open a Door / Chest (1 AP)
         </button>
 
         {doorResult && (
@@ -6253,6 +6557,7 @@ export default function App() {
 
   const tabs = [
     ["party", "Party", Flame],
+    ["turn", "Turn", Timer],
     ["settlement", "Settlement", Landmark],
     ["heroes", "Heroes", Users],
     ["combat", "Combat", Swords],
@@ -6318,6 +6623,7 @@ export default function App() {
 
       <main className="max-w-2xl mx-auto px-4 pb-16 pt-2">
         {tab === "party" && <PartyPanel party={party} setParty={setParty} log={log} addLog={addLog} heroes={heroes} updateHero={updateHero} pushToast={pushToast} />}
+        {tab === "turn" && <TurnTab party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />}
         {tab === "settlement" && (
           <SettlementTab party={party} setParty={setParty} heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />
         )}
@@ -6325,7 +6631,7 @@ export default function App() {
           <HeroesTab heroes={heroes} updateHero={updateHero} removeHero={removeHero} addHero={addHero} addLog={addLog} pushToast={pushToast} />
         )}
         {tab === "combat" && <CombatCalc heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
-        {tab === "dice" && <DiceTray party={party} setParty={setParty} heroes={heroes} addLog={addLog} />}
+        {tab === "dice" && <DiceTray party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />}
         {tab === "quest" && <QuestRollerPanel />}
         {tab === "compendium" && <CompendiumTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
         {tab === "campaigns" && (

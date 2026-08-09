@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.21.1] — 2026-08-09
+
+### Fixed
+- Door / Chest Opener buttons (Pick the Lock, Force Open, Use a Crowbar) gave no visible confirmation when tapped — added a colour-coded feedback line after every action, plus a press animation on all the buttons so a tap now visibly registers
+
 ## [1.21.0] — 2026-08-09
 
 ### Added

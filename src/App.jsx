@@ -1505,6 +1505,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.21.1",
+    date: "2026-08-09",
+    sections: {
+      "Fixed": [
+        "Door / Chest Opener buttons (Pick the Lock, Force Open, Use a Crowbar) gave no visible confirmation when tapped — added a colour-coded feedback line after every action, plus a press animation on all the buttons so a tap now visibly registers",
+      ],
+    },
+  },
+  {
     version: "1.21.0",
     date: "2026-08-09",
     sections: {
@@ -5304,6 +5313,7 @@ function DiceTray({ party, setParty, heroes, addLog }) {
   const [doorResult, setDoorResult] = useState(null);
   const [doorHero, setDoorHero] = useState("");
   const [doorDamageInput, setDoorDamageInput] = useState(0);
+  const [doorFeedback, setDoorFeedback] = useState(null);
   const activeDoorHero = heroes.find((h) => h.id === doorHero) || heroes[0];
 
   const openDoorOrChest = () => {
@@ -5313,6 +5323,8 @@ function DiceTray({ party, setParty, heroes, addLog }) {
     const trapped = trapRoll === 6;
     const row = DOOR_LOCK_TABLE.find((r) => openRoll >= r.roll[0] && openRoll <= r.roll[1]);
     setDoorResult({ openRoll, trapRoll, trapped, locked: row.locked, pickMod: row.pickMod, hp: row.hp, hpRemaining: row.hp, jammed: false });
+    const feedback = `Rolled ${openRoll} (d10)${trapped ? " + trapped!" : ""} — ${row.locked ? `Locked (HP ${row.hp})` : "Open!"} Threat +1.`;
+    setDoorFeedback({ text: feedback, tone: row.locked ? "warn" : "good" });
     addLog(`Opened a door/chest: rolled ${openRoll} (d10)${trapped ? " + TRAPPED (d6: 6) — draw a trap card" : ""} — ${row.locked ? `Locked (Pick Lock ${row.pickMod}, HP ${row.hp})` : "Open"}. Threat +1.`);
   };
 
@@ -5323,6 +5335,8 @@ function DiceTray({ party, setParty, heroes, addLog }) {
     const newHp = Math.max(0, doorResult.hpRemaining - dmg);
     const broken = newHp <= 0;
     setDoorResult((prev) => ({ ...prev, hpRemaining: newHp, locked: !broken, jammed: false }));
+    const feedback = `Dealt ${dmg} damage — ${newHp}/${doorResult.hp} HP left.${broken ? " Broken open!" : ""} Threat +2.`;
+    setDoorFeedback({ text: feedback, tone: broken ? "good" : "warn" });
     addLog(`Forced the door/chest: -${dmg} HP (now ${newHp}/${doorResult.hp})${broken ? " — broken open!" : ""}. Threat +2.`);
   };
 
@@ -5333,6 +5347,8 @@ function DiceTray({ party, setParty, heroes, addLog }) {
     const newHp = Math.max(0, doorResult.hpRemaining - dmg);
     const broken = newHp <= 0;
     setDoorResult((prev) => ({ ...prev, hpRemaining: newHp, locked: !broken, jammed: false }));
+    const feedback = `${activeDoorHero.name} deals ${dmg} damage (8+DB) — ${newHp}/${doorResult.hp} HP left.${broken ? " Broken open!" : ""} Threat +1.`;
+    setDoorFeedback({ text: feedback, tone: broken ? "good" : "warn" });
     addLog(`${activeDoorHero.name} uses a crowbar: -${dmg} HP (8+DB) (now ${newHp}/${doorResult.hp})${broken ? " — broken open!" : ""}. Threat +1.`);
   };
 
@@ -5342,11 +5358,14 @@ function DiceTray({ party, setParty, heroes, addLog }) {
     const roll = rollPercent();
     if (roll === 100) {
       setDoorResult((prev) => ({ ...prev, jammed: true }));
+      setDoorFeedback({ text: `${activeDoorHero.name} fumbles (${roll}) — the lock is jammed! Must be forced open now.`, tone: "bad" });
       addLog(`${activeDoorHero.name} fumbles picking the lock (${roll}) — jammed! Must be forced open now.`);
     } else if (roll <= skill) {
       setDoorResult((prev) => ({ ...prev, locked: false, hpRemaining: 0 }));
+      setDoorFeedback({ text: `${activeDoorHero.name} picks the lock! (Rolled ${roll} vs ${skill}.) Opened, no Threat increase.`, tone: "good" });
       addLog(`${activeDoorHero.name} picks the lock (${roll} vs ${skill}) — opened! (2 AP, no Threat increase.)`);
     } else {
+      setDoorFeedback({ text: `${activeDoorHero.name} fails (rolled ${roll} vs ${skill}) — the pick breaks. Still locked.`, tone: "warn" });
       addLog(`${activeDoorHero.name} fails to pick the lock (${roll} vs ${skill}) — the pick breaks.`);
     }
   };
@@ -5354,6 +5373,7 @@ function DiceTray({ party, setParty, heroes, addLog }) {
   const closeDoor = () => {
     addLog("Closed a door (1 AP).");
     setDoorResult(null);
+    setDoorFeedback(null);
   };
 
   return (
@@ -5452,7 +5472,7 @@ function DiceTray({ party, setParty, heroes, addLog }) {
         </p>
         <button
           onClick={openDoorOrChest}
-          className="w-full mb-3 px-3 py-2 rounded font-bold text-sm"
+          className="w-full mb-3 px-3 py-2 rounded font-bold text-sm active:scale-95 transition-transform"
           style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
         >
           Open a Door / Chest
@@ -5494,7 +5514,7 @@ function DiceTray({ party, setParty, heroes, addLog }) {
                 {!doorResult.jammed && (
                   <button
                     onClick={pickTheLock}
-                    className="w-full mb-1.5 text-xs px-2 py-2 rounded font-semibold"
+                    className="w-full mb-1.5 text-xs px-2 py-2 rounded font-semibold active:scale-95 transition-transform"
                     style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
                     title="2 AP, no Threat increase — breaks the pick on a fail, jams on a fumble (natural 00)"
                   >
@@ -5513,7 +5533,7 @@ function DiceTray({ party, setParty, heroes, addLog }) {
                   />
                   <button
                     onClick={forceOpen}
-                    className="flex-1 text-xs px-2 py-1.5 rounded font-semibold"
+                    className="flex-1 text-xs px-2 py-1.5 rounded font-semibold active:scale-95 transition-transform"
                     style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
                     title="1 AP, +2 Threat per attempt — enter the damage your attack rolled"
                   >
@@ -5522,7 +5542,7 @@ function DiceTray({ party, setParty, heroes, addLog }) {
                 </div>
                 <button
                   onClick={useCrowbar}
-                  className="w-full text-xs px-2 py-1.5 rounded font-semibold"
+                  className="w-full text-xs px-2 py-1.5 rounded font-semibold active:scale-95 transition-transform"
                   style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
                   title="1 AP, +1 Threat — fixed 8+DB damage instead of a weapon roll"
                 >
@@ -5530,9 +5550,24 @@ function DiceTray({ party, setParty, heroes, addLog }) {
                 </button>
               </>
             )}
+
+            {doorFeedback && (
+              <div
+                className="rounded p-2 mt-2 text-xs font-semibold"
+                style={{
+                  background: "#fff",
+                  border: `1px solid ${doorFeedback.tone === "good" ? palette.forest : doorFeedback.tone === "bad" ? palette.crimson : palette.gold}`,
+                  color: doorFeedback.tone === "good" ? palette.forestDark : doorFeedback.tone === "bad" ? palette.crimson : palette.charcoal,
+                  fontFamily: "Crimson Pro, serif",
+                }}
+              >
+                {doorFeedback.text}
+              </div>
+            )}
+
             <button
               onClick={closeDoor}
-              className="w-full mt-2 text-xs px-2 py-1.5 rounded font-semibold"
+              className="w-full mt-2 text-xs px-2 py-1.5 rounded font-semibold active:scale-95 transition-transform"
               style={{ background: "#00000015", color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}
             >
               Close / Dismiss (1 AP to close a door)

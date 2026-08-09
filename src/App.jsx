@@ -292,6 +292,16 @@ function encumbranceOver(hero) {
   return totalEnc > (Number(hero.stats.STR) || 0) + backpackEncBonus(hero);
 }
 
+// Quick Slots — base 3, per the Actions/Equipment chapters. Combat Harness and Extended
+// Battle Belt each set a higher fixed total (not a stacking +N) if owned anywhere in the
+// hero's backpack or quick slots.
+function quickSlotCapacity(hero) {
+  const names = (hero.backpack || []).map((it) => it.name);
+  if (names.includes("Combat Harness")) return 5;
+  if (names.includes("Extended Battle Belt")) return 4;
+  return 3;
+}
+
 const defaultParty = () => ({
   threat: 2, threatFloor: 2, morale: 0, food: 4, coins: 150,
   settlementName: "",
@@ -1509,6 +1519,16 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.23.0",
+    date: "2026-08-09",
+    sections: {
+      "Added": [
+        "Quick Slots on the hero card's Backpack — each item gets a tappable Q/B badge to move it between the backpack and a quick slot (2 AP, blocked if the hero's out of AP or the quick slots are full). Capacity is base 3, raised to 4 or 5 by an owned Extended Battle Belt or Combat Harness",
+        "Trade Gear on the Turn tab — move an item from one hero's backpack to another's for 1 AP each (both heroes need the AP or the trade doesn't happen at all)",
+      ],
+    },
+  },
+  {
     version: "1.22.0",
     date: "2026-08-09",
     sections: {
@@ -2357,7 +2377,7 @@ function normalizeHero(h) {
     prayers: h.prayers || base.prayers,
     specialRules: h.specialRules || base.specialRules,
     conditions: h.conditions || base.conditions,
-    backpack: h.backpack || base.backpack,
+    backpack: (h.backpack || base.backpack).map((it) => ({ slot: "backpack", ...it })),
     backpackUpgrade: h.backpackUpgrade || "",
     tempEffects: h.tempEffects || [],
     bankBalances: { ...base.bankBalances, ...(h.bankBalances || {}) },
@@ -2637,6 +2657,26 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
   };
   const updateBackpackItem = (id, patch) => set({ backpack: hero.backpack.map((it) => (it.id === id ? { ...it, ...patch } : it)) });
   const removeBackpackItem = (id) => set({ backpack: hero.backpack.filter((it) => it.id !== id) });
+  const quickSlotUsed = hero.backpack.filter((it) => it.slot === "quickslot").length;
+  const quickSlotMax = quickSlotCapacity(hero);
+  const moveSlot = (item) => {
+    const movingToQuick = item.slot !== "quickslot";
+    if (movingToQuick && quickSlotUsed >= quickSlotMax) {
+      addLog && addLog(`${hero.name}: no room in Quick Slots (${quickSlotUsed}/${quickSlotMax}) for ${item.name}.`);
+      return;
+    }
+    const ap = hero.ap ?? 2;
+    if (ap < 2) {
+      addLog && addLog(`${hero.name}: not enough AP to rearrange gear (needs 2, has ${ap}).`);
+      return;
+    }
+    update({
+      ...hero,
+      ap: ap - 2,
+      backpack: hero.backpack.map((it) => (it.id === item.id ? { ...it, slot: movingToQuick ? "quickslot" : "backpack" } : it)),
+    });
+    addLog && addLog(`${hero.name} moves ${item.name} to ${movingToQuick ? "a Quick Slot" : "the backpack"} (2 AP).`);
+  };
 
   const [conditionInput, setConditionInput] = useState("");
   const addCondition = () => {
@@ -3298,8 +3338,12 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
               ))}
             </select>
           )}
+          <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            <span className="font-semibold" style={{ color: palette.ink }}>Quick Slots: {quickSlotUsed}/{quickSlotMax}</span> — tap Q/B on an item to move it (2 AP). {quickSlotMax > 3 ? "Capacity raised by an owned Combat Harness/Extended Battle Belt." : "Base 3; a Combat Harness or Extended Battle Belt raises this."}
+          </p>
           <div className="rounded overflow-hidden mb-1.5" style={{ border: `1px solid ${palette.line}` }}>
             <div className="flex gap-1 px-1.5 py-1 text-xs font-bold uppercase" style={{ background: palette.charcoal, color: palette.goldSoft, fontFamily: "Cinzel, serif" }}>
+              <span className="w-6 shrink-0"></span>
               <span className="flex-1 min-w-0">Item</span>
               <span className="w-14 shrink-0">Value</span>
               <span className="w-12 shrink-0">ENC</span>
@@ -3311,6 +3355,14 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
             )}
             {hero.backpack.map((item, idx) => (
               <div key={item.id} className="flex gap-1 px-1.5 py-1 items-center" style={{ background: idx % 2 ? "#00000006" : "transparent", borderTop: `1px solid ${palette.line}55` }}>
+                <button
+                  onClick={() => moveSlot(item)}
+                  className="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] font-bold"
+                  style={{ background: item.slot === "quickslot" ? palette.gold : "#00000010", color: item.slot === "quickslot" ? palette.charcoal : palette.inkSoft }}
+                  title={item.slot === "quickslot" ? "In a Quick Slot — tap to move to Backpack (2 AP)" : "In the Backpack — tap to move to a Quick Slot (2 AP)"}
+                >
+                  {item.slot === "quickslot" ? "Q" : "B"}
+                </button>
                 <input
                   value={item.name}
                   onChange={(e) => updateBackpackItem(item.id, { name: e.target.value })}
@@ -4632,6 +4684,39 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog }) {
     addLog(`Round ${nextRoundNum} begins — AP reset for all heroes.${wentOut.length ? ` Light source(s) went out: ${wentOut.join(", ")}.` : ""}`);
   };
 
+  // Trading Gear — 1 AP per hero involved, LOS required (per the book). Moves a single
+  // backpack/quick-slot item from one hero to another; both sides need the AP or the
+  // trade doesn't happen at all (all-or-nothing, not a partial spend).
+  const [tradeFrom, setTradeFrom] = useState("");
+  const [tradeItem, setTradeItem] = useState("");
+  const [tradeTo, setTradeTo] = useState("");
+  const [tradeFeedback, setTradeFeedback] = useState(null);
+  const tradeFromHero = heroes.find((h) => h.id === tradeFrom) || heroes[0];
+  const tradeToHero = heroes.find((h) => h.id === tradeTo) || heroes[1] || heroes[0];
+  const tradeableItem = tradeFromHero?.backpack.find((it) => it.id === tradeItem);
+
+  const doTrade = () => {
+    if (!tradeFromHero || !tradeToHero || !tradeableItem) {
+      setTradeFeedback({ text: "Pick a source hero, an item, and a destination hero.", tone: "bad" });
+      return;
+    }
+    if (tradeFromHero.id === tradeToHero.id) {
+      setTradeFeedback({ text: "Source and destination must be different heroes.", tone: "bad" });
+      return;
+    }
+    const fromAP = tradeFromHero.ap ?? 2;
+    const toAP = tradeToHero.ap ?? 2;
+    if (fromAP < 1 || toAP < 1) {
+      setTradeFeedback({ text: `Both heroes need 1 AP each (${tradeFromHero.name}: ${fromAP}, ${tradeToHero.name}: ${toAP}).`, tone: "bad" });
+      return;
+    }
+    updateHero(tradeFromHero.id, { ...tradeFromHero, ap: fromAP - 1, backpack: tradeFromHero.backpack.filter((it) => it.id !== tradeableItem.id) });
+    updateHero(tradeToHero.id, { ...tradeToHero, ap: toAP - 1, backpack: [...tradeToHero.backpack, { ...tradeableItem, slot: "backpack" }] });
+    setTradeFeedback({ text: `${tradeableItem.name} moved from ${tradeFromHero.name} to ${tradeToHero.name}.`, tone: "good" });
+    addLog(`${tradeFromHero.name} trades ${tradeableItem.name} to ${tradeToHero.name} (1 AP each, LOS required).`);
+    setTradeItem("");
+  };
+
   const resetRound = () => {
     heroes.forEach((h) => updateHero(h.id, { ...h, ap: 2 }));
     setParty((prev) => ({ ...prev, round: 1 }));
@@ -4747,6 +4832,54 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog }) {
           {heroes.length === 0 && <p className="text-xs italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>No heroes yet.</p>}
         </div>
       </Panel>
+
+      {heroes.length >= 2 && (
+        <Panel className="mb-4">
+          <SectionTitle icon={Users}>Trade Gear</SectionTitle>
+          <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+            1 AP per hero involved, LOS required. Moves an item from one hero's backpack/quick slots to another's.
+          </p>
+          <select
+            value={tradeFromHero?.id || ""}
+            onChange={(e) => { setTradeFrom(e.target.value); setTradeItem(""); }}
+            className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            {heroes.map((h) => <option key={h.id} value={h.id}>From: {h.name} ({h.ap ?? 2} AP)</option>)}
+          </select>
+          <select
+            value={tradeItem}
+            onChange={(e) => setTradeItem(e.target.value)}
+            className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            <option value="">Pick an item…</option>
+            {tradeFromHero?.backpack.map((it) => (
+              <option key={it.id} value={it.id}>{it.name || "(unnamed item)"} {it.slot === "quickslot" ? "(Quick Slot)" : ""}</option>
+            ))}
+          </select>
+          <select
+            value={tradeToHero?.id || ""}
+            onChange={(e) => setTradeTo(e.target.value)}
+            className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            {heroes.map((h) => <option key={h.id} value={h.id}>To: {h.name} ({h.ap ?? 2} AP)</option>)}
+          </select>
+          <button
+            onClick={doTrade}
+            className="w-full text-xs px-2 py-2 rounded font-semibold active:scale-95 transition-transform"
+            style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
+          >
+            Trade (1 AP each)
+          </button>
+          {tradeFeedback && (
+            <p className="text-xs mt-1.5 font-semibold" style={{ color: tradeFeedback.tone === "good" ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif" }}>
+              {tradeFeedback.text}
+            </p>
+          )}
+        </Panel>
+      )}
 
       <Panel className="mb-4">
         <SectionTitle icon={Dice5}>Start of Turn</SectionTitle>

@@ -3,6 +3,12 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.23.0] — 2026-08-09
+
+### Added
+- Quick Slots on the hero card's Backpack — each item gets a tappable Q/B badge to move it between the backpack and a quick slot (2 AP, blocked if the hero's out of AP or the quick slots are full). Capacity is base 3, raised to 4 or 5 by an owned Extended Battle Belt or Combat Harness
+- Trade Gear on the Turn tab — move an item from one hero's backpack to another's for 1 AP each (both heroes need the AP or the trade doesn't happen at all)
+
 ## [1.22.0] — 2026-08-09
 
 ### Added

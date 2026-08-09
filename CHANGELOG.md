@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.24.2] — 2026-08-09
+
+### Added
+- The backpack's "Add from table…" dropdown now includes Weapons and Armour & Shields as spares — previously it only covered general equipment (potions, tools, consumables, etc.), so the only way to carry a second weapon or a backup shield was typing it in manually. Picking one adds it to the backpack with its price/ENC filled in, without equipping it — the Weapon/Armour pickers above are still what actually equips something
+
 ## [1.24.1] — 2026-08-09
 
 ### Fixed

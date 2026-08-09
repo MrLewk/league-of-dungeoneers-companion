@@ -1519,6 +1519,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.24.2",
+    date: "2026-08-09",
+    sections: {
+      "Added": [
+        "The backpack's 'Add from table…' dropdown now includes Weapons and Armour & Shields as spares — previously it only covered general equipment (potions, tools, consumables, etc.), so the only way to carry a second weapon or a backup shield was typing it in manually. Picking one adds it to the backpack with its price/ENC filled in, without equipping it — the Weapon/Armour pickers above are still what actually equips something",
+      ],
+    },
+  },
+  {
     version: "1.24.1",
     date: "2026-08-09",
     sections: {
@@ -2760,9 +2769,20 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
   };
 
   const addFromEquipmentTable = (name) => {
-    const item = GENERAL_EQUIPMENT.find((x) => x.name === name);
-    if (!item) return;
-    update({ ...hero, backpack: [...hero.backpack, { id: uid(), name: item.name, value: item.cost, enc: item.enc, dur: item.dur }] });
+    const genItem = GENERAL_EQUIPMENT.find((x) => x.name === name);
+    if (genItem) {
+      update({ ...hero, backpack: [...hero.backpack, { id: uid(), name: genItem.name, value: genItem.cost, enc: genItem.enc, dur: genItem.dur, slot: "backpack" }] });
+      return;
+    }
+    const wpn = WEAPONS.find((x) => x.name === name);
+    if (wpn) {
+      update({ ...hero, backpack: [...hero.backpack, { id: uid(), name: wpn.name, value: wpn.cost, enc: wpn.enc, dur: "6/6", slot: "backpack" }] });
+      return;
+    }
+    const arm = ARMOUR_AND_SHIELDS.find((x) => x.name === name);
+    if (arm) {
+      update({ ...hero, backpack: [...hero.backpack, { id: uid(), name: arm.name, value: arm.cost, enc: arm.enc, dur: "6/6", slot: "backpack" }] });
+    }
   };
 
   return (
@@ -3382,6 +3402,16 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
               style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}
             >
               <option value="">Add from table…</option>
+              <optgroup label="Weapons (spare, not equipped)">
+                {WEAPONS.map((w) => (
+                  <option key={w.name} value={w.name}>{w.name} — {w.cost}c</option>
+                ))}
+              </optgroup>
+              <optgroup label="Armour & Shields (spare, not equipped)">
+                {ARMOUR_AND_SHIELDS.map((a) => (
+                  <option key={a.name} value={a.name}>{a.name} — {a.cost}c</option>
+                ))}
+              </optgroup>
               {["Alchemy", "Consumables", "Jewellery", "Light", "Misc", "Tools"].map((cat) => (
                 <optgroup key={cat} label={cat}>
                   {GENERAL_EQUIPMENT.filter((i) => i.category === cat).map((i) => (
@@ -3391,6 +3421,9 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
               ))}
             </select>
           )}
+          <p className="text-[10px] mb-1.5 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            To actually equip a weapon/armour piece, use the pickers up in the Weapon/Armour sections above instead — this just adds a spare to carry.
+          </p>
           <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
             <span className="font-semibold" style={{ color: palette.ink }}>Quick Slots: {quickSlotUsed}/{quickSlotMax}</span> — tap Q/B on an item to move it (2 AP). {quickSlotMax > 3 ? "Capacity raised by an owned Combat Harness/Extended Battle Belt." : "Base 3; a Combat Harness or Extended Battle Belt raises this."}
           </p>

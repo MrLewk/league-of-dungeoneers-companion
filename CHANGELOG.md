@@ -3,6 +3,16 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.28.0] — 2026-08-09
+
+### Added
+- All 20 Backgrounds now have their real Personal Quest/Trait text, XP rewards, and mechanical effects, replacing the flavour-only name list — this covers a huge range of mechanics: one-time XP quests (Wanderlust, Fables, A New Home...), starting conditions that can only be cured by a specific in-fiction feat (The Well's Claustrophobia, Arachnophobia), a branching multi-outcome quest (The Lost Brother), repeatable kill-counters (both Revenge backgrounds, Sworn Enemy), item rewards (The Heirloom's sword, Proving Your Worth's armour), and permanent stat/party effects that apply automatically when picked (Bad Tempered's Morale/Sanity trade-off, The Fraud's starting penalties, The Noble's starting coins)
+- Each hero's card shows their background's full text plus whatever action fits it — a one-tap XP claim, an item claim, a counter with a claim threshold, or a branch picker for The Lost Brother. Complex multi-session quests are self-reported (you confirm when the in-fiction condition is met) rather than simulated, since several need dungeon-start dice rolls the app has no hooks for yet
+- Max Sanity now factors in a background's bonus (Bad Tempered's +2) alongside the existing mental-condition penalty, consistently everywhere Sanity max gets recalculated
+
+### Notes
+- Revenge (Minotaur, #16)'s reward XP was cut off at the edge of the source page — defaulted to 250 to match the other Revenge background, worth confirming against the book
+
 ## [1.27.0] — 2026-08-09
 
 ### Added

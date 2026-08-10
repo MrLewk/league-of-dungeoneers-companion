@@ -45,6 +45,8 @@ const defaultHero = () => ({
   stats: { STR: 5, CON: 5, DEX: 5, WIS: 5, RES: 5 },
   luck: { cur: 0, max: 0 },
   background: "",
+  backgroundCounter: 0,
+  backgroundClaimed: false, // one-time reward already claimed
   improvementPoints: 0,
   ipSpentThisLevel: {},
   creationPoints: 15,
@@ -100,14 +102,140 @@ const SPECIES_DATA = [
 ];
 const SPECIES = SPECIES_DATA.map((s) => s.name);
 
-// Background flavour table (roll 1d20) — names only; no mechanical stat effect found
-// in either the rulebook excerpt or the character-creation tool.
-const BACKGROUNDS = [
-  "Wanderlust", "The Well", "Fables", "The Heirloom", "Arachnophobia",
-  "The Lost Brother", "Revenge", "Bad Tempered", "Poverty", "Proving Your Worth",
-  "The Fraud", "The Noble", "Sworn Enemy", "The Family Keep", "Troll Slayer",
-  "Revenge", "A New Home", "The Apprentice", "Weak", "Afraid of Heights",
+// Backgrounds (p40-46, roll 1d20) — full mechanical text. Two entries share the name
+// "Revenge" (#7 and #16) but are entirely different backgrounds with different quests —
+// distinguished here by `id`, shown in the UI with their roll number.
+// `reward` shapes:
+//   { type: "xp", amount }              — one-time claim
+//   { type: "xpPerKills", amount, per, counterLabel }  — repeatable, tracked by a counter
+//   { type: "item", name, note }        — one-time claim, adds a backpack item
+//   { type: "branch", options: [{label, xp, note, effect}] } — pick one outcome (Lost Brother)
+// `startEffect` (applyEffectDelta shape) applies automatically when the background is
+// selected, and reverses if changed away from. `partyMoraleEffect` / `sanityMaxBonus` are
+// handled specially since they're not per-hero stat deltas.
+const BACKGROUNDS_DATA = [
+  {
+    id: "wanderlust", roll: 1, name: "Wanderlust",
+    text: "Personal Quest: Visit all settlements on the map (11 total). Once done, gain 1500 XP.",
+    reward: { type: "xp", amount: 1500 },
+  },
+  {
+    id: "the-well", roll: 2, name: "The Well",
+    text: "Personal Trait and Quest: Starts with Claustrophobia (see Psychology chapter) — not curable at the Asylum. Instead, fight and survive 5 battles in a corridor to cure it. Reward: cured, plus the Tunnel Fighter Talent.",
+    startsWithCondition: "Claustrophobia",
+    reward: { type: "cure", note: "Cures the starting Claustrophobia and grants the Tunnel Fighter Talent.", grantsTalent: "Tunnel Fighter" },
+    counterLabel: "Corridor battles survived", counterTarget: 5,
+  },
+  {
+    id: "fables", roll: 3, name: "Fables",
+    text: "Personal Quest: Visit 3 Quest Sites in the Ancient Lands. Once you leave the third site, gain 1500 XP.",
+    reward: { type: "xp", amount: 1500 },
+  },
+  {
+    id: "the-heirloom", roll: 4, name: "The Heirloom",
+    text: "Personal Quest: Find your Great Aunt's sword. At the start of each quest, roll 1d10 — on a 1, that dungeon holds it (place a secondary Quest Card; the room after always has enemies, roll twice on the encounter table; the highest-XP enemy carries it). Reward: a silver shortsword, +1 DMG and +2 Durability. Cannot be sold.",
+    reward: { type: "item", name: "Great Aunt's Silver Shortsword", note: "+1 DMG, +2 Durability. Cannot be sold." },
+  },
+  {
+    id: "arachnophobia", roll: 5, name: "Arachnophobia",
+    text: "Personal Trait and Quest: Starts with Arachnophobia (see Psychology chapter) — not curable at the Asylum. Instead, fight and survive 3 battles with spiders to cure it. Reward: cured, plus a permanent +10 CS whenever attacking a spider.",
+    startsWithCondition: "Arachnophobia",
+    reward: { type: "cure", note: "Cures the starting Arachnophobia and grants permanent +10 CS vs spiders." },
+    counterLabel: "Spider battles survived", counterTarget: 3,
+  },
+  {
+    id: "the-lost-brother", roll: 6, name: "The Lost Brother",
+    text: "Personal Quest: Find your lost brother. Track dungeons entered; at the start of each quest roll 1d10 — on a 1, he's in that dungeon. Once found, roll 1d100 + dungeons entered. 60+: he's dead — choose to leave or bury him (either way -3 Sanity, +250 XP; burying grants +10 RES permanently but you can't carry loot until he's laid to rest). Below 60: he's alive and travels with you — if he makes it to a settlement, +1500 XP (if he dies en route, treat as the 60+ result).",
+    reward: { type: "branch", options: [
+      { label: "Found dead — left him", xp: 250, note: "-3 Sanity", effect: { sanity: -3 } },
+      { label: "Found dead — buried him", xp: 250, note: "-3 Sanity, +10 RES permanently", effect: { sanity: -3, stat: "RES", amount: 10 } },
+      { label: "Found alive — reached a settlement", xp: 1500, note: null },
+    ] },
+  },
+  {
+    id: "revenge-bandits", roll: 7, name: "Revenge",
+    text: "Talent: Hate all enemies from the Bandits and Brigands faction. Personal Quest: for every 5 enemies from that faction killed with the killing blow, gain an additional 250 XP.",
+    reward: { type: "xpPerKills", amount: 250, per: 5, counterLabel: "Bandits/Brigands killed" },
+  },
+  {
+    id: "bad-tempered", roll: 8, name: "Bad Tempered",
+    text: "Personal Trait: Permanent -2 Party Morale. However, always expecting the worst has its benefits — permanent +2 max Sanity.",
+    partyMoraleEffect: -2, sanityMaxBonus: 2,
+  },
+  {
+    id: "poverty", roll: 9, name: "Poverty",
+    text: "Personal Trait and Quest: May never make a purchase, or lend money, that would leave you with less than 10c. Must accumulate 1000c for your family — deliver it at your (randomised, non-Silver-City) home settlement for 1 Movement Point. Reward: 2000 XP.",
+    reward: { type: "xp", amount: 2000, note: "Claim once you've saved 1000c and delivered it home." },
+  },
+  {
+    id: "proving-your-worth", roll: 10, name: "Proving Your Worth",
+    text: "Personal Quest: Kill (or have your party kill) an enemy worth 450+ XP, then return to your father's (randomised, non-Silver-City) home settlement for 1 Movement Point to claim the Armour of the Father (see Legendary Items).",
+    reward: { type: "item", name: "Armour of the Father", note: "See the Legendary Items chapter for its stats." },
+  },
+  {
+    id: "the-fraud", roll: 11, name: "The Fraud",
+    text: "Not applicable for Wizards — reroll if you are one. Personal Trait: starts -10 CS, RS, and Dodge (no formal training), and -10 RES (temporary). Personal Quest: once CS, RS, and Dodge are each improved by +10 from their starting value, RES is restored (and increased a further +10), plus 1500 XP.",
+    startEffect: { stat: "RES", amount: -10 },
+    startsWithNote: "-10 CS, -10 RS, -10 Dodge at creation (apply directly to those skills when picking this background — not automated here since they're skills, not a single stat).",
+    reward: { type: "xp", amount: 1500, note: "Claim once CS/RS/Dodge are each +10 above their starting values — also manually apply +20 RES total (removes the -10 penalty and adds +10) and reverse the starting -10 RES applied here." },
+  },
+  {
+    id: "the-noble", roll: 12, name: "The Noble",
+    text: "Effect: Starts with 400c instead of the normal 150c starting coin (this app's default). However, if the party ever drops below 150c, RES is reduced by -10 until back to 150c or more. The below-150c check isn't monitored live — you'll need to watch for it and apply/remove the -10 RES yourself.",
+    startingCoinsBonus: 250,
+  },
+  {
+    id: "sworn-enemy", roll: 13, name: "Sworn Enemy",
+    text: "Personal Quest: Whenever you end up in battle with bandits, roll 1d10 — on a 10, add a Bandit Leader to the encounter (Hate vs. the whole party, plus Frenzy). Once it's killed, gain 500 XP.",
+    reward: { type: "xp", amount: 500, note: "Claim once the Bandit Leader is killed." },
+  },
+  {
+    id: "the-family-keep", roll: 14, name: "The Family Keep",
+    text: "Randomise one quest location (white numbers) for your ancestral Keep's ruins. Personal Quest: fully clear that dungeon (every tile placed, all enemies killed — use the generic Dungeon Generator if going there specifically for this). Reward: 1500 XP.",
+    reward: { type: "xp", amount: 1500 },
+  },
+  {
+    id: "troll-slayer", roll: 15, name: "Troll Slayer",
+    text: "Personal Quest: Land the killing blow on a troll (of any kind). Reward: +1000 XP.",
+    reward: { type: "xp", amount: 1000 },
+  },
+  {
+    id: "revenge-minotaur", roll: 16, name: "Revenge",
+    text: "Talent: Hate Minotaurs. Personal Quest: every time you fight a Minotaur, roll 1d6 — on a 1, you recognise the scar from your village's attacker. If you defeat that beast, gain an additional [XP amount unclear — cut off at the edge of the source page; worth double-checking against the book].",
+    reward: { type: "xp", amount: 250, note: "Amount not confirmed from the source page — defaulted to match the other Revenge background; verify against the book if you can." },
+  },
+  {
+    id: "a-new-home", roll: 17, name: "A New Home",
+    text: "Personal Quest: Acquire the Bergmeister Estate. Reward: 1500 XP.",
+    reward: { type: "xp", amount: 1500 },
+  },
+  {
+    id: "the-apprentice", roll: 18, name: "The Apprentice",
+    text: "Personal Trait: Whenever using an armour repair kit or a whetstone, automatically regain 3 Points of Durability on your gear (situational — apply by hand when it comes up).",
+  },
+  {
+    id: "weak", roll: 19, name: "Weak",
+    text: "Personal Trait: Whenever rolling for contracting a disease, suffer a -10 modifier to CON. However, once you're cured of your 3rd disease, your immune system kicks into overdrive — instead gain +10 CON when rolling for disease, and cure yourself on a natural CON roll of 01-10 instead of 01-05. Situational — apply by hand when it comes up.",
+    counterLabel: "Diseases cured", counterTarget: 3,
+  },
+  {
+    id: "afraid-of-heights", roll: 20, name: "Afraid of Heights",
+    text: "Personal Trait: Whenever taking a Fear Test (not Terror), gain +10 RES. However, whenever on a bridge, RES is halved (round down) and CS/RS suffer -20. Situational — apply by hand when it comes up.",
+  },
 ];
+const BACKGROUNDS = BACKGROUNDS_DATA.map((b) => b.name);
+// Looks up by id (current storage format) first, falling back to matching by name for
+// old saves — ambiguous only for the two "Revenge" entries, which falls back to #7.
+function getBackgroundData(hero) {
+  if (!hero || !hero.background) return null;
+  return BACKGROUNDS_DATA.find((b) => b.id === hero.background) || BACKGROUNDS_DATA.find((b) => b.name === hero.background) || null;
+}
+// Max Sanity is 8, plus any background bonus (e.g. Bad Tempered's +2), minus the hero's
+// current mental condition count — used consistently everywhere Sanity max is recomputed.
+function sanityMaxFor(hero) {
+  const bonus = getBackgroundData(hero)?.sanityMaxBonus || 0;
+  return Math.max(0, 8 + bonus - (hero.mentalConditions?.length || 0));
+}
 
 const PROFESSIONS = [
   { name: "Warrior", desc: "Balanced melee fighter with solid defence and attack." },
@@ -1571,6 +1699,20 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.28.0",
+    date: "2026-08-09",
+    sections: {
+      "Added": [
+        "All 20 Backgrounds now have their real Personal Quest/Trait text, XP rewards, and mechanical effects, replacing the flavour-only name list — this covers a huge range of mechanics: one-time XP quests (Wanderlust, Fables, A New Home...), starting conditions that can only be cured by a specific in-fiction feat (The Well's Claustrophobia, Arachnophobia), a branching multi-outcome quest (The Lost Brother), repeatable kill-counters (both Revenge backgrounds, Sworn Enemy), item rewards (The Heirloom's sword, Proving Your Worth's armour), and permanent stat/party effects that apply automatically when picked (Bad Tempered's Morale/Sanity trade-off, The Fraud's starting penalties, The Noble's starting coins)",
+        "Each hero's card shows their background's full text plus whatever action fits it — a one-tap XP claim, an item claim, a counter with a claim threshold, or a branch picker for The Lost Brother. Complex multi-session quests are self-reported (you confirm when the in-fiction condition is met) rather than simulated, since several need dungeon-start dice rolls the app has no hooks for yet",
+        "Max Sanity now factors in a background's bonus (Bad Tempered's +2) alongside the existing mental-condition penalty, consistently everywhere Sanity max gets recalculated",
+      ],
+      "Notes": [
+        "Revenge (Minotaur, #16)'s reward XP was cut off at the edge of the source page — defaulted to 250 to match the other Revenge background, worth confirming against the book",
+      ],
+    },
+  },
+  {
     version: "1.27.0",
     date: "2026-08-09",
     sections: {
@@ -2553,6 +2695,8 @@ function normalizeHero(h) {
     backpackUpgrade: h.backpackUpgrade || "",
     tempEffects: h.tempEffects || [],
     mentalConditions: h.mentalConditions || [],
+    backgroundCounter: h.backgroundCounter || 0,
+    backgroundClaimed: h.backgroundClaimed || false,
     bankBalances: { ...base.bankBalances, ...(h.bankBalances || {}) },
     ap: h.ap != null ? h.ap : 2,
     armour: {
@@ -2626,7 +2770,7 @@ function AttachedItemList({ label, names, dataset, color, onRemove, groupKey, ef
   );
 }
 
-function HeroCard({ hero, update, remove, addLog, pushToast }) {
+function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) {
   const [sanityEvent, setSanityEvent] = useState(SANITY_EVENTS[0].label);
   const [pendingCondition, setPendingCondition] = useState(null);
   const [hateEnemyInput, setHateEnemyInput] = useState("");
@@ -2727,7 +2871,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
   const confirmMentalCondition = (entry, detail) => {
     const newConditions = [...hero.mentalConditions, { id: uid(), name: entry.name, detail, effect: entry.effect || null }];
     const patch = entry.effect ? applyEffectDelta(hero, entry.effect, 1) : {};
-    const newMax = Math.max(0, 8 - newConditions.length);
+    const newMax = sanityMaxFor({ ...hero, mentalConditions: newConditions });
     update({
       ...hero,
       ...patch,
@@ -2767,7 +2911,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
     if (!cond) return;
     const remaining = hero.mentalConditions.filter((c) => c.id !== id);
     const patch = cond.effect ? applyEffectDelta(hero, cond.effect, -1) : {};
-    const newMax = Math.max(0, 8 - remaining.length);
+    const newMax = sanityMaxFor({ ...hero, mentalConditions: remaining });
     update({
       ...hero,
       ...patch,
@@ -2814,7 +2958,76 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
 
   const recalcSkills = () => set({ skills: computeProfessionSkills(hero) });
 
-  const rollBackground = () => set({ background: BACKGROUNDS[rollDie(BACKGROUNDS.length) - 1] });
+  // Selecting a background reverses whatever the previous one applied (hero-level stat
+  // effect, party morale, starting coins, Sanity bonus) and applies the new one — mirrors
+  // the same reversible-effect pattern used for Talents and Mental Conditions.
+  const setBackground = (newId) => {
+    const oldData = getBackgroundData(hero);
+    const newData = BACKGROUNDS_DATA.find((b) => b.id === newId) || null;
+    let patch = { background: newId, backgroundCounter: 0, backgroundClaimed: false };
+    if (oldData?.startEffect) patch = { ...patch, ...applyEffectDelta(hero, oldData.startEffect, -1) };
+    const heroAfterReversal = { ...hero, ...patch };
+    if (newData?.startEffect) patch = { ...patch, ...applyEffectDelta(heroAfterReversal, newData.startEffect, 1) };
+    const oldSanityMax = sanityMaxFor({ ...hero, background: oldData?.id });
+    const newSanityMax = sanityMaxFor({ ...hero, background: newData?.id });
+    if (oldSanityMax !== newSanityMax) {
+      const diff = newSanityMax - oldSanityMax;
+      patch.sanity = { cur: Math.max(0, hero.sanity.cur + diff), max: Math.max(0, hero.sanity.max + diff) };
+    }
+    update({ ...hero, ...patch });
+    if (setParty) {
+      setParty((prev) => {
+        let coins = prev.coins;
+        let morale = prev.morale;
+        if (oldData?.partyMoraleEffect) morale -= oldData.partyMoraleEffect;
+        if (oldData?.startingCoinsBonus) coins = Math.max(0, coins - oldData.startingCoinsBonus);
+        if (newData?.partyMoraleEffect) morale += newData.partyMoraleEffect;
+        if (newData?.startingCoinsBonus) coins += newData.startingCoinsBonus;
+        return { ...prev, coins, morale };
+      });
+    }
+    addLog && addLog(`${hero.name}'s background set to ${newData ? newData.name : "none"}.`);
+  };
+  const rollBackground = () => {
+    const pick = BACKGROUNDS_DATA[rollDie(BACKGROUNDS_DATA.length) - 1];
+    setBackground(pick.id);
+  };
+  const backgroundData = getBackgroundData(hero);
+  const claimBackgroundReward = (xpAmount, note) => {
+    update({ ...hero, xp: hero.xp + xpAmount, backgroundClaimed: true });
+    addLog && addLog(`${hero.name} completes their Personal Quest: +${xpAmount} XP.${note ? ` ${note}` : ""}`);
+  };
+  const claimBackgroundBranch = (option) => {
+    const patch = option.effect ? applyEffectDelta(hero, option.effect, 1) : {};
+    update({ ...hero, ...patch, xp: hero.xp + option.xp, backgroundClaimed: true });
+    addLog && addLog(`${hero.name} completes their Personal Quest (${option.label}): +${option.xp} XP.${option.note ? ` ${option.note}` : ""}`);
+  };
+  const claimBackgroundItem = (item) => {
+    update({
+      ...hero,
+      backgroundClaimed: true,
+      backpack: [...hero.backpack, { id: uid(), name: item.name, value: "", enc: 0, dur: "", slot: "backpack" }],
+    });
+    addLog && addLog(`${hero.name} claims their Personal Quest reward: ${item.name}. ${item.note || ""}`);
+  };
+  const claimBackgroundCure = () => {
+    const grantsTalent = backgroundData?.reward?.grantsTalent;
+    const patch = grantsTalent ? talentEffectPatch({ ...hero, talents: [...hero.talents, grantsTalent] }, grantsTalent, 1) : {};
+    update({ ...hero, ...patch, talents: grantsTalent ? [...hero.talents, grantsTalent] : hero.talents, backgroundClaimed: true });
+    addLog && addLog(`${hero.name} overcomes their Personal Trait.${grantsTalent ? ` Gains the ${grantsTalent} Talent.` : ""}`);
+  };
+  const claimBackgroundRepeatable = () => {
+    const r = backgroundData?.reward;
+    if (!r) return;
+    const nextCounter = hero.backgroundCounter + 1;
+    if (nextCounter % r.per === 0) {
+      update({ ...hero, xp: hero.xp + r.amount, backgroundCounter: nextCounter });
+      addLog && addLog(`${hero.name}: ${r.counterLabel} now ${nextCounter} — +${r.amount} XP.`);
+    } else {
+      update({ ...hero, backgroundCounter: nextCounter });
+      addLog && addLog(`${hero.name}: ${r.counterLabel} now ${nextCounter} (${r.per - (nextCounter % r.per)} more for +${r.amount} XP).`);
+    }
+  };
 
   const setFreeSkill = (newKey) => {
     const skills = { ...hero.skills };
@@ -3367,24 +3580,95 @@ function HeroCard({ hero, update, remove, addLog, pushToast }) {
           </div>
 
           {/* Background, Improvement Points, Free Skill, Luck */}
-          <div className="grid grid-cols-2 gap-1.5 mb-3">
+          <div className="grid grid-cols-2 gap-1.5 mb-1.5">
             <label className="text-xs col-span-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
               Background
               <div className="flex gap-1.5 mt-0.5">
                 <select
                   value={hero.background}
-                  onChange={(e) => set({ background: e.target.value })}
+                  onChange={(e) => setBackground(e.target.value)}
                   className="flex-1 text-xs rounded px-2 py-1"
                   style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
                 >
                   <option value="">None…</option>
-                  {BACKGROUNDS.map((b) => <option key={b} value={b}>{b}</option>)}
+                  {BACKGROUNDS_DATA.map((b) => <option key={b.id} value={b.id}>{b.roll}. {b.name}</option>)}
                 </select>
                 <button onClick={rollBackground} className="px-2 rounded" style={{ background: palette.gold, color: palette.charcoal }}>
                   <Dice5 size={13} />
                 </button>
               </div>
             </label>
+          </div>
+
+          {backgroundData && (
+            <div className="rounded p-2 mb-3" style={{ background: "#5B3A1E11", border: `1px solid #8B6239` }}>
+              <p className="text-[10px] mb-1.5" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>{backgroundData.text}</p>
+
+              {backgroundData.reward?.type === "xp" && !hero.backgroundClaimed && (
+                <button
+                  onClick={() => claimBackgroundReward(backgroundData.reward.amount, backgroundData.reward.note)}
+                  className="w-full text-xs px-2 py-1.5 rounded font-semibold"
+                  style={{ background: "#8B6239", color: "#fff", fontFamily: "Cinzel, serif" }}
+                >
+                  Quest Complete — Claim +{backgroundData.reward.amount} XP
+                </button>
+              )}
+              {backgroundData.reward?.type === "item" && !hero.backgroundClaimed && (
+                <button
+                  onClick={() => claimBackgroundItem(backgroundData.reward)}
+                  className="w-full text-xs px-2 py-1.5 rounded font-semibold"
+                  style={{ background: "#8B6239", color: "#fff", fontFamily: "Cinzel, serif" }}
+                >
+                  Quest Complete — Claim {backgroundData.reward.name}
+                </button>
+              )}
+              {backgroundData.reward?.type === "cure" && !hero.backgroundClaimed && (
+                <button
+                  onClick={claimBackgroundCure}
+                  className="w-full text-xs px-2 py-1.5 rounded font-semibold"
+                  style={{ background: "#8B6239", color: "#fff", fontFamily: "Cinzel, serif" }}
+                >
+                  {backgroundData.counterLabel ? `Overcome It (${hero.backgroundCounter}/${backgroundData.counterTarget})` : "Overcome It"}
+                </button>
+              )}
+              {backgroundData.reward?.type === "branch" && !hero.backgroundClaimed && (
+                <div className="space-y-1">
+                  {backgroundData.reward.options.map((opt, i) => (
+                    <button
+                      key={i}
+                      onClick={() => claimBackgroundBranch(opt)}
+                      className="w-full text-xs px-2 py-1.5 rounded font-semibold text-left"
+                      style={{ background: "#8B6239", color: "#fff", fontFamily: "Crimson Pro, serif" }}
+                    >
+                      {opt.label} — +{opt.xp} XP{opt.note ? ` (${opt.note})` : ""}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {backgroundData.reward?.type === "xpPerKills" && (
+                <button
+                  onClick={claimBackgroundRepeatable}
+                  className="w-full text-xs px-2 py-1.5 rounded font-semibold"
+                  style={{ background: "#8B6239", color: "#fff", fontFamily: "Cinzel, serif" }}
+                >
+                  +1 {backgroundData.reward.counterLabel} ({hero.backgroundCounter % backgroundData.reward.per}/{backgroundData.reward.per} toward +{backgroundData.reward.amount} XP)
+                </button>
+              )}
+              {backgroundData.counterLabel && (
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <span className="text-[10px]" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>{backgroundData.counterLabel}:</span>
+                  <button onClick={() => set({ backgroundCounter: Math.max(0, hero.backgroundCounter - 1) })} className="w-5 h-5 rounded-full text-xs font-bold" style={{ background: "#00000015", color: palette.inkSoft }}>−</button>
+                  <span className="text-xs font-bold" style={{ color: palette.ink }}>{hero.backgroundCounter}{backgroundData.counterTarget ? `/${backgroundData.counterTarget}` : ""}</span>
+                  <button onClick={() => set({ backgroundCounter: hero.backgroundCounter + 1 })} className="w-5 h-5 rounded-full text-xs font-bold" style={{ background: "#00000015", color: palette.inkSoft }}>+</button>
+                </div>
+              )}
+              {hero.backgroundClaimed && (
+                <p className="text-[10px] mt-1.5 font-semibold" style={{ color: "#8B6239", fontFamily: "Crimson Pro, serif" }}>Personal Quest claimed.</p>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-1.5 mb-3">
 
             <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
               Free Skill (+10)
@@ -4508,7 +4792,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
       if (roll <= 5) {
         const remaining = resolvedHero.mentalConditions.filter((c) => c.id !== targetCond.id);
         const patch = targetCond.effect ? applyEffectDelta(resolvedHero, targetCond.effect, -1) : {};
-        const newMax = Math.max(0, 8 - remaining.length);
+        const newMax = sanityMaxFor({ ...resolvedHero, mentalConditions: remaining });
         updateHero({
           ...resolvedHero,
           ...patch,
@@ -7031,7 +7315,7 @@ function CampaignsTab({ campaigns, activeId, onNew, onLoad, onRename, onDelete, 
 }
 
 // ---------- Heroes Tab (per-hero sub-tabs) ----------
-function HeroesTab({ heroes, updateHero, removeHero, addHero, addLog, pushToast }) {
+function HeroesTab({ heroes, updateHero, removeHero, addHero, addLog, pushToast, party, setParty }) {
   const [selectedId, setSelectedId] = useState(heroes[0] ? heroes[0].id : null);
 
   useEffect(() => {
@@ -7099,6 +7383,8 @@ function HeroesTab({ heroes, updateHero, removeHero, addHero, addLog, pushToast 
           remove={() => removeHero(selectedHero.id)}
           addLog={addLog}
           pushToast={pushToast}
+          party={party}
+          setParty={setParty}
         />
       ) : (
         <Panel>
@@ -7419,7 +7705,7 @@ export default function App() {
           <SettlementTab party={party} setParty={setParty} heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />
         )}
         {tab === "heroes" && (
-          <HeroesTab heroes={heroes} updateHero={updateHero} removeHero={removeHero} addHero={addHero} addLog={addLog} pushToast={pushToast} />
+          <HeroesTab heroes={heroes} updateHero={updateHero} removeHero={removeHero} addHero={addHero} addLog={addLog} pushToast={pushToast} party={party} setParty={setParty} />
         )}
         {tab === "combat" && <CombatCalc heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
         {tab === "dice" && <DiceTray party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />}

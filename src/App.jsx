@@ -1699,11 +1699,20 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.28.2",
+    date: "2026-08-09",
+    sections: {
+      "Changed": [
+        "Cleaned up wording on the last two changelog entries, which had drifted back into describing the research process ('source photo', 'last time') instead of just the app change",
+      ],
+    },
+  },
+  {
     version: "1.28.1",
     date: "2026-08-09",
     sections: {
       "Fixed": [
-        "Revenge (Minotaur, #16)'s reward XP, cut off at the edge of the source photo last time, is now confirmed at 1000 XP — a known typo in the v1.2 rulebook update cut this line off; an earlier printing had it intact",
+        "Revenge (Minotaur, #16)'s reward XP is now confirmed at 1000 XP — a known typo in the v1.2 rulebook update had cut this line off; an earlier printing had it intact",
       ],
     },
   },
@@ -1717,7 +1726,7 @@ const CHANGELOG_DATA = [
         "Max Sanity now factors in a background's bonus (Bad Tempered's +2) alongside the existing mental-condition penalty, consistently everywhere Sanity max gets recalculated",
       ],
       "Notes": [
-        "Revenge (Minotaur, #16)'s reward XP was cut off at the edge of the source page — defaulted to 250 to match the other Revenge background, worth confirming against the book",
+        "Revenge (Minotaur, #16)'s reward XP wasn't known yet — defaulted to 250 to match the other Revenge background, worth confirming against the book",
       ],
     },
   },

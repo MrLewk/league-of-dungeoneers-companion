@@ -1918,6 +1918,16 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.29.4",
+    date: "2026-08-09",
+    sections: {
+      "Fixed": [
+        "The Increased Power note (\"add +N to this spell's DMG/Healing\") was showing up on a failed cast, even though nothing actually happened for it to boost — now only appears when the spell's effect actually executes",
+        "Touch spells (which can be Restoration or Destruction school too, like Healing Hand) were never showing the Increased Power note at all, on success or failure, because that field was missing from both of Touch's own result paths",
+      ],
+    },
+  },
+  {
     version: "1.29.3",
     date: "2026-08-09",
     sections: {
@@ -5739,7 +5749,7 @@ function resolveSpellCast(hero, spell, opts) {
     const touchTarget = (Number(hero.skills.cs) || 0) + 20;
     const touchRoll = rollPercent();
     if (touchRoll > touchTarget) {
-      return { type, touchTarget, touchRoll, touched: false, manaDelta: -Math.floor(cost / 2), manaNote: "Failed to touch the target — half Mana lost.", cost };
+      return { type, touchTarget, touchRoll, touched: false, effectExecuted: false, manaDelta: -Math.floor(cost / 2), manaNote: "Failed to touch the target — half Mana lost.", cost, effectivePower };
     }
     const roll = rollPercent();
     const success = roll <= aaTarget;
@@ -5752,7 +5762,7 @@ function resolveSpellCast(hero, spell, opts) {
       manaNote = "Half Mana cost lost.";
       if (roll >= threshold) { miscast = true; miscastRoll = rollDie(10); }
     }
-    return { type, touchTarget, touchRoll, touched: true, aaTarget, roll, success, effectExecuted: success, threshold, miscast, miscastRoll, manaDelta, manaNote, cost };
+    return { type, touchTarget, touchRoll, touched: true, aaTarget, roll, success, effectExecuted: success, threshold, miscast, miscastRoll, manaDelta, manaNote, cost, effectivePower };
   }
 
   // Ranged / Incantation: single Arcane Arts roll (AA - CV).
@@ -7122,7 +7132,7 @@ function CombatCalc({ heroes, updateHero, addLog }) {
       if (r.miscastRoll === 9) lines.push(`(Roll 1d4 on the Demon table to see what materialises.)`);
     }
     if (r.manaNote) lines.push(r.manaNote);
-    if (powerAllowedFor && r.effectivePower > 0) {
+    if (powerAllowedFor && r.effectivePower > 0 && r.effectExecuted) {
       const bonusLabel = chosenSpell.school === "Restoration" ? "Healing" : "DMG";
       lines.push(`Increased Power +${r.effectivePower}: add +${r.effectivePower} to this spell's own ${bonusLabel} when you roll it (not a separate effect).`);
     }

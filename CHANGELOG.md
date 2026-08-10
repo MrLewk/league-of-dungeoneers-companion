@@ -3,6 +3,12 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.29.4] — 2026-08-09
+
+### Fixed
+- The Increased Power note ("add +N to this spell's DMG/Healing") was showing up on a failed cast, even though nothing actually happened for it to boost — now only appears when the spell's effect actually executes
+- Touch spells (which can be Restoration or Destruction school too, like Healing Hand) were never showing the Increased Power note at all, on success or failure, because that field was missing from both of Touch's own result paths
+
 ## [1.29.3] — 2026-08-09
 
 ### Fixed

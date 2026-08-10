@@ -3,6 +3,18 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.29.2] — 2026-08-09
+
+### Added
+- Cast a Spell now runs the full Hero Spell Casting flowchart instead of just deducting Mana — spell type (Ranged/Touch/Incantation) is read straight off the spell's own data, the right skill check formula applies for each (AA-CV for Ranged/Incantation, CS+20 for Touch), Focus AP adds +10 to Arcane Arts, an enemy caster in range can attempt to dispel a successful cast, and a roll above the Miscast Threshold flags a miscast
+- The Miscast Threshold (base 95, -5 if injured, -5 per AP of Focus, -1 per point of increased power) is calculated automatically and shown live as you set those options
+- Mana handling follows the book's actual outcomes: full cost on a normal success, a full refund on a lucky 01-05 roll, half cost (rounded down) lost on a failed or dispelled cast, and no Mana lost at all on an incantation-specific miscast or plain failure
+
+### Notes
+- "Caster injured" and "increased power" don't have a documented definition/cost anywhere available, so both are self-reported toggles rather than auto-calculated
+- A miscast currently just flags itself and points at the Miscast Table (p63) — the table's actual results aren't in the app yet, so nothing auto-applies from it
+- This is a best-faith reading of a dense, hand-drawn flowchart with a lot of crossing branches — worth a sanity check against the book if a specific outcome looks off in play
+
 ## [1.29.1] — 2026-08-09
 
 ### Added

@@ -1918,6 +1918,22 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.29.2",
+    date: "2026-08-09",
+    sections: {
+      "Added": [
+        "Cast a Spell now runs the full Hero Spell Casting flowchart instead of just deducting Mana — spell type (Ranged/Touch/Incantation) is read straight off the spell's own data, the right skill check formula applies for each (AA-CV for Ranged/Incantation, CS+20 for Touch), Focus AP adds +10 to Arcane Arts, an enemy caster in range can attempt to dispel a successful cast, and a roll above the Miscast Threshold flags a miscast",
+        "The Miscast Threshold (base 95, -5 if injured, -5 per AP of Focus, -1 per point of increased power) is calculated automatically and shown live as you set those options",
+        "Mana handling follows the book's actual outcomes: full cost on a normal success, a full refund on a lucky 01-05 roll, half cost (rounded down) lost on a failed or dispelled cast, and no Mana lost at all on an incantation-specific miscast or plain failure",
+      ],
+      "Notes": [
+        "\"Caster injured\" and \"increased power\" don't have a documented definition/cost anywhere available, so both are self-reported toggles rather than auto-calculated",
+        "A miscast currently just flags itself and points at the Miscast Table (p63) — the table's actual results aren't in the app yet, so nothing auto-applies from it",
+        "This is a best-faith reading of a dense, hand-drawn flowchart with a lot of crossing branches — worth a sanity check against the book if a specific outcome looks off in play",
+      ],
+    },
+  },
+  {
     version: "1.29.1",
     date: "2026-08-09",
     sections: {
@@ -5639,6 +5655,76 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   );
 }
 
+// Spell type from its `special` codes — T = Touch, I = Incantation, otherwise Ranged.
+function spellTypeOf(spell) {
+  const codes = (spell.special || "").split(",").map((s) => s.trim());
+  if (codes.includes("T")) return "Touch";
+  if (codes.includes("I")) return "Incantation";
+  return "Ranged";
+}
+// Miscast Threshold (p63 flowchart): base 95, -5 if injured, -5 per AP of Focus, -1 per
+// point of increased power.
+function miscastThreshold({ injured, focusAP, increasedPower }) {
+  return 95 - (injured ? 5 : 0) - focusAP * 5 - increasedPower;
+}
+// Full Hero Spell Casting resolution (Combat chapter flowchart). This is my best-faith
+// reading of a hand-drawn, heavily cross-linked flowchart — the branch order for the
+// Ranged/Touch miscast check specifically (checked only when the spell doesn't ultimately
+// take effect, using the same roll that already failed/got dispelled) is the one part
+// worth sanity-checking against the book if something looks off in play.
+function resolveSpellCast(hero, spell, opts) {
+  const { focusAP, injured, increasedPower, hasLOS, canDispel, enemyRS } = opts;
+  const type = spellTypeOf(spell);
+  if (type === "Ranged" && !hasLOS) {
+    return { blocked: true, type, msg: "No line of sight to the target — can't cast. Choose a different action." };
+  }
+  const threshold = miscastThreshold({ injured, focusAP, increasedPower });
+  const aa = (Number(hero.skills.arcaneArts) || 0) + focusAP * 10;
+  const checkTarget = type === "Touch" ? (Number(hero.skills.cs) || 0) + 20 : aa - (spell.cv || 0);
+  const roll = rollPercent();
+  const success = roll <= checkTarget;
+
+  let effectExecuted = false, dispelled = false, miscast = false, incantationFailed = false;
+  let dispelRoll = null;
+
+  if (type === "Incantation") {
+    if (success) {
+      effectExecuted = true;
+    } else if (roll > threshold) {
+      miscast = true;
+    } else {
+      incantationFailed = true;
+    }
+  } else {
+    if (success) {
+      if (canDispel) {
+        dispelRoll = rollPercent();
+        if (dispelRoll <= enemyRS) dispelled = true;
+        else effectExecuted = true;
+      } else {
+        effectExecuted = true;
+      }
+    }
+    if (!effectExecuted && roll > threshold) miscast = true;
+  }
+
+  const cost = spell.mana || 0;
+  let manaDelta = 0, manaNote = "";
+  if (type === "Incantation") {
+    if (miscast) { manaDelta = 0; manaNote = "No Mana lost on an incantation miscast."; }
+    else if (effectExecuted) { manaDelta = -cost; }
+    else { manaDelta = 0; manaNote = "Incantation failed — no Mana lost."; }
+  } else if (effectExecuted) {
+    if (roll <= 5) { manaDelta = cost; manaNote = "Lucky roll (01-05) — Mana cost refunded!"; }
+    else { manaDelta = -cost; }
+  } else {
+    manaDelta = -Math.floor(cost / 2);
+    manaNote = "Half Mana cost lost — the spell didn't take effect.";
+  }
+
+  return { type, threshold, aa, checkTarget, roll, success, effectExecuted, dispelled, dispelRoll, miscast, incantationFailed, manaDelta, manaNote, cost };
+}
+
 function validateRecipeComponents(strength, components) {
   const rule = ALCHEMY_STRENGTH_RULES[strength];
   if (!rule) return "Pick a strength.";
@@ -6933,19 +7019,38 @@ function CombatCalc({ heroes, updateHero, addLog }) {
   const [castHeroPick, setCastHeroPick] = useState("");
   const [castSpellPick, setCastSpellPick] = useState("");
   const [castResult, setCastResult] = useState(null);
+  const [focusAP, setFocusAP] = useState(0);
+  const [injured, setInjured] = useState(false);
+  const [increasedPower, setIncreasedPower] = useState(0);
+  const [hasLOS, setHasLOS] = useState(true);
+  const [canDispel, setCanDispel] = useState(false);
+  const [enemyRS, setEnemyRS] = useState(0);
   const castHero = heroes.find((h) => h.id === castHeroPick);
   const chosenSpell = SPELLS.find((s) => s.name === castSpellPick);
+  const chosenSpellType = chosenSpell ? spellTypeOf(chosenSpell) : null;
   const castSpell = () => {
     if (!castHero || !chosenSpell) return;
-    const cost = chosenSpell.mana || 0;
-    if (cost > castHero.mana.cur) {
-      setCastResult({ ok: false, msg: `Not enough Mana — ${chosenSpell.name} needs ${cost}, ${castHero.name} only has ${castHero.mana.cur}.` });
-      return;
-    }
-    const cur = clamp(castHero.mana.cur - cost, 0, castHero.mana.max);
+    const r = resolveSpellCast(castHero, chosenSpell, { focusAP, injured, increasedPower, hasLOS, canDispel, enemyRS });
+    if (r.blocked) { setCastResult({ ok: false, lines: [r.msg] }); return; }
+    const cur = clamp(castHero.mana.cur + r.manaDelta, 0, castHero.mana.max);
     updateHero({ ...castHero, mana: { ...castHero.mana, cur } });
-    setCastResult({ ok: true, msg: `${castHero.name} cast ${chosenSpell.name} (−${cost} Mana → ${cur}/${castHero.mana.max})` });
-    addLog && addLog(`${castHero.name} cast ${chosenSpell.name} (−${cost} Mana → ${cur}/${castHero.mana.max})`);
+
+    const lines = [`Rolled ${r.roll} vs ${r.checkTarget} (${r.type}${r.type === "Touch" ? " — CS+20" : " — AA-CV"}).`];
+    if (r.type === "Incantation") {
+      if (r.effectExecuted) lines.push(`Success! ${chosenSpell.name} takes effect.`);
+      else if (r.miscast) lines.push(`Incantation failed AND rolled above the Miscast Threshold (${r.threshold}) — MISCAST! Roll on the Miscast Table (p63 — not yet in the app).`);
+      else lines.push(`Incantation failed.`);
+    } else {
+      if (r.effectExecuted) lines.push(`Success! ${chosenSpell.name} takes effect${r.dispelled === false && canDispel ? " (the enemy's dispel attempt failed)" : ""}.`);
+      else if (r.dispelled) lines.push(`Cast succeeded, but the enemy dispelled it (rolled ${r.dispelRoll} vs their RS ${enemyRS}).`);
+      else lines.push(`Cast failed.`);
+      if (r.miscast) lines.push(`That roll was also above the Miscast Threshold (${r.threshold}) — MISCAST! Roll on the Miscast Table (p63 — not yet in the app).`);
+    }
+    if (r.manaNote) lines.push(r.manaNote);
+    lines.push(`Mana: ${castHero.mana.cur} → ${cur}/${castHero.mana.max}.`);
+
+    setCastResult({ ok: r.effectExecuted, lines });
+    addLog && addLog(`${castHero.name} casts ${chosenSpell.name}: ${lines.join(" ")}`);
   };
 
   const [prayHeroPick, setPrayHeroPick] = useState("");
@@ -7250,9 +7355,51 @@ function CombatCalc({ heroes, updateHero, addLog }) {
               {chosenSpell && (
                 <div className="rounded p-2.5 mb-3" style={{ background: "#00000008" }}>
                   <p className="text-xs" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.inkSoft }}>
-                    CV {chosenSpell.cv}{chosenSpell.mana != null ? ` · Mana ${chosenSpell.mana}` : ""}{chosenSpell.upkeep ? ` · Upkeep ${chosenSpell.upkeep}/turn` : ""}
+                    {chosenSpellType} · CV {chosenSpell.cv}{chosenSpell.mana != null ? ` · Mana ${chosenSpell.mana}` : ""}{chosenSpell.upkeep ? ` · Upkeep ${chosenSpell.upkeep}/turn` : ""}
                   </p>
                   <p className="text-xs mt-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>{chosenSpell.effect}</p>
+                </div>
+              )}
+              {chosenSpell && (
+                <div className="rounded p-2.5 mb-3 space-y-2" style={{ background: "#00000008" }}>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                      Focus (AP spent)
+                      <select value={focusAP} onChange={(e) => setFocusAP(Number(e.target.value))} className="w-full text-xs rounded px-2 py-1 mt-0.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                        <option value={0}>0</option>
+                        <option value={1}>1</option>
+                        <option value={2}>2</option>
+                      </select>
+                    </label>
+                    <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                      Increased power (points)
+                      <input type="number" min="0" value={increasedPower} onChange={(e) => setIncreasedPower(Math.max(0, Number(e.target.value)))} className="w-full text-xs rounded px-2 py-1 mt-0.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }} />
+                    </label>
+                  </div>
+                  <label className="flex items-center gap-1.5 text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                    <input type="checkbox" checked={injured} onChange={(e) => setInjured(e.target.checked)} /> Caster is injured (-5 Miscast Threshold)
+                  </label>
+                  {chosenSpellType === "Ranged" && (
+                    <label className="flex items-center gap-1.5 text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                      <input type="checkbox" checked={hasLOS} onChange={(e) => setHasLOS(e.target.checked)} /> Has line of sight to the target
+                    </label>
+                  )}
+                  {chosenSpellType !== "Incantation" && (
+                    <>
+                      <label className="flex items-center gap-1.5 text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                        <input type="checkbox" checked={canDispel} onChange={(e) => setCanDispel(e.target.checked)} /> An enemy caster is present, free, and adjacent-free — may try to dispel
+                      </label>
+                      {canDispel && (
+                        <label className="text-xs block" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                          Enemy's RS
+                          <input type="number" min="0" value={enemyRS} onChange={(e) => setEnemyRS(Math.max(0, Number(e.target.value)))} className="w-full text-xs rounded px-2 py-1 mt-0.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }} />
+                        </label>
+                      )}
+                    </>
+                  )}
+                  <p className="text-[10px]" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.inkSoft }}>
+                    Miscast Threshold: {miscastThreshold({ injured, focusAP, increasedPower })} · AA: {(Number(castHero?.skills.arcaneArts) || 0) + focusAP * 10}
+                  </p>
                 </div>
               )}
               <button
@@ -7264,7 +7411,9 @@ function CombatCalc({ heroes, updateHero, addLog }) {
                 <Sparkles size={16} /> Cast
               </button>
               {castResult && (
-                <p className="text-xs mt-3 text-center rounded p-2 font-bold" style={{ background: castResult.ok ? palette.forestDark : palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>{castResult.msg}</p>
+                <div className="text-xs mt-3 text-center rounded p-2 font-bold space-y-0.5" style={{ background: castResult.ok ? palette.forestDark : palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+                  {castResult.lines.map((l, i) => <p key={i}>{l}</p>)}
+                </div>
               )}
             </>
           )}

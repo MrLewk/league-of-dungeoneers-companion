@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.28.1] — 2026-08-09
+
+### Fixed
+- Revenge (Minotaur, #16)'s reward XP, cut off at the edge of the source photo last time, is now confirmed at 1000 XP — a known typo in the v1.2 rulebook update cut this line off; an earlier printing had it intact
+
 ## [1.28.0] — 2026-08-09
 
 ### Added

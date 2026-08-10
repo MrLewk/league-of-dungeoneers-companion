@@ -201,8 +201,8 @@ const BACKGROUNDS_DATA = [
   },
   {
     id: "revenge-minotaur", roll: 16, name: "Revenge",
-    text: "Talent: Hate Minotaurs. Personal Quest: every time you fight a Minotaur, roll 1d6 — on a 1, you recognise the scar from your village's attacker. If you defeat that beast, gain an additional [XP amount unclear — cut off at the edge of the source page; worth double-checking against the book].",
-    reward: { type: "xp", amount: 250, note: "Amount not confirmed from the source page — defaulted to match the other Revenge background; verify against the book if you can." },
+    text: "Talent: Hate Minotaurs. Personal Quest: every time you fight a Minotaur, roll 1d6 — on a 1, you recognise the scar from your village's attacker. If you defeat that beast, gain an additional 1000 XP.",
+    reward: { type: "xp", amount: 1000 },
   },
   {
     id: "a-new-home", roll: 17, name: "A New Home",
@@ -1698,6 +1698,15 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.28.1",
+    date: "2026-08-09",
+    sections: {
+      "Fixed": [
+        "Revenge (Minotaur, #16)'s reward XP, cut off at the edge of the source photo last time, is now confirmed at 1000 XP — a known typo in the v1.2 rulebook update cut this line off; an earlier printing had it intact",
+      ],
+    },
+  },
   {
     version: "1.28.0",
     date: "2026-08-09",

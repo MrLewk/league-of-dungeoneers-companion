@@ -3,6 +3,15 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.29.7] — 2026-08-10
+
+### Fixed
+- Award Experience (Party tab) gave no confirmation when clicked unless a hero happened to level up from it — a normal award now always shows a toast confirming the XP was given, alongside any level-up toasts
+
+### Changed
+- Every button now has a hover highlight and a visible press-darken effect on desktop (mouse clicks), independent of the touch-only press animation already used on most buttons
+- On larger screens (1024px+ and 1536px+), the whole app now scales up — text, icons, spacing, and borders all grow together — for easier reading at desktop viewing distances, while the mobile-first layout itself is unchanged
+
 ## [1.29.6] — 2026-08-10
 
 ### Changed

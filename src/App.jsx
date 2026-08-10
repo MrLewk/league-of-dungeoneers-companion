@@ -1918,6 +1918,19 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.29.7",
+    date: "2026-08-10",
+    sections: {
+      "Fixed": [
+        "Award Experience (Party tab) gave no confirmation when clicked unless a hero happened to level up from it — a normal award now always shows a toast confirming the XP was given, alongside any level-up toasts",
+      ],
+      "Changed": [
+        "Every button now has a hover highlight and a visible press-darken effect on desktop (mouse clicks), independent of the touch-only press animation already used on most buttons",
+        "On larger screens (1024px+ and 1536px+), the whole app now scales up — text, icons, spacing, and borders all grow together — for easier reading at desktop viewing distances, while the mobile-first layout itself is unchanged",
+      ],
+    },
+  },
+  {
     version: "1.29.6",
     date: "2026-08-10",
     sections: {
@@ -6872,11 +6885,13 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
 
   const awardXP = () => {
     if (!heroes || heroes.length === 0 || !xpAmount) return;
+    let anyLeveledUp = false;
     heroes.forEach((h) => {
       const withXP = { ...h, xp: h.xp + Number(xpAmount) };
       const { hero: leveled, events } = applyAutoLevelUps(withXP);
       updateHero(h.id, leveled);
       if (events.length > 0) {
+        anyLeveledUp = true;
         const finalLevel = events[events.length - 1].level;
         const allNotes = events.flatMap((e) => e.notes).join(", ");
         pushToast && pushToast(
@@ -6887,6 +6902,14 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
       }
     });
     addLog(`Awarded ${xpAmount} XP to all ${heroes.length} hero${heroes.length === 1 ? "" : "es"}`);
+    // Always confirm the award itself — level-up toasts are a bonus, not a
+    // substitute, so a click with no level-ups still gives visible feedback.
+    if (!anyLeveledUp) {
+      pushToast && pushToast(
+        `+${xpAmount} XP awarded`,
+        `Given to all ${heroes.length} hero${heroes.length === 1 ? "" : "es"}.`
+      );
+    }
   };
 
   return (

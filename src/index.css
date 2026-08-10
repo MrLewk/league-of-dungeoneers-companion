@@ -33,3 +33,34 @@ select, input, textarea, button {
 .scroll-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* Desktop scale-up. The layout stays exactly the mobile-first one — this just
+   zooms the whole rendered app up on larger screens, the same way a browser's
+   own zoom would, so text/icons/spacing/borders all grow together instead of
+   only the rem-based bits. Mobile/tablet widths are untouched. */
+@media (min-width: 1024px) {
+  #root {
+    zoom: 1.2;
+  }
+}
+@media (min-width: 1536px) {
+  #root {
+    zoom: 1.35;
+  }
+}
+
+/* Desktop hover/press feedback. Touch devices already get a clear press state
+   from the active:scale-95 utility used on most buttons, but that relies on
+   :active, which mouse clicks trigger only briefly and inconsistently across
+   browsers — so on top of that, every button gets an explicit hover and press
+   state here via filter (works regardless of each button's inline colours). */
+button:not(:disabled) {
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+button:not(:disabled):hover {
+  filter: brightness(1.08);
+}
+button:not(:disabled):active {
+  filter: brightness(0.88);
+}

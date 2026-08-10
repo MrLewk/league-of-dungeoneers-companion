@@ -3,6 +3,12 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.29.6] — 2026-08-10
+
+### Changed
+- Hero card: the XP-to-next-level note now sits inline next to the XP field (e.g. "4500 / 5000 (500 to go)") instead of a small caption underneath
+- The Level Up button is now clearly labelled as a manual override ("Override: Level Up"), styled as a secondary action, with an updated tooltip explaining that levelling up already happens automatically once XP crosses the threshold
+
 ## [1.29.5] — 2026-08-09
 
 ### Changed

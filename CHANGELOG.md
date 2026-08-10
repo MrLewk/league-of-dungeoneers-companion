@@ -3,6 +3,21 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.29.3] — 2026-08-09
+
+### Fixed
+- Corrected Spell Casting against the actual rules text (the flowchart alone had led me slightly astray in a few places): Touch Spells now correctly need BOTH a CS+20 touch roll and the standard Arcane Arts roll, not just the touch roll — a missed touch costs half Mana and skips the Arcane Arts roll entirely
+- Dispel is now only offered for Ranged spells — the book is explicit that Touch and Close Combat spells can't be dispelled at all
+- The dispel target is now the enemy's RS/2 (rounded down), not their raw RS — matches "Ranged Skills/2 (RDD) for enemy casters"
+- A dispelled cast now costs the full intended Mana instead of half — "a hero whose spell is cancelled must still expend the intended mana"
+- Miscast now costs half Mana for every spell type, including Incantations — "the Mana is used as though the spell had failed", with no special exception
+- Perfect Cast's Mana refund (a natural 01-05) is no longer clamped to the hero's max Mana, since the book explicitly allows it to temporarily exceed the cap
+
+### Added
+- The actual Miscast Table (1d10) and its Demon sub-table (1d4, for a roll of 9) are now in the app — a miscast rolls on it automatically and shows the real result instead of just pointing at page 63
+- Increased Power is now properly gated to Restoration/Destruction school spells only, capped at the lower of 5 or the caster's level, and adds its +2 Mana per level to the cast's cost
+- Two new restrictions: an adjacent enemy blocks everything except Touch Spells, and Incantations can only be cast while in a settlement
+
 ## [1.29.2] — 2026-08-09
 
 ### Added

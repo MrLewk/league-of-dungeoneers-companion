@@ -1918,6 +1918,16 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.29.6",
+    date: "2026-08-10",
+    sections: {
+      "Changed": [
+        "Hero card: the XP-to-next-level note now sits inline next to the XP field (e.g. \"4500 / 5000 (500 to go)\") instead of a small caption underneath",
+        "The Level Up button is now clearly labelled as a manual override (\"⚙ Override: Level Up\"), styled as a secondary action, with an updated tooltip explaining that levelling up already happens automatically once XP crosses the threshold",
+      ],
+    },
+  },
+  {
     version: "1.29.5",
     date: "2026-08-09",
     sections: {
@@ -3616,7 +3626,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
                 style={{ background: "#fff", border: `1px solid ${palette.line}` }}
               />
             </div>
-            <div className="flex items-center gap-1 text-xs" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.inkSoft }}>
+            <div className="flex items-center gap-1 text-xs flex-wrap" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.inkSoft }}>
               XP
               <input
                 type="number"
@@ -3625,21 +3635,21 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
                 className="w-14 rounded px-1"
                 style={{ background: "#fff", border: `1px solid ${palette.line}` }}
               />
+              {nextLevelEntry && (
+                <span className="text-[10px]" style={{ fontFamily: "Crimson Pro, serif" }}>
+                  {xpToNext > 0 ? `/ ${nextLevelEntry.xp} (${xpToNext} to go)` : `— level ${nextLevelEntry.level} ready`}
+                </span>
+              )}
             </div>
-            <button
-              onClick={levelUp}
-              className="text-xs px-2 py-1 rounded font-semibold"
-              style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Crimson Pro, serif" }}
-              title="Level +1, +15 Improvement Points, and the automatic HP/Luck/Energy gains for the new level"
-            >
-              Level Up
-            </button>
           </div>
-          {nextLevelEntry && (
-            <p className="text-[10px] mt-1" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-              {xpToNext > 0 ? `${xpToNext} XP to level ${nextLevelEntry.level}` : `XP requirement for level ${nextLevelEntry.level} met`}
-            </p>
-          )}
+          <button
+            onClick={levelUp}
+            className="text-[10px] px-2 py-0.5 rounded mt-1"
+            style={{ background: "transparent", color: palette.inkSoft, border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+            title="Manual override — forces a level regardless of XP (house rules, corrections). Grants +15 Improvement Points and the automatic HP/Luck/Energy gains for the new level. Levelling up normally happens automatically when XP crosses the threshold above."
+          >
+            ⚙ Override: Level Up
+          </button>
           {hero.profession && (
             <p className="text-xs mt-1" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
               {PROFESSIONS.find((p) => p.name === hero.profession)?.desc}

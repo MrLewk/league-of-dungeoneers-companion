@@ -3,11 +3,6 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
-## [1.28.2] — 2026-08-09
-
-### Changed
-- Cleaned up wording on the last two changelog entries, which had drifted back into describing the research process ("source photo", "last time") instead of just the app change
-
 ## [1.28.1] — 2026-08-09
 
 ### Fixed

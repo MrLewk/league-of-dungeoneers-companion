@@ -1699,15 +1699,6 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
-    version: "1.28.2",
-    date: "2026-08-09",
-    sections: {
-      "Changed": [
-        "Cleaned up wording on the last two changelog entries, which had drifted back into describing the research process ('source photo', 'last time') instead of just the app change",
-      ],
-    },
-  },
-  {
     version: "1.28.1",
     date: "2026-08-09",
     sections: {

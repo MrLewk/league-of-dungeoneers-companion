@@ -3,6 +3,19 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.29.0] — 2026-08-09
+
+### Added
+- New Alchemy tab with three sections: Recipe Book (the 6 Common Recipes every alchemist knows automatically, plus each hero's own learned recipes — "Mix This" jumps straight to mixing), Mix a Potion (shows exactly what's missing from your inventory, applies the recipe/exquisite roll bonuses automatically, and rolls it), and Gather & Harvest (the overland-travel ingredient search by habitat, and post-battle part harvesting from up to 3 enemies)
+- Full Monster Parts table (80+ enemies) and the habitat-based Ingredients table power Harvest Parts and Gather Ingredients respectively — both correctly apply the Exquisite bonus when the Alchemy roll itself lands 01-10, not the follow-up table rolls
+- Learning a custom recipe needs no roll — just name it, pick a strength, and fill the component slots (validated for the right count, uniqueness, and at least one Ingredient + one Part)
+- Mixing a potion applies the full rule set: +10 for following a known recipe, +10 more if any component used is Exquisite (flat, regardless of how many), and a failed mix loses the components but keeps the Bottle
+- The False Prophet Expansion (Knight, Druid, Duckfolk, Half-Ogre) is now grouped under its own header in the Species/Profession pickers and Reference tab, separate from the core game's options
+
+### Notes
+- Knight and Druid are selectable but still have no Improvement Point cost data, so IP spending won't work correctly for them until their starting stats are added
+- Random (no-recipe) mixing isn't built yet — every mix currently goes through a known recipe
+
 ## [1.28.1] — 2026-08-09
 
 ### Fixed

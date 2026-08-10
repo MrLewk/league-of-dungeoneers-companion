@@ -3,7 +3,7 @@ import {
   Plus, Minus, Trash2, Flame, Heart, Zap, Brain, Sparkles, Dice5,
   Swords, Shield, BookOpen, Users, Skull,
   RotateCcw, Coins, Wheat, ScrollText, Pencil, Check, X, FolderOpen, Loader2, Map, Download, Upload,
-  Landmark, Bed, ClipboardList, Timer, Flashlight
+  Landmark, Bed, ClipboardList, Timer, Flashlight, FlaskConical
 } from "lucide-react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
@@ -32,6 +32,17 @@ const fontImport = `
 // ---------- Helpers ----------
 const rollDie = (sides) => Math.floor(Math.random() * sides) + 1;
 const rollPercent = () => Math.floor(Math.random() * 100) + 1; // 1-100, 100 = "00"
+// Rolls a flat number or a "NdM" dice string (e.g. "1d3", "1d8") — used for Monster Parts
+// quantities and similar variable amounts.
+function rollDiceString(spec) {
+  if (typeof spec === "number") return spec;
+  const m = String(spec).match(/(\d+)d(\d+)/);
+  if (!m) return Number(spec) || 0;
+  const [, count, sides] = m;
+  let total = 0;
+  for (let i = 0; i < Number(count); i++) total += rollDie(Number(sides));
+  return total;
+}
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -79,6 +90,8 @@ const defaultHero = () => ({
   backpackUpgrade: "",
   tempEffects: [],
   mentalConditions: [], // [{id, name, detail, effect}] — see MENTAL_CONDITIONS_TABLE
+  alchemyComponents: [], // [{id, name, type: "Ingredient"|"Part", qty, exquisiteQty}]
+  alchemyRecipes: [], // [{id, potionName, strength, components: [name,...]}] — custom, on top of COMMON_RECIPES
   bankBalances: { chamberlings: 0, smartfall: 0, vault: 0 },
   ap: 2,
   backpack: [],
@@ -94,9 +107,9 @@ const SPECIES_DATA = [
   { name: "Halfling", hp: { base: 5, count: 1, size: 6 }, stats: { STR: 20, CON: 20, DEX: 40, WIS: 30, RES: 40 }, note: "Cannot use Longbows or Elvin bows (height). May buy Cooking Gear for 50c at the start of the game. Trait: Lucky — starts with 1 Luck Point, set automatically when you roll starting stats." },
   { name: "Dwarf", hp: { base: 8, count: 1, size: 6 }, stats: { STR: 40, CON: 30, DEX: 25, WIS: 25, RES: 30 }, note: "Cannot use Longbows or Elvin bows (height). Traits: Hate Goblins, Night Vision — Night Vision is applied automatically when you roll starting stats; Hate Goblins needs a chosen enemy, so add the Hate Talent manually from the Compendium." },
   { name: "Gnome", hp: { base: 4, count: 1, size: 6 }, stats: { STR: 20, CON: 20, DEX: 30, WIS: 40, RES: 40 }, note: "Cannot use Longbows or Elvin bows (height). Artificer: once specialised, pays half cost for blacksmithing/crafting services." },
-  { name: "Duckfolk", hp: { base: 6, count: 1, size: 6 }, stats: { STR: 25, CON: 25, DEX: 30, WIS: 30, RES: 40 }, max: { STR: 55, CON: 60, DEX: 70, WIS: 70, RES: 80 }, note: "Short arms — cannot use Longbows or Elvin bows." },
+  { name: "Duckfolk", hp: { base: 6, count: 1, size: 6 }, stats: { STR: 25, CON: 25, DEX: 30, WIS: 30, RES: 40 }, max: { STR: 55, CON: 60, DEX: 70, WIS: 70, RES: 80 }, note: "Short arms — cannot use Longbows or Elvin bows.", expansion: "The False Prophet" },
   { name: "Frogling", hp: { base: 4, count: 1, size: 6 }, stats: { STR: 20, CON: 35, DEX: 40, WIS: 30, RES: 25 }, note: "Cannot use Longbows or Elvin bows (height)." },
-  { name: "Half-Ogre", hp: { base: 10, count: 2, size: 6 }, stats: { STR: 50, CON: 40, DEX: 25, WIS: 15, RES: 40 }, max: { STR: 80, CON: 60, DEX: 60, WIS: 60, RES: 60 }, note: "+2 Sanity. May only take the Warrior, Barbarian, or Rogue profession." },
+  { name: "Half-Ogre", hp: { base: 10, count: 2, size: 6 }, stats: { STR: 50, CON: 40, DEX: 25, WIS: 15, RES: 40 }, max: { STR: 80, CON: 60, DEX: 60, WIS: 60, RES: 60 }, note: "+2 Sanity. May only take the Warrior, Barbarian, or Rogue profession.", expansion: "The False Prophet" },
   { name: "Pale Goblin", hp: { base: 5, count: 1, size: 6 }, stats: { STR: 25, CON: 20, DEX: 40, WIS: 30, RES: 35 }, note: "Cannot use Longbows or Elvin bows (height)." },
   { name: "Pale Orc", hp: { base: 8, count: 1, size: 6 }, stats: { STR: 40, CON: 35, DEX: 25, WIS: 20, RES: 30 }, note: "Cannot use Longbows or Elvin bows (height)." },
 ];
@@ -246,8 +259,8 @@ const PROFESSIONS = [
   { name: "Thief", desc: "Lockpicking and perception specialist, weaker in direct combat." },
   { name: "Warrior Priest", desc: "Melee combat combined with healing and battle prayers." },
   { name: "Wizard", desc: "Magic attacks and spells — fragile but powerful at range." },
-  { name: "Knight", desc: "Heavy melee tank with a squire — never uses ranged weapons or steals." },
-  { name: "Druid", desc: "Nature caster — invocations and beastforms, fragile but shapeshifts into combat forms." },
+  { name: "Knight", desc: "Heavy melee tank with a squire — never uses ranged weapons or steals.", expansion: "The False Prophet", note: "No Improvement Point cost data yet — spending IP won't work correctly until starting stats are added." },
+  { name: "Druid", desc: "Nature caster — invocations and beastforms, fragile but shapeshifts into combat forms.", expansion: "The False Prophet", note: "No Improvement Point cost data yet — spending IP won't work correctly until starting stats are added." },
 ];
 
 // Which extra (RES/WIS-caster) skills a profession's sheet includes, per the official character sheets
@@ -833,6 +846,137 @@ const ARMOUR_AND_SHIELDS = [
   { name: "Heater Shield", tier: 0, def: 6, enc: 10, covers: ["shield"], special: "Class 3", cost: 100, avail: 3 },
   { name: "Tower Shield", tier: 0, def: 8, enc: 15, covers: ["shield"], special: "Class 5, Huge", cost: 200, avail: 2 },
 ];
+
+// ---------- Alchemy (p71-79) ----------
+
+// Monster Parts Table (p73) — used by Harvest Parts. qty is a flat number or a dice
+// string ("1d3", "1d8"...). If a monster isn't listed, it provides nothing harvestable.
+const MONSTER_PARTS_TABLE = {
+  "Bandit": { part: "Human blood", qty: 1 }, "Bandit Leader": { part: "Human blood", qty: 1 },
+  "Banshee": { part: "Ectoplasm", qty: 1 }, "Bat swarm": { part: "Bat wings", qty: "1d3" },
+  "Beastman": { part: "Beast heart", qty: 1 }, "Beastman Chieftain": { part: "Beast heart", qty: 1 },
+  "Beastman Guard": { part: "Beast heart", qty: 1 }, "Berserker": { part: "Human blood", qty: 1 },
+  "Cave Bear": { part: "Fur", qty: 2 }, "Cave Goblin": { part: "Goblin Eye", qty: "1d2" },
+  "Centaur": { part: "Beast heart", qty: 1 }, "Cockatrice": { part: "Feathers", qty: 2 },
+  "Common Troll": { part: "Troll blood", qty: 1 }, "Dark Elf": { part: "Elf hair", qty: 1 },
+  "Dark Elf Assassin": { part: "Elf hair", qty: 1 }, "Dark Elf Captain": { part: "Elf hair", qty: 1 },
+  "Dark Elf Sniper": { part: "Elf hair", qty: 1 }, "Dark Elf Warlock": { part: "Brain tissue", qty: 1 },
+  "Dire Wolf": { part: "Fur", qty: 1 }, "Dragon": { part: "Dragon blood", qty: "1d8" },
+  "Drider": { part: "Beast heart", qty: 1 }, "Ettin": { part: "Nails", qty: "1d4" },
+  "Fallen Knight": { part: "Human blood", qty: 1 }, "Frogling": { part: "Amphibian skin", qty: 1 },
+  "Gecko": { part: "Scales", qty: 1 }, "Gecko Assassin": { part: "Scales", qty: 1 },
+  "Ghost": { part: "Ectoplasm", qty: 1 }, "Ghoul": { part: "Ghoul blood", qty: 1 },
+  "Giant": { part: "Nails", qty: "1d4" }, "Giant Centipede": { part: "Chitin", qty: 1 },
+  "Giant Leech": { part: "Slime", qty: 1 }, "Giant Pox rat": { part: "Rat tail", qty: 1 },
+  "Giant Rat": { part: "Rat tail", qty: 1 }, "Giant Scorpion": { part: "Chitin", qty: "1d3" },
+  "Giant Snake": { part: "Tongue", qty: 1 }, "Giant Spider": { part: "Spider fang", qty: 1 },
+  "Giant Toad": { part: "Amphibian skin", qty: "1d3" }, "Giant Wolf": { part: "Fur", qty: 1 },
+  "Gigantic Snake": { part: "Tongue", qty: "1d3" }, "Gigantic Spider": { part: "Spider fang", qty: "1d3" },
+  "Gnoll": { part: "Beast heart", qty: 1 }, "Gnoll Sergeant": { part: "Beast heart", qty: 1 },
+  "Gnoll Shaman": { part: "Brain tissue", qty: "1d2" }, "Goblin": { part: "Goblin Eye", qty: "1d2" },
+  "Goblin Shaman": { part: "Brain tissue", qty: 1 }, "Griffon": { part: "Feathers", qty: "1d4" },
+  "Harpy": { part: "Feathers", qty: 1 }, "Hydra": { part: "Scales", qty: "1d8" },
+  "Medusa": { part: "Medusas eye", qty: "1d2" }, "Mimic": { part: "Tongue", qty: 1 },
+  "Minotaur": { part: "Beast heart", qty: 2 }, "Minotaur Skeleton": { part: "Bonemeal", qty: 2 },
+  "Mummy": { part: "Mummy dust", qty: 1 }, "Mummy Priest": { part: "Mummy dust", qty: 1 },
+  "Mummy Queen": { part: "Mummy dust", qty: 1 }, "Naga": { part: "Scales", qty: 1 },
+  "Necromancer": { part: "Brain tissue", qty: 1 }, "Ogre": { part: "Ogre teeth", qty: 1 },
+  "Ogre Berserker": { part: "Ogre teeth", qty: 1 }, "Ogre Chieftain": { part: "Ogre teeth", qty: 1 },
+  "Orc": { part: "Orc blood", qty: 1 }, "Orc Brute": { part: "Orc blood", qty: 1 },
+  "Orc Chieftain": { part: "Orc blood", qty: 1 }, "Orc Shaman": { part: "Brain tissue", qty: 1 },
+  "Psyker": { part: "Brain tissue", qty: 2 }, "Raptor": { part: "Scales", qty: 1 },
+  "River Troll": { part: "Troll blood", qty: 1 }, "Salamander": { part: "Scales", qty: 1 },
+  "Satyr": { part: "Beast heart", qty: 1 }, "Saurian": { part: "Scales", qty: 1 },
+  "Saurian Elite": { part: "Scales", qty: 1 }, "Saurian Priest": { part: "Brain tissue", qty: 1 },
+  "Saurian Warchief": { part: "Scales", qty: 1 }, "Shambler": { part: "Shambler leaves", qty: "1d3" },
+  "Skeleton": { part: "Bonemeal", qty: 1 }, "Slime": { part: "Slime", qty: 1 },
+  "Sphinx": { part: "Feathers", qty: "1d4" }, "Stone Troll": { part: "Troll blood", qty: 1 },
+  "Tomb Guardian": { part: "Bonemeal", qty: 2 }, "Vampire": { part: "Vampire blood", qty: "1d4" },
+  "Vampire Fledgling": { part: "Vampire blood", qty: 1 }, "Warlock": { part: "Brain tissue", qty: 1 },
+  "Werewolf": { part: "Fur", qty: 1 }, "Wight": { part: "Bonemeal", qty: 1 },
+  "Wraiths": { part: "Ectoplasm", qty: 1 }, "Wyvern": { part: "Scales", qty: "1d4" },
+  "Zombie": { part: "Zombie skin", qty: "1d4" }, "Zombie Ogre": { part: "Zombie skin", qty: 1 },
+};
+const ALCHEMY_PART_NAMES = [...new Set(Object.values(MONSTER_PARTS_TABLE).map((p) => p.part))].sort();
+
+// Ingredients Table (p71) — for Gather Ingredients. Roll 1d100 against the column
+// matching the habitat being searched.
+const HABITATS = ["Roadside", "Plains", "Woods", "Water", "Highland", "Site"];
+const INGREDIENTS_TABLE = [
+  { name: "Arching Pokeroot", Roadside: [1, 5], Plains: null, Woods: [1, 5], Water: null, Highland: [1, 10], Site: [1, 5] },
+  { name: "Ashen Ginger", Roadside: null, Plains: [1, 5], Woods: [6, 16], Water: [1, 5], Highland: [11, 20], Site: null },
+  { name: "Barbed Wormwood", Roadside: [6, 10], Plains: [6, 10], Woods: [17, 21], Water: [6, 10], Highland: [21, 25], Site: [6, 16] },
+  { name: "Bitterweed", Roadside: [11, 15], Plains: [11, 20], Woods: [22, 26], Water: null, Highland: null, Site: [17, 21] },
+  { name: "Blue Coneflower", Roadside: [16, 26], Plains: [21, 25], Woods: [27, 31], Water: null, Highland: [26, 30], Site: null },
+  { name: "Bright Gallberry", Roadside: null, Plains: [26, 30], Woods: null, Water: null, Highland: [31, 40], Site: [22, 27] },
+  { name: "Dragon Stalk", Roadside: [27, 37], Plains: [31, 35], Woods: [32, 36], Water: null, Highland: [41, 45], Site: [28, 33] },
+  { name: "Ember bark", Roadside: null, Plains: [36, 40], Woods: [37, 47], Water: null, Highland: [46, 50], Site: [34, 39] },
+  { name: "Salty Wyrmwood", Roadside: null, Plains: null, Woods: [48, 52], Water: [11, 20], Highland: [51, 56], Site: [40, 45] },
+  { name: "Spicy Windroot", Roadside: [38, 43], Plains: [41, 50], Woods: [53, 63], Water: null, Highland: [57, 67], Site: null },
+  { name: "Giant Raspberry", Roadside: [44, 54], Plains: [51, 60], Woods: [64, 68], Water: [21, 25], Highland: [68, 72], Site: null },
+  { name: "Lunarberry", Roadside: [55, 60], Plains: [61, 70], Woods: [69, 73], Water: [26, 30], Highland: null, Site: [46, 51] },
+  { name: "Monk's Laurel", Roadside: null, Plains: [71, 75], Woods: [74, 84], Water: [31, 45], Highland: null, Site: [52, 57] },
+  { name: "Mountain Barberry", Roadside: [61, 65], Plains: null, Woods: null, Water: [46, 50], Highland: [73, 83], Site: null },
+  { name: "Nightshade", Roadside: [66, 70], Plains: null, Woods: null, Water: [51, 56], Highland: null, Site: [58, 74] },
+  { name: "Snakeberry", Roadside: null, Plains: [76, 80], Woods: [85, 90], Water: [57, 70], Highland: null, Site: [75, 85] },
+  { name: "Sweet Ivy", Roadside: [71, 80], Plains: [81, 90], Woods: [91, 95], Water: null, Highland: [84, 89], Site: null },
+  { name: "Toxic Hogweed", Roadside: [81, 85], Plains: null, Woods: null, Water: [71, 85], Highland: null, Site: [86, 100] },
+  { name: "Wintercress", Roadside: [86, 90], Plains: null, Woods: [96, 100], Water: [86, 95], Highland: [90, 100], Site: null },
+  { name: "Weeping Clover", Roadside: [91, 100], Plains: [91, 100], Woods: null, Water: [96, 100], Highland: null, Site: null },
+];
+const ALCHEMY_INGREDIENT_NAMES = INGREDIENTS_TABLE.map((r) => r.name);
+function ingredientsTableLookup(habitat, roll) {
+  return INGREDIENTS_TABLE.find((row) => row[habitat] && roll >= row[habitat][0] && roll <= row[habitat][1]);
+}
+
+// Common Recipes (p76) — widely known among alchemists; available to any hero with the
+// Alchemy skill without needing to be learned first.
+const COMMON_RECIPES = [
+  { id: "potion-of-health", potionName: "Potion of Health", strength: "Standard", components: ["Human blood", "Rat tail", "Ashen Ginger"] },
+  { id: "firebomb", potionName: "Firebomb", strength: "Standard", components: ["Beast heart", "Rat tail", "Lunarberry"] },
+  { id: "potion-of-experience", potionName: "Potion of Experience", strength: "Standard", components: ["Dragon blood", "Sweet Ivy", "Nightshade"] },
+  { id: "cure-disease", potionName: "Cure Disease", strength: "Standard", components: ["Zombie skin", "Bat wings", "Monk's Laurel"] },
+  { id: "cure-poison", potionName: "Cure Poison", strength: "Standard", components: ["Spider fang", "Snakeberry", "Bitterweed"] },
+  { id: "potion-of-restoration", potionName: "Potion of Restoration", strength: "Standard", components: ["Vampire blood", "Troll blood", "Ember bark"] },
+];
+
+// Potion effects glossary (p77-79) — shown as reference when naming a custom recipe.
+const POTION_EFFECTS = {
+  "Acidic Bomb": "(Tr) Thrown. AoE acid damage: Weak 1d6 / Standard 1d10 / Supreme 1d12 to the hit square, half to surrounding squares.",
+  "Alchemical Dust": "Not a potion — a powder. Used before rolling to search a room/corridor: reroll and take the best result. One use.",
+  "Bottle of Experience": "+300 XP on drinking. Once per hero between dungeons.",
+  "Bottle of the Void": "Not consumed. Opening it absorbs magic — any spell cast during the battle suffers -20 on top of the CL modifier.",
+  "Elixir of Speed": "+1 Movement for the rest of the dungeon or until the end of a skirmish. No effect on the overland map.",
+  "Elixir of the Archer": "Coats a Ranged Weapon: +1 DMG until the next time you leave a dungeon. One weapon.",
+  "Firebomb": "(Tr) Thrown. AoE fire damage: Weak 1d6 / Standard 1d10 / Supreme 1d12 to the hit square, half to surrounding squares.",
+  "Liquid Fire": "Poured on a close-combat weapon: sets it alight, causing Fire Damage for the rest of the battle.",
+  "Poison": "Applied to a weapon; lasts until the end of the battle even unused. Can poison 5 projectiles instead (no extra AP). Enemies hit lose 1 HP/turn for the rest of the battle.",
+  "Potion of Constitution": "+10 / +15 / +20 CON (Weak/Standard/Supreme), temporary. Lasts to end of current battle, or end of next battle if not in one.",
+  "Potion of Courage": "+10 / +15 / +20 RES (Weak/Standard/Supreme), temporary, same duration as Potion of Constitution.",
+  "Potion of Cure Disease": "Cures a disease: 75% (Weak) or 100% (Standard/Supreme) chance. Supreme also heals 1d3 HP.",
+  "Potion of Cure Poison (Antidote)": "Cures poison: 75% (Weak) or 100% (Standard/Supreme) chance. Supreme also heals 1d3 HP.",
+  "Potion of Disorientation": "(Tr) Thrown. Hit square: RES test or forfeit next turn. Adjacent squares: RES test at +20. Doesn't work on undead.",
+  "Potion of Dexterity": "+5 / +10 / +15 DEX (and DEX-based skills), temporary, same duration as Potion of Constitution.",
+  "Potion of Dragon's Breath": "Breathe fire once: range 2 squares, 1d8 to one adjacent square, or 1d4 to two connected squares.",
+  "Potion of Dragon Skin": "Ignore all damage for 3 turns except spells/poison. Armour can still take damage, but the hero takes no HP loss.",
+  "Potion of Energy": "+1 / +2 / +3 Energy (Weak/Standard/Supreme) until the end of the dungeon or skirmish.",
+  "Potion of Fire Protection": "Fire damage reduced by 1d10 (re-rolled each hit). Lasts to end of current battle, or end of next if not in one.",
+  "Potion of Health": "Heals 1d4 / 1d6 / 1d10 HP (Weak/Standard/Supreme).",
+  "Potion of Mana": "Restores 1d20 / 2d20 / 3d20 Mana (Weak/Standard/Supreme).",
+  "Vial of Invisibility": "Invisible for one battle — including to yourself, so you can't fight. Removed from the table until the battle ends.",
+  "Potion of Rage": "Grants the Frenzy Perk's effect without spending Energy, for one battle.",
+  "Potion of Restoration": "Fully heals and removes any disease or poison.",
+  "Potion of Strength": "+10 / +15 / +20 STR (Weak/Standard/Supreme), temporary, same duration as Potion of Constitution.",
+  "Potion of Wisdom": "+10 / +15 / +20 WIS (and WIS-based skills), temporary, same duration as Potion of Constitution.",
+  "Vial of Corrosion": "Opens 1 lock automatically. 1 action adjacent to the door. Single quality only.",
+  "Potion of Smoke": "(Tr) Thrown. Obscures LOS in the hit square + 8 surrounding for 4 turns. Fighting inside: -20 CS. Shooting through: impossible.",
+  "Weapon Oil": "Coats an edged weapon: +1 DMG until the next time you leave a dungeon. One weapon.",
+};
+const ALCHEMY_STRENGTH_RULES = {
+  Weak: { count: 2, label: "1 Part + 1 Ingredient" },
+  Standard: { count: 3, label: "1 Part + 2 Ingredients, or 2 Parts + 1 Ingredient" },
+  Supreme: { count: 4, label: "4 components, a mix of both types" },
+};
 
 // General Equipment (Equipment Appendix) — everything that isn't a weapon or armour:
 // alchemy supplies, consumables, jewellery, light sources, tools, and misc gear. Powers
@@ -1698,6 +1842,23 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.29.0",
+    date: "2026-08-09",
+    sections: {
+      "Added": [
+        "New Alchemy tab with three sections: Recipe Book (the 6 Common Recipes every alchemist knows automatically, plus each hero's own learned recipes — 'Mix This' jumps straight to mixing), Mix a Potion (shows exactly what's missing from your inventory, applies the recipe/exquisite roll bonuses automatically, and rolls it), and Gather & Harvest (the overland-travel ingredient search by habitat, and post-battle part harvesting from up to 3 enemies)",
+        "Full Monster Parts table (80+ enemies) and the habitat-based Ingredients table power Harvest Parts and Gather Ingredients respectively — both correctly apply the Exquisite bonus when the Alchemy roll itself lands 01-10, not the follow-up table rolls",
+        "Learning a custom recipe needs no roll — just name it, pick a strength, and fill the component slots (validated for the right count, uniqueness, and at least one Ingredient + one Part)",
+        "Mixing a potion applies the full rule set: +10 for following a known recipe, +10 more if any component used is Exquisite (flat, regardless of how many), and a failed mix loses the components but keeps the Bottle",
+        "The False Prophet Expansion (Knight, Druid, Duckfolk, Half-Ogre) is now grouped under its own header in the Species/Profession pickers and Reference tab, separate from the core game's options",
+      ],
+      "Notes": [
+        "Knight and Druid are selectable but still have no Improvement Point cost data, so IP spending won't work correctly for them until their starting stats are added",
+        "Random (no-recipe) mixing isn't built yet — every mix currently goes through a known recipe",
+      ],
+    },
+  },
   {
     version: "1.28.1",
     date: "2026-08-09",
@@ -2706,6 +2867,8 @@ function normalizeHero(h) {
     mentalConditions: h.mentalConditions || [],
     backgroundCounter: h.backgroundCounter || 0,
     backgroundClaimed: h.backgroundClaimed || false,
+    alchemyComponents: h.alchemyComponents || [],
+    alchemyRecipes: h.alchemyRecipes || [],
     bankBalances: { ...base.bankBalances, ...(h.bankBalances || {}) },
     ap: h.ap != null ? h.ap : 2,
     armour: {
@@ -3272,7 +3435,12 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
               style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", color: hero.species ? palette.ink : palette.inkSoft }}
             >
               <option value="">Species…</option>
-              {SPECIES.map((s) => <option key={s} value={s}>{s}</option>)}
+              <optgroup label="Core">
+                {SPECIES_DATA.filter((s) => !s.expansion).map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
+              </optgroup>
+              <optgroup label="The False Prophet Expansion">
+                {SPECIES_DATA.filter((s) => s.expansion).map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
+              </optgroup>
             </select>
             <select
               value={hero.profession}
@@ -3292,7 +3460,12 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
               style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", color: hero.profession ? palette.ink : palette.inkSoft }}
             >
               <option value="">Profession…</option>
-              {PROFESSIONS.map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
+              <optgroup label="Core">
+                {PROFESSIONS.filter((p) => !p.expansion).map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
+              </optgroup>
+              <optgroup label="The False Prophet Expansion">
+                {PROFESSIONS.filter((p) => p.expansion).map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
+              </optgroup>
             </select>
             <div className="flex items-center gap-1 text-xs" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.inkSoft }}>
               Lvl
@@ -5381,6 +5554,431 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   );
 }
 
+function validateRecipeComponents(strength, components) {
+  const rule = ALCHEMY_STRENGTH_RULES[strength];
+  if (!rule) return "Pick a strength.";
+  if (components.some((c) => !c)) return `Fill all ${rule.count} component slots.`;
+  if (components.length !== rule.count) return `Needs exactly ${rule.count} components.`;
+  if (new Set(components).size !== components.length) return "Every component must be unique.";
+  const hasIngredient = components.some((c) => ALCHEMY_INGREDIENT_NAMES.includes(c));
+  const hasPart = components.some((c) => ALCHEMY_PART_NAMES.includes(c));
+  if (!hasIngredient) return "Must include at least one Ingredient.";
+  if (!hasPart) return "Must include at least one Part.";
+  return null;
+}
+
+function AlchemyTab({ heroes, updateHero, addLog }) {
+  const [subTab, setSubTab] = useState("recipes");
+  const [activeHeroId, setActiveHeroId] = useState("");
+  const activeHero = heroes.find((h) => h.id === activeHeroId) || heroes[0];
+
+  const addComponent = (hero, name, type, qty, exquisite) => {
+    const existing = hero.alchemyComponents.find((c) => c.name === name);
+    let next;
+    if (existing) {
+      next = hero.alchemyComponents.map((c) =>
+        c.name === name ? { ...c, qty: c.qty + (exquisite ? 0 : qty), exquisiteQty: c.exquisiteQty + (exquisite ? qty : 0) } : c
+      );
+    } else {
+      next = [...hero.alchemyComponents, { id: uid(), name, type, qty: exquisite ? 0 : qty, exquisiteQty: exquisite ? qty : 0 }];
+    }
+    updateHero({ ...hero, alchemyComponents: next });
+    return next;
+  };
+  const consumeComponents = (hero, names, exquisiteFlags) => {
+    let next = hero.alchemyComponents;
+    names.forEach((name) => {
+      const useEx = exquisiteFlags[name];
+      next = next.map((c) => {
+        if (c.name !== name) return c;
+        if (useEx && c.exquisiteQty > 0) return { ...c, exquisiteQty: c.exquisiteQty - 1 };
+        return { ...c, qty: Math.max(0, c.qty - 1) };
+      }).filter((c) => c.qty > 0 || c.exquisiteQty > 0);
+    });
+    return next;
+  };
+
+  // ---------- Recipe Book ----------
+  const [newPotionName, setNewPotionName] = useState("");
+  const [newStrength, setNewStrength] = useState("Standard");
+  const [newComponents, setNewComponents] = useState(["", "", "", ""]);
+  const [recipeFeedback, setRecipeFeedback] = useState(null);
+
+  const learnRecipe = () => {
+    if (!activeHero) return;
+    const count = ALCHEMY_STRENGTH_RULES[newStrength].count;
+    const components = newComponents.slice(0, count);
+    const error = validateRecipeComponents(newStrength, components);
+    if (error) { setRecipeFeedback({ text: error, tone: "bad" }); return; }
+    if (!newPotionName.trim()) { setRecipeFeedback({ text: "Name the potion.", tone: "bad" }); return; }
+    const recipe = { id: uid(), potionName: newPotionName.trim(), strength: newStrength, components };
+    updateHero({ ...activeHero, alchemyRecipes: [...activeHero.alchemyRecipes, recipe] });
+    setRecipeFeedback({ text: `${activeHero.name} learns the recipe for ${recipe.potionName}.`, tone: "good" });
+    addLog(`${activeHero.name} writes down a new recipe: ${recipe.potionName} (${newStrength}) — ${components.join(" + ")}.`);
+    setNewPotionName(""); setNewComponents(["", "", "", ""]);
+  };
+  const forgetRecipe = (id) => {
+    if (!activeHero) return;
+    const r = activeHero.alchemyRecipes.find((x) => x.id === id);
+    updateHero({ ...activeHero, alchemyRecipes: activeHero.alchemyRecipes.filter((x) => x.id !== id) });
+    addLog(`${activeHero.name} forgets the recipe for ${r?.potionName}.`);
+  };
+
+  // ---------- Mix a Potion ----------
+  const allRecipesFor = (hero) => [...COMMON_RECIPES, ...(hero?.alchemyRecipes || [])];
+  const [mixRecipeId, setMixRecipeId] = useState("");
+  const [exquisiteFlags, setExquisiteFlags] = useState({});
+  const [mixResult, setMixResult] = useState(null);
+  const mixRecipe = allRecipesFor(activeHero).find((r) => r.id === mixRecipeId) || allRecipesFor(activeHero)[0];
+
+  const componentAvailability = (hero, name) => {
+    const c = hero?.alchemyComponents.find((x) => x.name === name);
+    return { qty: c?.qty || 0, exquisiteQty: c?.exquisiteQty || 0 };
+  };
+
+  const mixPotion = () => {
+    if (!activeHero || !mixRecipe) return;
+    const hasBottle = activeHero.backpack.some((it) => it.name === "Empty Bottle");
+    if (!hasBottle) { setMixResult({ ok: false, lines: [`${activeHero.name} has no Empty Bottle.`] }); return; }
+    for (const name of mixRecipe.components) {
+      const avail = componentAvailability(activeHero, name);
+      const useEx = exquisiteFlags[name];
+      const has = useEx ? avail.exquisiteQty > 0 : avail.qty + avail.exquisiteQty > 0;
+      if (!has) { setMixResult({ ok: false, lines: [`Missing ${useEx ? "an exquisite " : ""}${name}.`] }); return; }
+    }
+    const anyExquisite = mixRecipe.components.some((n) => exquisiteFlags[n]);
+    const target = (Number(activeHero.skills.alchemy) || 0) + 10 + (anyExquisite ? 10 : 0);
+    const roll = rollPercent();
+    const success = roll <= target;
+    const nextComponents = consumeComponents(activeHero, mixRecipe.components, exquisiteFlags);
+    if (success) {
+      const nextBackpack = [
+        ...activeHero.backpack.filter((it) => it.id !== activeHero.backpack.find((b) => b.name === "Empty Bottle").id),
+        { id: uid(), name: mixRecipe.potionName, value: "", enc: 0, dur: "", slot: "backpack" },
+      ];
+      updateHero({ ...activeHero, alchemyComponents: nextComponents, backpack: nextBackpack });
+      const line = `Rolled ${roll} vs ${target} — success! ${mixRecipe.potionName} mixed.`;
+      setMixResult({ ok: true, lines: [line] });
+      addLog(`${activeHero.name} mixes a potion: ${line}`);
+    } else {
+      updateHero({ ...activeHero, alchemyComponents: nextComponents });
+      const line = `Rolled ${roll} vs ${target} — failed. Components lost, but the bottle survives.`;
+      setMixResult({ ok: false, lines: [line] });
+      addLog(`${activeHero.name} fails to mix a potion: ${line}`);
+    }
+    setExquisiteFlags({});
+  };
+
+  // ---------- Gather & Harvest ----------
+  const [habitat, setHabitat] = useState("Roadside");
+  const [gatherResult, setGatherResult] = useState(null);
+  const gatherIngredients = () => {
+    if (!activeHero) return;
+    const roll = rollPercent();
+    const target = Number(activeHero.skills.alchemy) || 0;
+    if (roll > target) {
+      setGatherResult({ ok: false, lines: [`Rolled ${roll} vs ${target} — nothing found.`] });
+      addLog(`${activeHero.name} searches for ingredients (${habitat}): rolled ${roll} vs ${target} — nothing found.`);
+      return;
+    }
+    const exquisite = roll <= 10;
+    let hero = activeHero;
+    const found = [];
+    for (let i = 0; i < 2; i++) {
+      const tableRoll = rollPercent();
+      const entry = ingredientsTableLookup(habitat, tableRoll);
+      if (entry) {
+        found.push(entry.name);
+        const next = addComponent(hero, entry.name, "Ingredient", 1, exquisite);
+        hero = { ...hero, alchemyComponents: next };
+      }
+    }
+    const line = `Rolled ${roll} vs ${target} — found ${found.join(" and ") || "nothing usable"}${exquisite ? " (Exquisite!)" : ""}.`;
+    setGatherResult({ ok: true, lines: [line] });
+    addLog(`${activeHero.name} gathers ingredients (${habitat}): ${line}`);
+  };
+
+  const [harvestSlots, setHarvestSlots] = useState(["", "", ""]);
+  const [harvestResult, setHarvestResult] = useState(null);
+  const monsterNames = Object.keys(MONSTER_PARTS_TABLE).sort();
+  const harvestParts = () => {
+    if (!activeHero) return;
+    const targets = harvestSlots.filter(Boolean);
+    if (targets.length === 0) { setHarvestResult({ ok: false, lines: ["Pick at least one fallen enemy."] }); return; }
+    const roll = rollPercent();
+    const target = Number(activeHero.skills.alchemy) || 0;
+    if (roll > target) {
+      setHarvestResult({ ok: false, lines: [`Rolled ${roll} vs ${target} — nothing harvested.`] });
+      addLog(`${activeHero.name} harvests parts: rolled ${roll} vs ${target} — nothing harvested.`);
+      return;
+    }
+    const exquisite = roll <= 10;
+    let hero = activeHero;
+    const lines = [`Rolled ${roll} vs ${target} — success!${exquisite ? " (Exquisite!)" : ""}`];
+    targets.forEach((monster) => {
+      const entry = MONSTER_PARTS_TABLE[monster];
+      if (!entry) { lines.push(`${monster}: nothing usable.`); return; }
+      const qty = rollDiceString(entry.qty);
+      const next = addComponent(hero, entry.part, "Part", qty, exquisite);
+      hero = { ...hero, alchemyComponents: next };
+      lines.push(`${monster}: +${qty} ${entry.part}.`);
+    });
+    setHarvestResult({ ok: true, lines });
+    addLog(`${activeHero.name} harvests parts: ${lines.join(" ")}`);
+  };
+
+  const heroPicker = (
+    <select
+      value={activeHero?.id || ""}
+      onChange={(e) => setActiveHeroId(e.target.value)}
+      className="w-full text-xs rounded px-2 py-1.5 mb-2"
+      style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+    >
+      {heroes.map((h) => <option key={h.id} value={h.id}>{h.name} (Alchemy {h.skills.alchemy ?? 0})</option>)}
+    </select>
+  );
+
+  if (heroes.length === 0) {
+    return <Panel><p className="text-sm text-center py-4" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>No heroes yet.</p></Panel>;
+  }
+
+  return (
+    <div>
+      <div className="flex gap-1.5 mb-4">
+        {[["recipes", "Recipe Book"], ["mix", "Mix a Potion"], ["gather", "Gather & Harvest"]].map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setSubTab(key)}
+            className="flex-1 text-xs px-2 py-2 rounded font-bold active:scale-95 transition-transform"
+            style={{ background: subTab === key ? palette.crimsonDark : "#00000010", color: subTab === key ? palette.parchment : palette.ink, fontFamily: "Cinzel, serif" }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {heroPicker}
+
+      {subTab === "recipes" && (
+        <div>
+          <Panel className="mb-4">
+            <SectionTitle icon={ScrollText}>Common Recipes</SectionTitle>
+            <p className="text-xs mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+              Widely known among alchemists — any hero with the Alchemy skill can mix these without learning them first.
+            </p>
+            <div className="space-y-1.5">
+              {COMMON_RECIPES.map((r) => (
+                <div key={r.id} className="rounded p-2" style={{ background: "#00000008" }}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>{r.potionName} <span style={{ color: palette.inkSoft, fontWeight: 400 }}>({r.strength})</span></span>
+                    <button
+                      onClick={() => { setMixRecipeId(r.id); setSubTab("mix"); }}
+                      className="text-[10px] px-2 py-1 rounded font-semibold active:scale-95 transition-transform"
+                      style={{ background: palette.gold, color: palette.charcoal }}
+                    >
+                      Mix This
+                    </button>
+                  </div>
+                  <p className="text-[10px]" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>{r.components.join(" + ")}</p>
+                  {POTION_EFFECTS[r.potionName] && <p className="text-[10px] mt-0.5" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>{POTION_EFFECTS[r.potionName]}</p>}
+                </div>
+              ))}
+            </div>
+          </Panel>
+
+          {activeHero && (
+            <Panel className="mb-4">
+              <SectionTitle icon={ScrollText}>{activeHero.name}'s Recipes</SectionTitle>
+              {activeHero.alchemyRecipes.length === 0 ? (
+                <p className="text-xs italic mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>No custom recipes learned yet.</p>
+              ) : (
+                <div className="space-y-1.5 mb-2">
+                  {activeHero.alchemyRecipes.map((r) => (
+                    <div key={r.id} className="rounded p-2" style={{ background: "#00000008" }}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>{r.potionName} <span style={{ color: palette.inkSoft, fontWeight: 400 }}>({r.strength})</span></span>
+                        <div className="flex gap-1">
+                          <button onClick={() => { setMixRecipeId(r.id); setSubTab("mix"); }} className="text-[10px] px-2 py-1 rounded font-semibold" style={{ background: palette.gold, color: palette.charcoal }}>Mix This</button>
+                          <button onClick={() => forgetRecipe(r.id)} className="text-[10px] px-1.5 py-1 rounded" style={{ color: palette.crimson }}><X size={11} /></button>
+                        </div>
+                      </div>
+                      <p className="text-[10px]" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>{r.components.join(" + ")}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Panel>
+          )}
+
+          <Panel>
+            <SectionTitle icon={Plus}>Learn a New Recipe</SectionTitle>
+            <p className="text-xs mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>No roll needed — just write it down. Pick the strength first to set how many components you need.</p>
+            <input
+              value={newPotionName}
+              onChange={(e) => setNewPotionName(e.target.value)}
+              placeholder="Potion name"
+              list="potion-names"
+              className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+              style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+            />
+            <datalist id="potion-names">
+              {Object.keys(POTION_EFFECTS).map((n) => <option key={n} value={n} />)}
+            </datalist>
+            {POTION_EFFECTS[newPotionName] && <p className="text-[10px] mb-1.5 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>{POTION_EFFECTS[newPotionName]}</p>}
+            <select
+              value={newStrength}
+              onChange={(e) => { setNewStrength(e.target.value); setNewComponents(["", "", "", ""]); }}
+              className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+              style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+            >
+              {Object.entries(ALCHEMY_STRENGTH_RULES).map(([k, v]) => <option key={k} value={k}>{k} — {v.label}</option>)}
+            </select>
+            {Array.from({ length: ALCHEMY_STRENGTH_RULES[newStrength].count }).map((_, i) => (
+              <select
+                key={i}
+                value={newComponents[i]}
+                onChange={(e) => setNewComponents((prev) => prev.map((c, idx) => (idx === i ? e.target.value : c)))}
+                className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+              >
+                <option value="">Component {i + 1}…</option>
+                <optgroup label="Ingredients">
+                  {ALCHEMY_INGREDIENT_NAMES.map((n) => <option key={n} value={n}>{n}</option>)}
+                </optgroup>
+                <optgroup label="Parts">
+                  {ALCHEMY_PART_NAMES.map((n) => <option key={n} value={n}>{n}</option>)}
+                </optgroup>
+              </select>
+            ))}
+            <button onClick={learnRecipe} className="w-full text-xs px-2 py-2 rounded font-bold active:scale-95 transition-transform" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+              Learn Recipe
+            </button>
+            {recipeFeedback && (
+              <p className="text-xs mt-1.5 font-semibold" style={{ color: recipeFeedback.tone === "good" ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif" }}>{recipeFeedback.text}</p>
+            )}
+          </Panel>
+        </div>
+      )}
+
+      {subTab === "mix" && (
+        <Panel>
+          <SectionTitle icon={Sparkles}>Mix a Potion</SectionTitle>
+          {allRecipesFor(activeHero).length === 0 ? (
+            <p className="text-xs italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>No recipes available.</p>
+          ) : (
+            <>
+              <select
+                value={mixRecipe?.id || ""}
+                onChange={(e) => setMixRecipeId(e.target.value)}
+                className="w-full text-xs rounded px-2 py-1.5 mb-2"
+                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+              >
+                {allRecipesFor(activeHero).map((r) => <option key={r.id} value={r.id}>{r.potionName} ({r.strength})</option>)}
+              </select>
+              {mixRecipe && (
+                <>
+                  <div className="rounded p-2 mb-2" style={{ background: "#00000008" }}>
+                    {mixRecipe.components.map((name) => {
+                      const avail = componentAvailability(activeHero, name);
+                      const has = avail.qty + avail.exquisiteQty > 0;
+                      return (
+                        <div key={name} className="flex items-center justify-between text-xs py-1" style={{ fontFamily: "Crimson Pro, serif" }}>
+                          <span style={{ color: has ? palette.ink : palette.crimson }}>{name} ({avail.qty} + {avail.exquisiteQty} exquisite)</span>
+                          {avail.exquisiteQty > 0 && (
+                            <label className="flex items-center gap-1 text-[10px]" style={{ color: palette.inkSoft }}>
+                              <input type="checkbox" checked={!!exquisiteFlags[name]} onChange={(e) => setExquisiteFlags((prev) => ({ ...prev, [name]: e.target.checked }))} />
+                              use exquisite
+                            </label>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+                    Roll target: Alchemy {activeHero?.skills.alchemy ?? 0} + 10 (recipe){mixRecipe.components.some((n) => exquisiteFlags[n]) ? " + 10 (exquisite)" : ""} = <b style={{ color: palette.ink }}>{(Number(activeHero?.skills.alchemy) || 0) + 10 + (mixRecipe.components.some((n) => exquisiteFlags[n]) ? 10 : 0)}</b>
+                  </p>
+                  <button onClick={mixPotion} className="w-full text-sm px-3 py-2 rounded font-bold active:scale-95 transition-transform" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+                    Mix It
+                  </button>
+                  {mixResult && (
+                    <div className="rounded p-2 mt-2" style={{ background: "#fff", border: `1px solid ${mixResult.ok ? palette.forest : palette.crimson}` }}>
+                      {mixResult.lines.map((l, i) => <p key={i} className="text-xs font-semibold" style={{ color: mixResult.ok ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif" }}>{l}</p>)}
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </Panel>
+      )}
+
+      {subTab === "gather" && (
+        <div>
+          <Panel className="mb-4">
+            <SectionTitle icon={Wheat}>Gather Ingredients</SectionTitle>
+            <p className="text-xs mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>Once per day during overland travel, using the party's best alchemist.</p>
+            <select value={habitat} onChange={(e) => setHabitat(e.target.value)} className="w-full text-xs rounded px-2 py-1.5 mb-2" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+              {HABITATS.map((h) => <option key={h} value={h}>{h}</option>)}
+            </select>
+            <button onClick={gatherIngredients} className="w-full text-sm px-3 py-2 rounded font-bold active:scale-95 transition-transform" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+              Gather ({activeHero?.skills.alchemy ?? 0})
+            </button>
+            {gatherResult && (
+              <div className="rounded p-2 mt-2" style={{ background: "#fff", border: `1px solid ${gatherResult.ok ? palette.forest : palette.crimson}` }}>
+                {gatherResult.lines.map((l, i) => <p key={i} className="text-xs font-semibold" style={{ color: gatherResult.ok ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif" }}>{l}</p>)}
+              </div>
+            )}
+          </Panel>
+
+          <Panel className="mb-4">
+            <SectionTitle icon={Skull}>Harvest Parts</SectionTitle>
+            <p className="text-xs mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>Up to 3 dead enemies in LOS, 1 Alchemy roll for all of them.</p>
+            {[0, 1, 2].map((i) => (
+              <select
+                key={i}
+                value={harvestSlots[i]}
+                onChange={(e) => setHarvestSlots((prev) => prev.map((s, idx) => (idx === i ? e.target.value : s)))}
+                className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+              >
+                <option value="">Enemy {i + 1}…</option>
+                {monsterNames.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            ))}
+            <button onClick={harvestParts} className="w-full text-sm px-3 py-2 rounded font-bold active:scale-95 transition-transform" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+              Harvest ({activeHero?.skills.alchemy ?? 0})
+            </button>
+            {harvestResult && (
+              <div className="rounded p-2 mt-2" style={{ background: "#fff", border: `1px solid ${harvestResult.ok ? palette.forest : palette.crimson}` }}>
+                {harvestResult.lines.map((l, i) => <p key={i} className="text-xs font-semibold" style={{ color: harvestResult.ok ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif" }}>{l}</p>)}
+              </div>
+            )}
+          </Panel>
+
+          {activeHero && (
+            <Panel>
+              <SectionTitle icon={Coins}>{activeHero.name}'s Components</SectionTitle>
+              {activeHero.alchemyComponents.length === 0 ? (
+                <p className="text-xs italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>None yet.</p>
+              ) : (
+                <div className="space-y-1">
+                  {activeHero.alchemyComponents.map((c) => (
+                    <div key={c.id} className="flex items-center justify-between text-xs rounded px-2 py-1" style={{ background: "#00000008", fontFamily: "Crimson Pro, serif" }}>
+                      <span style={{ color: palette.ink }}>{c.name} <span style={{ color: palette.inkSoft }}>({c.type})</span></span>
+                      <span style={{ color: palette.inkSoft }}>{c.qty} + {c.exquisiteQty} exquisite</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Panel>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function TurnTab({ party, setParty, heroes, updateHero, addLog }) {
   // Start of Turn resolver (moved here from the Party tab — it's step 1 of the Turn
   // Sequence, not persistent party state).
@@ -7023,11 +7621,20 @@ function Reference() {
       <Panel>
         <SectionTitle icon={Users}>Species & Classes</SectionTitle>
         <p className="text-xs mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-          <b>Species:</b> {SPECIES.join(" · ")}
+          <b>Species:</b> {SPECIES_DATA.filter((s) => !s.expansion).map((s) => s.name).join(" · ")}
+        </p>
+        <div className="text-xs space-y-1 mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+          {PROFESSIONS.filter((p) => !p.expansion).map((p) => (
+            <p key={p.name}><b>{p.name}:</b> {p.desc}</p>
+          ))}
+        </div>
+        <p className="text-xs mb-2 font-bold" style={{ fontFamily: "Cinzel, serif", color: palette.crimson }}>The False Prophet Expansion</p>
+        <p className="text-xs mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+          <b>Species:</b> {SPECIES_DATA.filter((s) => s.expansion).map((s) => s.name).join(" · ")}
         </p>
         <div className="text-xs space-y-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
-          {PROFESSIONS.map((p) => (
-            <p key={p.name}><b>{p.name}:</b> {p.desc}</p>
+          {PROFESSIONS.filter((p) => p.expansion).map((p) => (
+            <p key={p.name}><b>{p.name}:</b> {p.desc}{p.note ? <span style={{ color: palette.crimson }}> ({p.note})</span> : null}</p>
           ))}
         </div>
       </Panel>
@@ -7647,6 +8254,7 @@ export default function App() {
     ["settlement", "Settlement", Landmark],
     ["heroes", "Heroes", Users],
     ["combat", "Combat", Swords],
+    ["alchemy", "Alchemy", FlaskConical],
     ["dice", "Dice", Dice5],
     ["quest", "Quest", Map],
     ["compendium", "Compendium", ScrollText],
@@ -7717,6 +8325,7 @@ export default function App() {
           <HeroesTab heroes={heroes} updateHero={updateHero} removeHero={removeHero} addHero={addHero} addLog={addLog} pushToast={pushToast} party={party} setParty={setParty} />
         )}
         {tab === "combat" && <CombatCalc heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
+        {tab === "alchemy" && <AlchemyTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
         {tab === "dice" && <DiceTray party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />}
         {tab === "quest" && <QuestRollerPanel />}
         {tab === "compendium" && <CompendiumTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}

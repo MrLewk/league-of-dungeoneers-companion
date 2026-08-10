@@ -7122,7 +7122,10 @@ function CombatCalc({ heroes, updateHero, addLog }) {
       if (r.miscastRoll === 9) lines.push(`(Roll 1d4 on the Demon table to see what materialises.)`);
     }
     if (r.manaNote) lines.push(r.manaNote);
-    if (powerAllowedFor && r.effectivePower > 0) lines.push(`Increased Power +${r.effectivePower}: +${r.effectivePower} DMG/Healing (apply by hand).`);
+    if (powerAllowedFor && r.effectivePower > 0) {
+      const bonusLabel = chosenSpell.school === "Restoration" ? "Healing" : "DMG";
+      lines.push(`Increased Power +${r.effectivePower}: add +${r.effectivePower} to this spell's own ${bonusLabel} when you roll it (not a separate effect).`);
+    }
     lines.push(`Mana: ${castHero.mana.cur} → ${cur}/${castHero.mana.max}.`);
 
     setCastResult({ ok: r.effectExecuted, lines });

@@ -3,6 +3,12 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.29.1] — 2026-08-09
+
+### Added
+- Random (no-recipe) potion mixing — Mix a Potion now has a "No Recipe (Random)" mode alongside the existing recipe-based one. No +10 bonus, but a success rolls the real Potions Table for that strength (a single 1d12 table for Weak/Supreme, and Standard's own 1d3-then-1d10 table across three sub-lists) instead of guaranteeing a specific result
+- A successful random mix gets written down as a new recipe automatically, exactly like the book's flowchart describes — so the next time you find the same components, you can just use the recipe instead of rolling blind again
+
 ## [1.29.0] — 2026-08-09
 
 ### Added

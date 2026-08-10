@@ -978,6 +978,81 @@ const ALCHEMY_STRENGTH_RULES = {
   Supreme: { count: 4, label: "4 components, a mix of both types" },
 };
 
+// Potions Table (p195) — what a successful mix produces without a recipe. Weak/Supreme
+// share a single 1d12 table (cost read as Weak/Supreme). Standard uses its own 1d3-then-
+// 1d10 table: rolling 1 or 2 both draw from the same "1,2" column (1 = its plain-numbered
+// top ten, 2 = the bold-numbered ten beneath it); rolling 3 draws from the separate right
+// column, which has its own "Roll again" result on a 10.
+const WEAK_SUPREME_POTIONS_TABLE = [
+  { roll: 1, potion: "Firebomb", weak: 60, supreme: 180 },
+  { roll: 2, potion: "Potion of Constitution", weak: 75, supreme: 200 },
+  { roll: 3, potion: "Potion of Courage", weak: 75, supreme: 200 },
+  { roll: 4, potion: "Potion of Dexterity", weak: 75, supreme: 200 },
+  { roll: 5, potion: "Potion of Energy", weak: 75, supreme: 200 },
+  { roll: 6, potion: "Potion of Health", weak: 75, supreme: 200 },
+  { roll: 7, potion: "Potion of Mana", weak: 75, supreme: 200 },
+  { roll: 8, potion: "Potion of Strength", weak: 75, supreme: 200 },
+  { roll: 9, potion: "Potion of Wisdom", weak: 75, supreme: 200 },
+  { roll: 10, potion: "Acidic Bomb", weak: 60, supreme: 180 },
+  { roll: 11, potion: "Potion of Cure Disease", weak: 75, supreme: 200 },
+  { roll: 12, potion: "Potion of Cure Poison", weak: 75, supreme: 200 },
+];
+const STANDARD_POTIONS_SUBTABLES = {
+  1: [
+    { roll: 1, potion: "Bottle of Experience", cost: 350 },
+    { roll: 2, potion: "Potion of Constitution", cost: 100 },
+    { roll: 3, potion: "Potion of Courage", cost: 100 },
+    { roll: 4, potion: "Potion of Dexterity", cost: 100 },
+    { roll: 5, potion: "Potion of Energy", cost: 100 },
+    { roll: 6, potion: "Potion of Health", cost: 100 },
+    { roll: 7, potion: "Potion of Mana", cost: 100 },
+    { roll: 8, potion: "Potion of Strength", cost: 100 },
+    { roll: 9, potion: "Potion of Wisdom", cost: 100 },
+    { roll: 10, potion: "Acidic Bomb", cost: 90 },
+  ],
+  2: [
+    { roll: 1, potion: "Potion of Disorientation", cost: 90 },
+    { roll: 2, potion: "Firebomb", cost: 90 },
+    { roll: 3, potion: "Vial of Invisibility", cost: 100 },
+    { roll: 4, potion: "Vial of Corrosion", cost: 60 },
+    { roll: 5, potion: "Potion of Cure Disease", cost: 100 },
+    { roll: 6, potion: "Potion of Cure Poison", cost: 100 },
+    { roll: 7, potion: "Poison", cost: 80 },
+    { roll: 8, potion: "Liquid Fire", cost: 80 },
+    { roll: 9, potion: "Bottle of the Void", cost: 80 },
+    { roll: 10, potion: "Weapons Oil", cost: 80 },
+  ],
+  3: [
+    { roll: 1, potion: "Elixir of Speed", cost: 80 },
+    { roll: 2, potion: "Alchemical Dust", cost: 60 },
+    { roll: 3, potion: "Elixir of the Archer", cost: 80 },
+    { roll: 4, potion: "Potion of Rage", cost: 100 },
+    { roll: 5, potion: "Potion of Fire Protection", cost: 80 },
+    { roll: 6, potion: "Potion of Dragon Skin", cost: 150 },
+    { roll: 7, potion: "Potion of Restoration", cost: 200 },
+    { roll: 8, potion: "Potion of Dragon's Breath", cost: 100 },
+    { roll: 9, potion: "Potion of Smoke", cost: 100 },
+    { roll: 10, potion: null, cost: null }, // "Roll again"
+  ],
+};
+// Rolls a random potion for the given strength, re-rolling on Standard's "Roll again".
+function rollRandomPotion(strength) {
+  if (strength === "Weak" || strength === "Supreme") {
+    const roll = rollDie(12);
+    const entry = WEAK_SUPREME_POTIONS_TABLE.find((e) => e.roll === roll);
+    return { potionName: entry.potion, cost: strength === "Weak" ? entry.weak : entry.supreme, rolls: [roll] };
+  }
+  const rolls = [];
+  let entry = null;
+  while (!entry || entry.potion === null) {
+    const d3 = rollDie(3);
+    const d10 = rollDie(10);
+    rolls.push(d3, d10);
+    entry = STANDARD_POTIONS_SUBTABLES[d3].find((e) => e.roll === d10);
+  }
+  return { potionName: entry.potion, cost: entry.cost, rolls };
+}
+
 // General Equipment (Equipment Appendix) — everything that isn't a weapon or armour:
 // alchemy supplies, consumables, jewellery, light sources, tools, and misc gear. Powers
 // the backpack "Add from table" picker. ENC uses the item's own carry weight (the number
@@ -1842,6 +1917,16 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.29.1",
+    date: "2026-08-09",
+    sections: {
+      "Added": [
+        "Random (no-recipe) potion mixing — Mix a Potion now has a 'No Recipe (Random)' mode alongside the existing recipe-based one. No +10 bonus, but a success rolls the real Potions Table for that strength (a single 1d12 table for Weak/Supreme, and Standard's own 1d3-then-1d10 table across three sub-lists) instead of guaranteeing a specific result",
+        "A successful random mix gets written down as a new recipe automatically, exactly like the book's flowchart describes — so the next time you find the same components, you can just use the recipe instead of rolling blind again",
+      ],
+    },
+  },
   {
     version: "1.29.0",
     date: "2026-08-09",
@@ -5626,10 +5711,13 @@ function AlchemyTab({ heroes, updateHero, addLog }) {
 
   // ---------- Mix a Potion ----------
   const allRecipesFor = (hero) => [...COMMON_RECIPES, ...(hero?.alchemyRecipes || [])];
+  const [mixMode, setMixMode] = useState("recipe"); // "recipe" | "freeform"
   const [mixRecipeId, setMixRecipeId] = useState("");
   const [exquisiteFlags, setExquisiteFlags] = useState({});
   const [mixResult, setMixResult] = useState(null);
   const mixRecipe = allRecipesFor(activeHero).find((r) => r.id === mixRecipeId) || allRecipesFor(activeHero)[0];
+  const [freeformStrength, setFreeformStrength] = useState("Standard");
+  const [freeformComponents, setFreeformComponents] = useState(["", "", "", ""]);
 
   const componentAvailability = (hero, name) => {
     const c = hero?.alchemyComponents.find((x) => x.name === name);
@@ -5665,6 +5753,45 @@ function AlchemyTab({ heroes, updateHero, addLog }) {
       const line = `Rolled ${roll} vs ${target} — failed. Components lost, but the bottle survives.`;
       setMixResult({ ok: false, lines: [line] });
       addLog(`${activeHero.name} fails to mix a potion: ${line}`);
+    }
+    setExquisiteFlags({});
+  };
+
+  const mixFreeform = () => {
+    if (!activeHero) return;
+    const components = freeformComponents.slice(0, ALCHEMY_STRENGTH_RULES[freeformStrength].count);
+    const error = validateRecipeComponents(freeformStrength, components);
+    if (error) { setMixResult({ ok: false, lines: [error] }); return; }
+    const hasBottle = activeHero.backpack.some((it) => it.name === "Empty Bottle");
+    if (!hasBottle) { setMixResult({ ok: false, lines: [`${activeHero.name} has no Empty Bottle.`] }); return; }
+    for (const name of components) {
+      const avail = componentAvailability(activeHero, name);
+      const useEx = exquisiteFlags[name];
+      const has = useEx ? avail.exquisiteQty > 0 : avail.qty + avail.exquisiteQty > 0;
+      if (!has) { setMixResult({ ok: false, lines: [`Missing ${useEx ? "an exquisite " : ""}${name}.`] }); return; }
+    }
+    const anyExquisite = components.some((n) => exquisiteFlags[n]);
+    const target = (Number(activeHero.skills.alchemy) || 0) + (anyExquisite ? 10 : 0); // no known-recipe bonus
+    const roll = rollPercent();
+    const success = roll <= target;
+    const nextComponents = consumeComponents(activeHero, components, exquisiteFlags);
+    if (success) {
+      const result = rollRandomPotion(freeformStrength);
+      const nextBackpack = [
+        ...activeHero.backpack.filter((it) => it.id !== activeHero.backpack.find((b) => b.name === "Empty Bottle").id),
+        { id: uid(), name: result.potionName, value: "", enc: 0, dur: "", slot: "backpack" },
+      ];
+      // A successful no-recipe mix gets written down as a new recipe automatically (per the book's flowchart).
+      const newRecipe = { id: uid(), potionName: result.potionName, strength: freeformStrength, components };
+      updateHero({ ...activeHero, alchemyComponents: nextComponents, backpack: nextBackpack, alchemyRecipes: [...activeHero.alchemyRecipes, newRecipe] });
+      const line = `Rolled ${roll} vs ${target} — success! Potions Table result: ${result.potionName}. Recipe written down for next time.`;
+      setMixResult({ ok: true, lines: [line] });
+      addLog(`${activeHero.name} mixes a potion (no recipe): ${line}`);
+    } else {
+      updateHero({ ...activeHero, alchemyComponents: nextComponents });
+      const line = `Rolled ${roll} vs ${target} — failed. Components lost, but the bottle survives.`;
+      setMixResult({ ok: false, lines: [line] });
+      addLog(`${activeHero.name} fails to mix a potion (no recipe): ${line}`);
     }
     setExquisiteFlags({});
   };
@@ -5863,51 +5990,123 @@ function AlchemyTab({ heroes, updateHero, addLog }) {
       {subTab === "mix" && (
         <Panel>
           <SectionTitle icon={Sparkles}>Mix a Potion</SectionTitle>
-          {allRecipesFor(activeHero).length === 0 ? (
-            <p className="text-xs italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>No recipes available.</p>
-          ) : (
+          <div className="flex gap-1.5 mb-2">
+            <button
+              onClick={() => { setMixMode("recipe"); setMixResult(null); }}
+              className="flex-1 text-xs px-2 py-1.5 rounded font-semibold active:scale-95 transition-transform"
+              style={{ background: mixMode === "recipe" ? palette.crimsonDark : "#00000010", color: mixMode === "recipe" ? palette.parchment : palette.ink }}
+            >
+              Known Recipe
+            </button>
+            <button
+              onClick={() => { setMixMode("freeform"); setMixResult(null); }}
+              className="flex-1 text-xs px-2 py-1.5 rounded font-semibold active:scale-95 transition-transform"
+              style={{ background: mixMode === "freeform" ? palette.crimsonDark : "#00000010", color: mixMode === "freeform" ? palette.parchment : palette.ink }}
+            >
+              No Recipe (Random)
+            </button>
+          </div>
+
+          {mixMode === "recipe" && (
+            allRecipesFor(activeHero).length === 0 ? (
+              <p className="text-xs italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>No recipes available.</p>
+            ) : (
+              <>
+                <select
+                  value={mixRecipe?.id || ""}
+                  onChange={(e) => setMixRecipeId(e.target.value)}
+                  className="w-full text-xs rounded px-2 py-1.5 mb-2"
+                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                >
+                  {allRecipesFor(activeHero).map((r) => <option key={r.id} value={r.id}>{r.potionName} ({r.strength})</option>)}
+                </select>
+                {mixRecipe && (
+                  <>
+                    <div className="rounded p-2 mb-2" style={{ background: "#00000008" }}>
+                      {mixRecipe.components.map((name) => {
+                        const avail = componentAvailability(activeHero, name);
+                        const has = avail.qty + avail.exquisiteQty > 0;
+                        return (
+                          <div key={name} className="flex items-center justify-between text-xs py-1" style={{ fontFamily: "Crimson Pro, serif" }}>
+                            <span style={{ color: has ? palette.ink : palette.crimson }}>{name} ({avail.qty} + {avail.exquisiteQty} exquisite)</span>
+                            {avail.exquisiteQty > 0 && (
+                              <label className="flex items-center gap-1 text-[10px]" style={{ color: palette.inkSoft }}>
+                                <input type="checkbox" checked={!!exquisiteFlags[name]} onChange={(e) => setExquisiteFlags((prev) => ({ ...prev, [name]: e.target.checked }))} />
+                                use exquisite
+                              </label>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+                      Roll target: Alchemy {activeHero?.skills.alchemy ?? 0} + 10 (recipe){mixRecipe.components.some((n) => exquisiteFlags[n]) ? " + 10 (exquisite)" : ""} = <b style={{ color: palette.ink }}>{(Number(activeHero?.skills.alchemy) || 0) + 10 + (mixRecipe.components.some((n) => exquisiteFlags[n]) ? 10 : 0)}</b>
+                    </p>
+                    <button onClick={mixPotion} className="w-full text-sm px-3 py-2 rounded font-bold active:scale-95 transition-transform" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+                      Mix It
+                    </button>
+                  </>
+                )}
+              </>
+            )
+          )}
+
+          {mixMode === "freeform" && (
             <>
+              <p className="text-xs mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+                No +10 recipe bonus. A success rolls on the Potions Table for a random result — and gets written down as a new recipe automatically for next time.
+              </p>
               <select
-                value={mixRecipe?.id || ""}
-                onChange={(e) => setMixRecipeId(e.target.value)}
-                className="w-full text-xs rounded px-2 py-1.5 mb-2"
+                value={freeformStrength}
+                onChange={(e) => { setFreeformStrength(e.target.value); setFreeformComponents(["", "", "", ""]); setExquisiteFlags({}); }}
+                className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
                 style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
               >
-                {allRecipesFor(activeHero).map((r) => <option key={r.id} value={r.id}>{r.potionName} ({r.strength})</option>)}
+                {Object.entries(ALCHEMY_STRENGTH_RULES).map(([k, v]) => <option key={k} value={k}>{k} — {v.label}</option>)}
               </select>
-              {mixRecipe && (
-                <>
-                  <div className="rounded p-2 mb-2" style={{ background: "#00000008" }}>
-                    {mixRecipe.components.map((name) => {
-                      const avail = componentAvailability(activeHero, name);
-                      const has = avail.qty + avail.exquisiteQty > 0;
-                      return (
-                        <div key={name} className="flex items-center justify-between text-xs py-1" style={{ fontFamily: "Crimson Pro, serif" }}>
-                          <span style={{ color: has ? palette.ink : palette.crimson }}>{name} ({avail.qty} + {avail.exquisiteQty} exquisite)</span>
-                          {avail.exquisiteQty > 0 && (
-                            <label className="flex items-center gap-1 text-[10px]" style={{ color: palette.inkSoft }}>
-                              <input type="checkbox" checked={!!exquisiteFlags[name]} onChange={(e) => setExquisiteFlags((prev) => ({ ...prev, [name]: e.target.checked }))} />
-                              use exquisite
-                            </label>
-                          )}
-                        </div>
-                      );
-                    })}
+              {Array.from({ length: ALCHEMY_STRENGTH_RULES[freeformStrength].count }).map((_, i) => {
+                const name = freeformComponents[i];
+                const avail = name ? componentAvailability(activeHero, name) : null;
+                return (
+                  <div key={i} className="flex items-center gap-1.5 mb-1.5">
+                    <select
+                      value={name}
+                      onChange={(e) => setFreeformComponents((prev) => prev.map((c, idx) => (idx === i ? e.target.value : c)))}
+                      className="flex-1 text-xs rounded px-2 py-1.5"
+                      style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                    >
+                      <option value="">Component {i + 1}…</option>
+                      <optgroup label="Ingredients">
+                        {ALCHEMY_INGREDIENT_NAMES.map((n) => <option key={n} value={n}>{n}</option>)}
+                      </optgroup>
+                      <optgroup label="Parts">
+                        {ALCHEMY_PART_NAMES.map((n) => <option key={n} value={n}>{n}</option>)}
+                      </optgroup>
+                    </select>
+                    {avail && (
+                      <span className="text-[10px] shrink-0" style={{ color: avail.qty + avail.exquisiteQty > 0 ? palette.inkSoft : palette.crimson }}>
+                        {avail.qty}+{avail.exquisiteQty}ex
+                      </span>
+                    )}
+                    {avail && avail.exquisiteQty > 0 && (
+                      <input type="checkbox" checked={!!exquisiteFlags[name]} onChange={(e) => setExquisiteFlags((prev) => ({ ...prev, [name]: e.target.checked }))} title="Use exquisite" />
+                    )}
                   </div>
-                  <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-                    Roll target: Alchemy {activeHero?.skills.alchemy ?? 0} + 10 (recipe){mixRecipe.components.some((n) => exquisiteFlags[n]) ? " + 10 (exquisite)" : ""} = <b style={{ color: palette.ink }}>{(Number(activeHero?.skills.alchemy) || 0) + 10 + (mixRecipe.components.some((n) => exquisiteFlags[n]) ? 10 : 0)}</b>
-                  </p>
-                  <button onClick={mixPotion} className="w-full text-sm px-3 py-2 rounded font-bold active:scale-95 transition-transform" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
-                    Mix It
-                  </button>
-                  {mixResult && (
-                    <div className="rounded p-2 mt-2" style={{ background: "#fff", border: `1px solid ${mixResult.ok ? palette.forest : palette.crimson}` }}>
-                      {mixResult.lines.map((l, i) => <p key={i} className="text-xs font-semibold" style={{ color: mixResult.ok ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif" }}>{l}</p>)}
-                    </div>
-                  )}
-                </>
-              )}
+                );
+              })}
+              <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+                Roll target: Alchemy {activeHero?.skills.alchemy ?? 0}{freeformComponents.some((n) => n && exquisiteFlags[n]) ? " + 10 (exquisite)" : ""} = <b style={{ color: palette.ink }}>{(Number(activeHero?.skills.alchemy) || 0) + (freeformComponents.some((n) => n && exquisiteFlags[n]) ? 10 : 0)}</b>
+              </p>
+              <button onClick={mixFreeform} className="w-full text-sm px-3 py-2 rounded font-bold active:scale-95 transition-transform" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+                Mix It
+              </button>
             </>
+          )}
+
+          {mixResult && (
+            <div className="rounded p-2 mt-2" style={{ background: "#fff", border: `1px solid ${mixResult.ok ? palette.forest : palette.crimson}` }}>
+              {mixResult.lines.map((l, i) => <p key={i} className="text-xs font-semibold" style={{ color: mixResult.ok ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif" }}>{l}</p>)}
+            </div>
           )}
         </Panel>
       )}

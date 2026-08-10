@@ -1918,6 +1918,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.29.5",
+    date: "2026-08-09",
+    sections: {
+      "Changed": [
+        "Cast a Spell's hero picker now only lists heroes who actually know a spell or have a magic profession (Wizard, Druid) — non-casters no longer clutter the dropdown",
+      ],
+    },
+  },
+  {
     version: "1.29.4",
     date: "2026-08-09",
     sections: {
@@ -7402,22 +7411,24 @@ function CombatCalc({ heroes, updateHero, addLog }) {
       {mode === "spells" && (
         <Panel className="mb-4">
           <SectionTitle icon={Sparkles}>Cast a Spell</SectionTitle>
-          {heroes.length === 0 ? (
-            <p className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>Add a hero first.</p>
-          ) : (
-            <>
-              <label className="text-xs block mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-                Hero
-                <select
-                  value={castHeroPick}
-                  onChange={(e) => { setCastHeroPick(e.target.value); setCastSpellPick(""); setCastResult(null); }}
-                  className="w-full text-sm rounded px-2 py-1.5 mt-1"
-                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-                >
-                  <option value="">Choose a hero…</option>
-                  {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
-                </select>
-              </label>
+          {(() => {
+            const spellcastingHeroes = heroes.filter((h) => h.spells.length > 0 || CASTER_SKILL[h.profession]);
+            return spellcastingHeroes.length === 0 ? (
+              <p className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>No spellcasters yet — a hero needs a magic profession or a known spell to show up here.</p>
+            ) : (
+              <>
+                <label className="text-xs block mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                  Hero
+                  <select
+                    value={castHeroPick}
+                    onChange={(e) => { setCastHeroPick(e.target.value); setCastSpellPick(""); setCastResult(null); }}
+                    className="w-full text-sm rounded px-2 py-1.5 mt-1"
+                    style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                  >
+                    <option value="">Choose a hero…</option>
+                    {spellcastingHeroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                  </select>
+                </label>
               {castHero && (
                 <p className="text-xs mb-2" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.ink }}>Mana: {castHero.mana.cur}/{castHero.mana.max}</p>
               )}
@@ -7517,8 +7528,9 @@ function CombatCalc({ heroes, updateHero, addLog }) {
                   {castResult.lines.map((l, i) => <p key={i}>{l}</p>)}
                 </div>
               )}
-            </>
-          )}
+              </>
+            );
+          })()}
         </Panel>
       )}
 

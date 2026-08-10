@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.29.5] — 2026-08-09
+
+### Changed
+- Cast a Spell's hero picker now only lists heroes who actually know a spell or have a magic profession (Wizard, Druid) — non-casters no longer clutter the dropdown
+
 ## [1.29.4] — 2026-08-09
 
 ### Fixed

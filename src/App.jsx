@@ -746,7 +746,7 @@ const SETTLEMENT_ACTIVITIES = [
   { name: "Horse Racing", where: "Horse tracks", ap: 1, locations: ["Horse Racing Track"], resolverName: "Horse Racing" },
   { name: "Identify a Magic Item", where: "Scryer or Wizards' Guild", ap: 1, locations: ["Scryer", "Guilds"] },
   { name: "Identify a Potion", where: "Alchemist Guild, The Magic Brewery, General Store", ap: 1, locations: ["Guilds", "Magic Brewery", "General Store"] },
-  { name: "Learn a Prayer", where: "Temple Grounds", ap: 1, locations: ["Temples"] },
+  { name: "Learn a Prayer", where: "Inner Sanctum, Silver City", ap: 1, locations: ["Inner Sanctum"] },
   { name: "Learn a Spell", where: "Wizards' Guild", ap: 3, locations: ["Guilds"] },
   { name: "Level Up", where: "Any Settlement", ap: 0, locations: ["Any"] },
   { name: "Pray", where: "Temple", ap: 1, locations: ["Temples"], resolverName: "Pray" },
@@ -1917,6 +1917,15 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.29.8",
+    date: "2026-08-11",
+    sections: {
+      "Fixed": [
+        "Learn a Prayer was available in any settlement with a Temple — the book specifies this is only done in the Inner Sanctum in Silver City, so it's now gated to that specific service instead of the general Temples category",
+      ],
+    },
+  },
   {
     version: "1.29.7",
     date: "2026-08-10",

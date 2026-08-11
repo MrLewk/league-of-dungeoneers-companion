@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.29.8] — 2026-08-11
+
+### Fixed
+- Learn a Prayer was available in any settlement with a Temple — the book specifies this is only done in the Inner Sanctum in Silver City, so it's now gated to that specific service instead of the general Temples category
+
 ## [1.29.7] — 2026-08-10
 
 ### Fixed

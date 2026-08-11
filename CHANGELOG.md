@@ -3,6 +3,14 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.30.0] — 2026-08-11
+
+### Added
+- New "Actions" tab, split out from Dice, covering hazard/obstacle mechanics: Door / Chest Opener, Portcullis, Cobweb Covered Opening, Levers, and Search a Tile (Dice now holds just the Quick Dice roller and Loot Roller)
+- Portcullis tool — pick a hero, optionally add a helper in the other adjacent slot and up to 2 heroes chiming in from the far side (each +10 STR), then attempt to lift (1 AP, retriable, +1 Threat on a failed attempt)
+- Cobweb Covered Opening tool — 2 AP, automatically succeeds, raises Threat +1, and rolls 1d10 for Giant Spiders on a 9-10
+- Levers tool — prepares a deck of 1 black + 1d4+1 red cards, draws and rolls on the correct table when a lever is pulled (1 AP, blocked while known enemies are on the table), tracks remaining deck size, and lets clues discard a red card without rolling. Numeric outcomes (Threat, Party Morale/Sanity, a party-held dungeon Luck Point, pit-trap damage) auto-apply; spatial outcomes (portcullis drop, Wandering Monster, Treasure Chamber, iron cage ambush) are shown in full for manual resolution at the table
+
 ## [1.29.9] — 2026-08-11
 
 ### Added

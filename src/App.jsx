@@ -452,6 +452,7 @@ const defaultParty = () => ({
   startingMorale: 0,
   round: 1,
   lightSources: [], // [{id, name, remaining}] — turns left before it goes out
+  dungeonLuck: 0, // party-held Luck Points from Black Lever result 8 — lost on leaving the dungeon
 });
 
 // Fills in any fields missing from a party saved before this update.
@@ -1215,6 +1216,44 @@ const DOOR_LOCK_TABLE = [
   { roll: [10, 10], locked: true, pickMod: -20, hp: 25 },
 ];
 
+// Opening a Portcullis (p101) — STR Test while adjacent, 1 AP, may be retried any
+// number of times. +10 STR for 1 hero helping from the other adjacent slot, plus +10
+// STR per hero (up to 2) chiming in from the far side if the party is separated. A
+// failure raises Threat +1 (the noise of dropping it).
+
+// Cobweb Covered Openings (p101) — attacked with a weapon or torch instead of opened.
+// Takes 2 AP and automatically succeeds, but raises Threat +1 and rolls 1d10: on a
+// 9-10, 1d2 Giant Spiders appear (rolled/placed individually) on the tile being left
+// or entered.
+
+// Levers (p90-91) — shuffle a deck of 1 black card + 1d4+1 red cards. Pulling a lever
+// costs 1 AP (never with known enemies on the table); draw the top card and roll on
+// the matching table below. A clue from a Treasure card lets you discard 1 drawn red
+// card without rolling, once per clue, only in the dungeon where it was found.
+const BLACK_LEVERS_TABLE = [
+  { roll: 1, text: "The party closes the dungeon entrance behind them, hindering Wandering Monsters from entering on the start tile. Whenever a Wandering Monster would be placed there, Threat is still raised as usual but no monster is placed. No effect if the Wandering Monster's spawn point has already been changed." },
+  { roll: 2, text: "A hidden passageway opens. Place the Treasure Chamber tile adjacent to the current tile (move it here temporarily if already placed elsewhere) — its 3 chests may be searched. Once the heroes leave, the door closes and the tile is removed or returned to its previous spot." },
+  { roll: 3, text: "A small compartment opens revealing precious items. The hero may take 1 Wonderful Treasure with no extra AP cost.", auto: "wonderfulTreasure" },
+  { roll: 4, text: "The first locked door the heroes encounter outside the current tile is treated as unlocked." },
+  { roll: 5, text: "The first trap triggered outside this tile may be ignored." },
+  { roll: 6, text: "If there are any unopened doors in the room, one opens slightly. The heroes must still spend 1 AP to open it fully, but there's no need to raise Threat, roll for traps, or check whether it's locked." },
+  { roll: 7, text: "A hidden compartment reveals 1d3 potions, picked up in the same action as activating the lever.", auto: "potions" },
+  { roll: 8, text: "The party receives a Point of Luck, held collectively and usable by any hero. If not used before the party leaves the dungeon, it is lost.", auto: "dungeonLuck" },
+];
+
+const RED_LEVERS_TABLE = [
+  { roll: [1, 11], text: "A rumble can be heard far off in the dungeon. Then everything goes quiet again. Nothing happens." },
+  { roll: [12, 12], text: "One of the doors in the room closes and locks (as if rolling a 10) — the party must still roll for a trap as usual. If there are no unopened doors, randomise one door in the room to close and lock instead (no trap roll)." },
+  { roll: [13, 13], text: "The sound of grinding cogs can be heard, but apart from that, everything seems normal.", auto: "threat2" },
+  { roll: [14, 14], text: "Add 2 random Exploration Cards on top of every Exploration Card pile without looking at them." },
+  { roll: [15, 15], text: "An eerie scream echoes through the dungeon, sending a chill down the heroes' spines.", auto: "moralePartySanity" },
+  { roll: [16, 16], text: "With a loud bang, a portcullis falls down in front of all doors on this tile. Each must be lifted to reach the door (see the Portcullis tool above)." },
+  { roll: [17, 17], text: "A Wandering Monster is released. Place it on a random tile at least 1 tile away from the heroes (or behind a random unopened door if none exists). It won't move until released, but roll its move as usual — on a 1, remove it. Once released, roll on the Encounter Table +20 and add the highest-XP enemy from that entry." },
+  { roll: [18, 18], text: "Every door is now trapped on a 1d6 of 5-6 instead of the normal 6 only." },
+  { roll: [19, 19], text: "The floor gives way under a random hero (not the one pulling the lever). DEX Test or fall into a pit: 1d10 damage (no armour, but NA applies), lower Sanity by 2. Getting up takes 1 AP and either a rope or a DEX Test.", auto: "pitTrap" },
+  { roll: [20, 20], text: "An iron cage traps the hero who pulled the lever. Enemies appear at every door in the room (roll the Encounter Table once per unlocked, untrapped door) — set up initiative and fight. The caged hero can do nothing until the fight ends, then the cage retracts.", auto: "cageAmbush" },
+];
+
 // Searching a Tile — 2 AP, Perception test (+10 if 2 heroes search together, +5 more per
 // hero beyond that). On a success, roll 1d100 on this table; add +10 to the roll if the
 // tile is a corridor.
@@ -1917,6 +1956,18 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.30.0",
+    date: "2026-08-11",
+    sections: {
+      "Added": [
+        "New \"Actions\" tab, split out from Dice, covering hazard/obstacle mechanics: Door / Chest Opener, Portcullis, Cobweb Covered Opening, Levers, and Search a Tile (Dice now holds just the Quick Dice roller and Loot Roller)",
+        "Portcullis tool — pick a hero, optionally add a helper in the other adjacent slot and up to 2 heroes chiming in from the far side (each +10 STR), then attempt to lift (1 AP, retriable, +1 Threat on a failed attempt)",
+        "Cobweb Covered Opening tool — 2 AP, automatically succeeds, raises Threat +1, and rolls 1d10 for Giant Spiders on a 9-10",
+        "Levers tool — prepares a deck of 1 black + 1d4+1 red cards, draws and rolls on the correct table when a lever is pulled (1 AP, blocked while known enemies are on the table), tracks remaining deck size, and lets clues discard a red card without rolling. Numeric outcomes (Threat, Party Morale/Sanity, a party-held dungeon Luck Point, pit-trap damage) auto-apply; spatial outcomes (portcullis drop, Wandering Monster, Treasure Chamber, iron cage ambush) are shown in full for manual resolution at the table",
+      ],
+    },
+  },
   {
     version: "1.29.9",
     date: "2026-08-11",
@@ -7854,6 +7905,102 @@ function DiceTray({ party, setParty, heroes, updateHero, addLog }) {
     setLootRolls((prev) => [{ tableKey, r, result, id: uid() }, ...prev].slice(0, 8));
   };
 
+
+  return (
+    <div className="space-y-4">
+      <Panel>
+        <div className="flex items-center justify-between mb-3">
+          <SectionTitle icon={Dice5}>Quick Dice</SectionTitle>
+          {rolls.length > 0 && (
+            <button
+              onClick={() => setRolls([])}
+              className="text-xs flex items-center gap-1 px-2 py-1 rounded font-semibold"
+              style={{ background: palette.inkSoft, color: palette.parchment }}
+            >
+              <RotateCcw size={11} /> Reset
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {dice.map((d) => (
+            <button
+              key={d}
+              onClick={() => doRoll(d, `d${d}`)}
+              className="px-3 py-2 rounded font-bold text-sm"
+              style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+            >
+              d{d}
+            </button>
+          ))}
+          <button
+            onClick={() => doRoll(6, "Hit location")}
+            className="px-3 py-2 rounded font-bold text-sm"
+            style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+          >
+            Hit Location (d6)
+          </button>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {rolls.map((r) => (
+            <div key={r.id} className="text-center rounded p-2" style={{ background: "#00000010" }}>
+              <div className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>{r.label}</div>
+              <div className="text-xl font-bold" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.ink }}>
+                {r.r}
+              </div>
+              {r.label === "Hit location" && (
+                <div className="text-xs" style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif" }}>
+                  {r.r === 1 ? "Head" : r.r >= 3 && r.r <= 5 ? "Torso" : r.r === 6 ? "Legs" : "Arms"}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      <Panel>
+        <div className="flex items-center justify-between mb-1">
+          <SectionTitle icon={Coins}>Loot Roller (1d10)</SectionTitle>
+          {lootRolls.length > 0 && (
+            <button
+              onClick={() => setLootRolls([])}
+              className="text-xs flex items-center gap-1 px-2 py-1 rounded font-semibold"
+              style={{ background: palette.inkSoft, color: palette.parchment }}
+            >
+              <RotateCcw size={11} /> Reset
+            </button>
+          )}
+        </div>
+        <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
+          Pick the loot table shown on the monster card (T1–T5).
+        </p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {Object.keys(LOOT_TABLES).map((t) => (
+            <button
+              key={t}
+              onClick={() => rollLoot(t)}
+              className="px-3 py-2 rounded font-bold text-sm"
+              style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+        <div className="space-y-1.5">
+          {lootRolls.map((l) => (
+            <div key={l.id} className="flex items-center gap-2 text-xs rounded p-2" style={{ background: "#00000010", fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+              <span className="font-bold px-1.5 py-0.5 rounded" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "JetBrains Mono, monospace" }}>{l.tableKey}: {l.r}</span>
+              {l.result}
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+    </div>
+  );
+}
+
+
+function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   const [doorResult, setDoorResult] = useState(null);
   const [doorHero, setDoorHero] = useState("");
   const [doorDamageInput, setDoorDamageInput] = useState(0);
@@ -7959,102 +8106,152 @@ function DiceTray({ party, setParty, heroes, updateHero, addLog }) {
     }
   };
 
+  // ---- Portcullis ----
+  const [portcHeroId, setPortcHeroId] = useState("");
+  const [portcHelperSameSide, setPortcHelperSameSide] = useState(false);
+  const [portcHelpersFarSide, setPortcHelpersFarSide] = useState(0);
+  const [portcFeedback, setPortcFeedback] = useState(null);
+  const activePortcHero = heroes.find((h) => h.id === portcHeroId) || heroes[0];
+
+  const liftPortcullis = () => {
+    if (!activePortcHero) return;
+    if (!trySpendAP(activePortcHero, 1, setPortcFeedback)) return;
+    const bonus = (portcHelperSameSide ? 10 : 0) + Math.min(2, Math.max(0, Number(portcHelpersFarSide) || 0)) * 10;
+    const target = (Number(activePortcHero.stats.STR) || 0) + bonus;
+    const roll = rollPercent();
+    if (roll <= target) {
+      setPortcFeedback({ text: `${activePortcHero.name} lifts the portcullis! (Rolled ${roll} vs STR ${target}.)`, tone: "good" });
+      addLog(`${activePortcHero.name} lifts a portcullis: rolled ${roll} vs STR ${target}${bonus ? ` (base + ${bonus} helpers)` : ""} — success!`);
+    } else {
+      setParty((prev) => ({ ...prev, threat: prev.threat + 1 }));
+      setPortcFeedback({ text: `${activePortcHero.name} fails to lift it (rolled ${roll} vs STR ${target}) — the drop raises Threat +1. May retry.`, tone: "warn" });
+      addLog(`${activePortcHero.name} fails to lift a portcullis: rolled ${roll} vs STR ${target}${bonus ? ` (base + ${bonus} helpers)` : ""}. Threat +1.`);
+    }
+  };
+
+  // ---- Cobweb Covered Opening ----
+  const [cobwebHeroId, setCobwebHeroId] = useState("");
+  const [cobwebResult, setCobwebResult] = useState(null);
+  const activeCobwebHero = heroes.find((h) => h.id === cobwebHeroId) || heroes[0];
+
+  const clearCobweb = () => {
+    if (!activeCobwebHero) return;
+    if (!trySpendAP(activeCobwebHero, 2, setCobwebResult)) return;
+    setParty((prev) => ({ ...prev, threat: prev.threat + 1 }));
+    const roll = rollDie(10);
+    const spiders = roll >= 9 ? rollDie(2) : 0;
+    setCobwebResult({ text: `${activeCobwebHero.name} cuts through the cobweb opening (2 AP). Threat +1.${spiders ? ` Rolled ${roll} on 1d10 — ${spiders} Giant Spider${spiders > 1 ? "s" : ""} appear! Place each individually on the tile being left or entered.` : ` Rolled ${roll} on 1d10 — no spiders.`}`, tone: spiders ? "bad" : "good" });
+    addLog(`${activeCobwebHero.name} clears a cobweb opening (2 AP). Threat +1. Rolled ${roll} (d10)${spiders ? ` — ${spiders} Giant Spider(s) appear!` : " — no spiders."}`);
+  };
+
+  // ---- Levers ----
+  const [leverDeck, setLeverDeck] = useState(null); // { black: 1, red: N, drawn: [] }
+  const [leverClues, setLeverClues] = useState(0);
+  const [leverEnemiesPresent, setLeverEnemiesPresent] = useState(false);
+  const [leverHeroId, setLeverHeroId] = useState("");
+  const [leverDraw, setLeverDraw] = useState(null);
+  const [leverFeedback, setLeverFeedback] = useState(null);
+  const activeLeverHero = heroes.find((h) => h.id === leverHeroId) || heroes[0];
+
+  const prepareLeverDeck = () => {
+    const red = rollDie(4) + 1;
+    setLeverDeck({ black: 1, red, total: 1 + red });
+    setLeverClues(0);
+    setLeverDraw(null);
+    setLeverFeedback({ text: `New lever deck shuffled: 1 black card + ${red} red cards (${1 + red} total).`, tone: "good" });
+    addLog(`Prepared a lever deck: 1 black + ${red} red cards.`);
+  };
+
+  const discardRedWithClue = () => {
+    if (!leverDeck || leverDeck.red <= 0 || leverClues <= 0) return;
+    setLeverDeck((prev) => ({ ...prev, red: prev.red - 1, total: prev.total - 1 }));
+    setLeverClues((prev) => prev - 1);
+    addLog("Discarded a red lever card using a clue, without rolling.");
+  };
+
+  const applyLeverAuto = (entry, roll) => {
+    if (!entry.auto) return;
+    switch (entry.auto) {
+      case "dungeonLuck":
+        setParty((prev) => ({ ...prev, dungeonLuck: (prev.dungeonLuck || 0) + 1 }));
+        addLog("Party gains 1 dungeon Luck Point (lost if unused when leaving the dungeon).");
+        break;
+      case "threat2":
+        setParty((prev) => ({ ...prev, threat: prev.threat + 2 }));
+        addLog("Threat +2 from the lever.");
+        break;
+      case "moralePartySanity":
+        setParty((prev) => ({ ...prev, morale: Math.max(0, prev.morale - 4) }));
+        heroes.forEach((h) => updateHero(h.id, { ...h, sanity: { ...h.sanity, cur: Math.max(0, h.sanity.cur - 1) } }));
+        addLog("Party Morale -4, and every hero's Sanity -1, from the lever.");
+        break;
+      case "potions": {
+        const n = rollDie(3);
+        addLog(`The lever reveals ${n} potion(s) — add them to the party's items.`);
+        break;
+      }
+      case "wonderfulTreasure":
+        addLog("The lever grants 1 free Wonderful Treasure — roll on the Loot Roller (Wonderful table).");
+        break;
+      case "pitTrap": {
+        const eligible = heroes.filter((h) => h.id !== activeLeverHero?.id);
+        const victim = eligible.length ? eligible[Math.floor(Math.random() * eligible.length)] : null;
+        if (victim) {
+          const dexTarget = Number(victim.stats.DEX) || 0;
+          const dexRoll = rollPercent();
+          if (dexRoll <= dexTarget) {
+            addLog(`${victim.name} passes a DEX Test (${dexRoll} vs ${dexTarget}) and avoids the pit trap.`);
+          } else {
+            const dmg = rollDie(10);
+            const na = naturalArmour(Number(victim.stats.CON) || 0);
+            const finalDmg = Math.max(0, dmg - na);
+            updateHero(victim.id, {
+              ...victim,
+              hp: { ...victim.hp, cur: Math.max(0, victim.hp.cur - finalDmg) },
+              sanity: { ...victim.sanity, cur: Math.max(0, victim.sanity.cur - 2) },
+            });
+            addLog(`${victim.name} fails a DEX Test (${dexRoll} vs ${dexTarget}) and falls into a pit trap: ${dmg} damage - ${na} NA = ${finalDmg} taken. Sanity -2. Place a pit token; getting up costs 1 AP plus a rope or a DEX Test.`);
+          }
+        } else {
+          addLog("Pit trap triggered, but there's no other hero available to fall in.");
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  };
+
+  const pullLever = () => {
+    if (!leverDeck || leverDeck.total <= 0) return;
+    if (leverEnemiesPresent) { setLeverFeedback({ text: "Can't activate a lever with known enemies on the table.", tone: "bad" }); return; }
+    if (!trySpendAP(activeLeverHero, 1, setLeverFeedback)) return;
+    // Draw proportional to remaining black/red count.
+    const drawBlack = Math.random() < leverDeck.black / leverDeck.total;
+    setLeverDeck((prev) => ({ ...prev, black: prev.black - (drawBlack ? 1 : 0), red: prev.red - (drawBlack ? 0 : 1), total: prev.total - 1 }));
+    if (drawBlack) {
+      const roll = rollDie(8);
+      const entry = BLACK_LEVERS_TABLE.find((e) => e.roll === roll);
+      setLeverDraw({ color: "black", roll, entry });
+      applyLeverAuto(entry, roll);
+      addLog(`${activeLeverHero ? activeLeverHero.name + " pulls" : "Pulled"} a lever — BLACK card, rolled ${roll} (1d8): ${entry.text}`);
+    } else {
+      const roll = rollDie(20);
+      const entry = RED_LEVERS_TABLE.find((e) => roll >= e.roll[0] && roll <= e.roll[1]);
+      setLeverDraw({ color: "red", roll, entry });
+      applyLeverAuto(entry, roll);
+      addLog(`${activeLeverHero ? activeLeverHero.name + " pulls" : "Pulled"} a lever — RED card, rolled ${roll} (1d20): ${entry.text}`);
+    }
+  };
+
   const closeDoor = () => {
     if (activeDoorHero) trySpendAP(activeDoorHero, 1);
     addLog("Closed a door (1 AP).");
     setDoorResult(null);
     setDoorFeedback(null);
   };
-
   return (
     <div className="space-y-4">
-      <Panel>
-        <div className="flex items-center justify-between mb-3">
-          <SectionTitle icon={Dice5}>Quick Dice</SectionTitle>
-          {rolls.length > 0 && (
-            <button
-              onClick={() => setRolls([])}
-              className="text-xs flex items-center gap-1 px-2 py-1 rounded font-semibold"
-              style={{ background: palette.inkSoft, color: palette.parchment }}
-            >
-              <RotateCcw size={11} /> Reset
-            </button>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-2 mb-4">
-          {dice.map((d) => (
-            <button
-              key={d}
-              onClick={() => doRoll(d, `d${d}`)}
-              className="px-3 py-2 rounded font-bold text-sm"
-              style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
-            >
-              d{d}
-            </button>
-          ))}
-          <button
-            onClick={() => doRoll(6, "Hit location")}
-            className="px-3 py-2 rounded font-bold text-sm"
-            style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
-          >
-            Hit Location (d6)
-          </button>
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          {rolls.map((r) => (
-            <div key={r.id} className="text-center rounded p-2" style={{ background: "#00000010" }}>
-              <div className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>{r.label}</div>
-              <div className="text-xl font-bold" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.ink }}>
-                {r.r}
-              </div>
-              {r.label === "Hit location" && (
-                <div className="text-xs" style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif" }}>
-                  {r.r === 1 ? "Head" : r.r >= 3 && r.r <= 5 ? "Torso" : r.r === 6 ? "Legs" : "Arms"}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </Panel>
-
-      <Panel>
-        <div className="flex items-center justify-between mb-1">
-          <SectionTitle icon={Coins}>Loot Roller (1d10)</SectionTitle>
-          {lootRolls.length > 0 && (
-            <button
-              onClick={() => setLootRolls([])}
-              className="text-xs flex items-center gap-1 px-2 py-1 rounded font-semibold"
-              style={{ background: palette.inkSoft, color: palette.parchment }}
-            >
-              <RotateCcw size={11} /> Reset
-            </button>
-          )}
-        </div>
-        <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
-          Pick the loot table shown on the monster card (T1–T5).
-        </p>
-        <div className="flex flex-wrap gap-2 mb-3">
-          {Object.keys(LOOT_TABLES).map((t) => (
-            <button
-              key={t}
-              onClick={() => rollLoot(t)}
-              className="px-3 py-2 rounded font-bold text-sm"
-              style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-        <div className="space-y-1.5">
-          {lootRolls.map((l) => (
-            <div key={l.id} className="flex items-center gap-2 text-xs rounded p-2" style={{ background: "#00000010", fontFamily: "Crimson Pro, serif", color: palette.ink }}>
-              <span className="font-bold px-1.5 py-0.5 rounded" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "JetBrains Mono, monospace" }}>{l.tableKey}: {l.r}</span>
-              {l.result}
-            </div>
-          ))}
-        </div>
-      </Panel>
-
       <Panel>
         <SectionTitle icon={ClipboardList}>Door / Chest Opener</SectionTitle>
         <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
@@ -8185,6 +8382,196 @@ function DiceTray({ party, setParty, heroes, updateHero, addLog }) {
               style={{ background: "#00000015", color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}
             >
               Close / Dismiss (1 AP to close a door)
+            </button>
+          </div>
+        )}
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={Landmark}>Portcullis</SectionTitle>
+        <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
+          1 AP, model adjacent, STR Test — may be retried freely. A failed attempt raises Threat +1.
+        </p>
+        {heroes.length > 0 && (
+          <select
+            value={activePortcHero?.id || ""}
+            onChange={(e) => setPortcHeroId(e.target.value)}
+            className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            {heroes.map((h) => <option key={h.id} value={h.id}>{h.name} (STR {h.stats.STR}, {h.ap ?? 2} AP)</option>)}
+          </select>
+        )}
+        <label className="flex items-center gap-2 text-xs mb-1.5" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+          <input type="checkbox" checked={portcHelperSameSide} onChange={(e) => setPortcHelperSameSide(e.target.checked)} />
+          +1 hero in the other adjacent slot (+10 STR)
+        </label>
+        <div className="flex items-center gap-2 text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+          <span>Heroes chiming in from the far side (+10 STR each, max 2):</span>
+          <Stepper value={portcHelpersFarSide} max={2} min={0} onChange={setPortcHelpersFarSide} />
+        </div>
+        <button
+          onClick={liftPortcullis}
+          className="w-full mb-2 px-3 py-2 rounded font-bold text-sm active:scale-95 transition-transform"
+          style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+        >
+          Attempt to Lift (1 AP, STR {activePortcHero ? (Number(activePortcHero.stats.STR) || 0) + (portcHelperSameSide ? 10 : 0) + Math.min(2, Math.max(0, Number(portcHelpersFarSide) || 0)) * 10 : "—"})
+        </button>
+        {portcFeedback && (
+          <div
+            className="rounded p-2 text-xs font-semibold"
+            style={{
+              background: "#fff",
+              border: `1px solid ${portcFeedback.tone === "good" ? palette.forest : portcFeedback.tone === "bad" ? palette.crimson : palette.gold}`,
+              color: portcFeedback.tone === "good" ? palette.forestDark : portcFeedback.tone === "bad" ? palette.crimson : palette.charcoal,
+              fontFamily: "Crimson Pro, serif",
+            }}
+          >
+            {portcFeedback.text}
+          </div>
+        )}
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={Flashlight}>Cobweb Covered Opening</SectionTitle>
+        <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
+          2 AP, attacked with a weapon or torch — automatically succeeds. Raises Threat +1 and checks for Giant Spiders on a 1d10 of 9-10.
+        </p>
+        {heroes.length > 0 && (
+          <select
+            value={activeCobwebHero?.id || ""}
+            onChange={(e) => setCobwebHeroId(e.target.value)}
+            className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            {heroes.map((h) => <option key={h.id} value={h.id}>{h.name} ({h.ap ?? 2} AP)</option>)}
+          </select>
+        )}
+        <button
+          onClick={clearCobweb}
+          className="w-full mb-2 px-3 py-2 rounded font-bold text-sm active:scale-95 transition-transform"
+          style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+        >
+          Cut Through Cobweb (2 AP)
+        </button>
+        {cobwebResult && (
+          <div
+            className="rounded p-2 text-xs font-semibold"
+            style={{
+              background: "#fff",
+              border: `1px solid ${cobwebResult.tone === "good" ? palette.forest : palette.crimson}`,
+              color: cobwebResult.tone === "good" ? palette.forestDark : palette.crimson,
+              fontFamily: "Crimson Pro, serif",
+            }}
+          >
+            {cobwebResult.text}
+          </div>
+        )}
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={Zap}>Levers</SectionTitle>
+        <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
+          Shuffle 1 black + 1d4+1 red cards. Pulling a lever costs 1 AP and can't be done with known enemies on the table.
+        </p>
+
+        {!leverDeck ? (
+          <button
+            onClick={prepareLeverDeck}
+            className="w-full mb-2 px-3 py-2 rounded font-bold text-sm active:scale-95 transition-transform"
+            style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+          >
+            Prepare Lever Deck
+          </button>
+        ) : (
+          <>
+            <div className="rounded p-2 mb-2 text-xs" style={{ background: "#00000010", fontFamily: "JetBrains Mono, monospace", color: palette.ink }}>
+              Deck remaining: {leverDeck.total} card{leverDeck.total !== 1 ? "s" : ""} ({leverDeck.black} black, {leverDeck.red} red)
+            </div>
+
+            <div className="flex items-center gap-2 text-xs mb-1.5" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+              <span>Clues on hand:</span>
+              <Stepper value={leverClues} max={99} min={0} onChange={setLeverClues} />
+              {leverClues > 0 && leverDeck.red > 0 && (
+                <button
+                  onClick={discardRedWithClue}
+                  className="text-xs px-2 py-1 rounded font-semibold"
+                  style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
+                >
+                  Discard a Red Card
+                </button>
+              )}
+            </div>
+
+            <label className="flex items-center gap-2 text-xs mb-1.5" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+              <input type="checkbox" checked={leverEnemiesPresent} onChange={(e) => setLeverEnemiesPresent(e.target.checked)} />
+              Known enemies on the table (blocks activation)
+            </label>
+
+            {heroes.length > 0 && (
+              <select
+                value={activeLeverHero?.id || ""}
+                onChange={(e) => setLeverHeroId(e.target.value)}
+                className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+              >
+                {heroes.map((h) => <option key={h.id} value={h.id}>{h.name} ({h.ap ?? 2} AP)</option>)}
+              </select>
+            )}
+
+            <button
+              onClick={pullLever}
+              disabled={leverDeck.total <= 0}
+              className="w-full mb-2 px-3 py-2 rounded font-bold text-sm active:scale-95 transition-transform disabled:opacity-50"
+              style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+            >
+              {leverDeck.total > 0 ? "Pull a Lever (1 AP)" : "Deck Empty"}
+            </button>
+
+            {leverFeedback && (
+              <div
+                className="rounded p-2 mb-2 text-xs font-semibold"
+                style={{
+                  background: "#fff",
+                  border: `1px solid ${palette.crimson}`,
+                  color: palette.crimson,
+                  fontFamily: "Crimson Pro, serif",
+                }}
+              >
+                {leverFeedback.text}
+              </div>
+            )}
+
+            {leverDraw && (
+              <div className="rounded p-3" style={{ background: leverDraw.color === "black" ? "#00000015" : "#7a1f1f15" }}>
+                <p className="text-sm font-bold mb-1" style={{ color: leverDraw.color === "black" ? palette.charcoal : palette.crimson, fontFamily: "Cinzel, serif" }}>
+                  {leverDraw.color === "black" ? "Black" : "Red"} Lever — rolled {leverDraw.roll} ({leverDraw.color === "black" ? "1d8" : "1d20"})
+                </p>
+                <p className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+                  {leverDraw.entry.text}
+                </p>
+              </div>
+            )}
+
+            <button
+              onClick={() => setLeverDeck(null)}
+              className="w-full mt-2 text-xs px-2 py-1.5 rounded font-semibold active:scale-95 transition-transform"
+              style={{ background: "#00000015", color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}
+            >
+              Discard Deck / Start Over
+            </button>
+          </>
+        )}
+
+        {party.dungeonLuck > 0 && (
+          <div className="rounded p-2 mt-3 text-xs font-semibold flex items-center justify-between" style={{ background: "#fff", border: `1px solid ${palette.gold}`, color: palette.charcoal, fontFamily: "Crimson Pro, serif" }}>
+            <span>Dungeon Luck Points (party pool, lost on leaving): {party.dungeonLuck}</span>
+            <button
+              onClick={() => setParty((prev) => ({ ...prev, dungeonLuck: Math.max(0, prev.dungeonLuck - 1) }))}
+              className="text-xs px-2 py-1 rounded font-semibold"
+              style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
+            >
+              Spend 1
             </button>
           </div>
         )}
@@ -8945,6 +9332,7 @@ export default function App() {
     ["heroes", "Heroes", Users],
     ["combat", "Combat", Swords],
     ["alchemy", "Alchemy", FlaskConical],
+    ["actions", "Actions", ClipboardList],
     ["dice", "Dice", Dice5],
     ["quest", "Quest", Map],
     ["compendium", "Compendium", ScrollText],
@@ -9016,6 +9404,7 @@ export default function App() {
         )}
         {tab === "combat" && <CombatCalc heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
         {tab === "alchemy" && <AlchemyTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
+        {tab === "actions" && <ActionsTray party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />}
         {tab === "dice" && <DiceTray party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />}
         {tab === "quest" && <QuestRollerPanel />}
         {tab === "compendium" && <CompendiumTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}

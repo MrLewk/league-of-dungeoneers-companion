@@ -5381,7 +5381,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         <Panel className="mb-4">
           <SectionTitle icon={BookOpen}>Wizards' Guild — Learn a Spell</SectionTitle>
           <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-            200c + 100c per spell level above 1. Only available at the Wizards' Guild in Silver City. Takes 3 days.
+            200c + 100c per spell level above 1. Only available to Wizards and Druids, at the Wizards' Guild in Silver City. Takes 3 days.
           </p>
           <select
             value={learnSpellHero}
@@ -5443,7 +5443,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         <Panel className="mb-4">
           <SectionTitle icon={Sparkles}>Inner Sanctum — Learn a Prayer</SectionTitle>
           <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-            200c + 100c per prayer level above 1. Only available at the Inner Sanctum in Silver City. Takes 1 day.
+            200c + 100c per prayer level above 1. Only available to Warrior Priests, at the Inner Sanctum in Silver City. Takes 1 day.
           </p>
           <select
             value={learnPrayerHero}

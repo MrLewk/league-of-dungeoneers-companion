@@ -746,8 +746,6 @@ const SETTLEMENT_ACTIVITIES = [
   { name: "Horse Racing", where: "Horse tracks", ap: 1, locations: ["Horse Racing Track"], resolverName: "Horse Racing" },
   { name: "Identify a Magic Item", where: "Scryer or Wizards' Guild", ap: 1, locations: ["Scryer", "Guilds"] },
   { name: "Identify a Potion", where: "Alchemist Guild, The Magic Brewery, General Store", ap: 1, locations: ["Guilds", "Magic Brewery", "General Store"] },
-  { name: "Learn a Prayer", where: "Inner Sanctum, Silver City", ap: 1, locations: ["Inner Sanctum"] },
-  { name: "Learn a Spell", where: "Wizards' Guild", ap: 3, locations: ["Guilds"] },
   { name: "Level Up", where: "Any Settlement", ap: 0, locations: ["Any"] },
   { name: "Pray", where: "Temple", ap: 1, locations: ["Temples"], resolverName: "Pray" },
   { name: "Read your Fortune", where: "Fortune Teller", ap: 1, locations: ["Fortune Teller"], resolverName: "Fortune Teller" },
@@ -1835,9 +1833,10 @@ function CompendiumTab({ heroes, updateHero, addLog }) {
   ];
   const [, , items, showLevel, showType, field] = cats.find((c) => c[0] === cat);
   const pickedHero = heroes.find((h) => h.id === heroPick);
+  const isLearnedElsewhere = cat === "spells" || cat === "prayers";
 
   const addToHero = (name) => {
-    if (!pickedHero || !field) return;
+    if (!pickedHero || !field || isLearnedElsewhere) return;
     const list = pickedHero[field] || [];
     if (list.includes(name)) return;
     const effectPatch = field === "talents" ? talentEffectPatch(pickedHero, name, 1) : {};
@@ -1863,7 +1862,13 @@ function CompendiumTab({ heroes, updateHero, addLog }) {
         </div>
       </Panel>
 
-      {heroes.length > 0 && (
+      {isLearnedElsewhere ? (
+        <Panel className="mb-4">
+          <p className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+            {cat === "spells" ? "Spells" : "Prayers"} are learned (and cost-checked, and added to a hero's sheet automatically) from the {cat === "spells" ? "Wizards' Guild" : "Inner Sanctum"} box on the Settlements tab, when viewing Silver City. This tab is reference-only for {cat}.
+          </p>
+        </Panel>
+      ) : heroes.length > 0 && (
         <Panel className="mb-4">
           <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
             Attach to hero
@@ -1877,11 +1882,6 @@ function CompendiumTab({ heroes, updateHero, addLog }) {
               {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
             </select>
           </label>
-          {(cat === "spells" || cat === "prayers") && (
-            <p className="text-xs mt-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-              Added {cat} can be cast from the Combat tab once attached here.
-            </p>
-          )}
         </Panel>
       )}
 
@@ -1890,7 +1890,7 @@ function CompendiumTab({ heroes, updateHero, addLog }) {
           items={items}
           showLevel={showLevel}
           showType={showType}
-          onAdd={pickedHero ? addToHero : null}
+          onAdd={pickedHero && !isLearnedElsewhere ? addToHero : null}
           addedNames={pickedHero ? pickedHero[field] : []}
         />
       </Panel>
@@ -1917,6 +1917,19 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.29.9",
+    date: "2026-08-11",
+    sections: {
+      "Added": [
+        "New \"Wizards' Guild\" and \"Inner Sanctum\" boxes appear on the Settlements tab when viewing Silver City, for actually learning a spell or prayer — pick a hero, pick from spells/prayers at or below their level, cost auto-calculates at 200c + 100c per level above 1 (spells have a \"Found via Grimoire\" free option), and confirming deducts the coins and adds it straight to the hero's sheet",
+      ],
+      "Changed": [
+        "Spells and Prayers can no longer be attached to a hero from the Compendium tab — that was a free, uncosted shortcut with no level or location check. Compendium is now reference-only for these two categories; learning happens through the new Wizards' Guild / Inner Sanctum boxes instead. Talents, Perks, and Special Rules are unaffected. Anything already attached via the old Compendium button stays on the hero sheet untouched",
+        "\"Learn a Spell\" and \"Learn a Prayer\" removed from the general Activities/Resolve-an-Activity lists, since they now have their own dedicated boxes",
+      ],
+    },
+  },
   {
     version: "1.29.8",
     date: "2026-08-11",
@@ -4562,6 +4575,19 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
     resolvePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const settlementActivityFor = (resolverName) => SETTLEMENT_ACTIVITIES.find((a) => a.resolverName === resolverName);
+  const logSettlementAP = (heroId, name, ap) => {
+    if (!heroId) return;
+    setParty((prev) => {
+      const cur = prev.settlementAP?.[heroId] || { spent: 0, log: [] };
+      return {
+        ...prev,
+        settlementAP: {
+          ...(prev.settlementAP || {}),
+          [heroId]: { spent: cur.spent + ap, log: [...cur.log, { name, ap }] },
+        },
+      };
+    });
+  };
   const logResolverAP = () => {
     const match = settlementActivityFor(resolverActivity);
     if (!match || !resolvedHero) return;
@@ -4586,6 +4612,13 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const [resolverConditionId, setResolverConditionId] = useState("");
   const [resolverBankAmount, setResolverBankAmount] = useState(100);
   const [resolverResult, setResolverResult] = useState(null);
+  const [learnSpellHero, setLearnSpellHero] = useState("");
+  const [learnSpellName, setLearnSpellName] = useState("");
+  const [learnSpellGrimoire, setLearnSpellGrimoire] = useState(false);
+  const [learnSpellResult, setLearnSpellResult] = useState(null);
+  const [learnPrayerHero, setLearnPrayerHero] = useState("");
+  const [learnPrayerName, setLearnPrayerName] = useState("");
+  const [learnPrayerResult, setLearnPrayerResult] = useState(null);
   // Tracks opted-OUT heroes rather than opted-in, so heroes added later still default to selected.
   const [restExcluded, setRestExcluded] = useState(() => new Set());
 
@@ -5215,6 +5248,41 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
     addLog(line);
   };
 
+  const learnCost = (lvl) => 200 + 100 * (lvl - 1);
+
+  const confirmLearnSpell = () => {
+    const hero = heroes.find((h) => h.id === learnSpellHero);
+    const spell = SPELLS.find((s) => s.name === learnSpellName);
+    if (!hero || !spell) { setLearnSpellResult({ ok: false, line: "Pick a hero and a spell first." }); return; }
+    if ((hero.spells || []).includes(spell.name)) { setLearnSpellResult({ ok: false, line: `${hero.name} already knows ${spell.name}.` }); return; }
+    const cost = learnSpellGrimoire ? 0 : learnCost(spell.lvl);
+    if (cost > 0 && party.coins < cost) { setLearnSpellResult({ ok: false, line: `Can't afford it: ${cost}c needed, party only has ${party.coins}c.` }); return; }
+    if (cost > 0) setParty((prev) => ({ ...prev, coins: prev.coins - cost }));
+    updateHero({ ...hero, spells: [...(hero.spells || []), spell.name] });
+    logSettlementAP(hero.id, "Learn a Spell", 3);
+    const line = `${hero.name} learns ${spell.name} (Level ${spell.lvl}) at the Wizards' Guild${cost > 0 ? ` for ${cost}c` : " for free (found via Grimoire)"}. Takes 3 days.`;
+    setLearnSpellResult({ ok: true, line });
+    addLog(line);
+    setLearnSpellName("");
+    setLearnSpellGrimoire(false);
+  };
+
+  const confirmLearnPrayer = () => {
+    const hero = heroes.find((h) => h.id === learnPrayerHero);
+    const prayer = PRAYERS.find((p) => p.name === learnPrayerName);
+    if (!hero || !prayer) { setLearnPrayerResult({ ok: false, line: "Pick a hero and a prayer first." }); return; }
+    if ((hero.prayers || []).includes(prayer.name)) { setLearnPrayerResult({ ok: false, line: `${hero.name} already knows ${prayer.name}.` }); return; }
+    const cost = learnCost(prayer.lvl);
+    if (party.coins < cost) { setLearnPrayerResult({ ok: false, line: `Can't afford it: ${cost}c needed, party only has ${party.coins}c.` }); return; }
+    setParty((prev) => ({ ...prev, coins: prev.coins - cost }));
+    updateHero({ ...hero, prayers: [...(hero.prayers || []), prayer.name] });
+    logSettlementAP(hero.id, "Learn a Prayer", 1);
+    const line = `${hero.name} learns ${prayer.name} (Level ${prayer.lvl}) at the Inner Sanctum for ${cost}c. Takes 1 day.`;
+    setLearnPrayerResult({ ok: true, line });
+    addLog(line);
+    setLearnPrayerName("");
+  };
+
   return (
     <div>
       <Panel className="mb-4">
@@ -5308,6 +5376,124 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
           </div>
         )}
       </Panel>
+
+      {settlement && settlement.services.includes("Guilds") && (
+        <Panel className="mb-4">
+          <SectionTitle icon={BookOpen}>Wizards' Guild — Learn a Spell</SectionTitle>
+          <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            200c + 100c per spell level above 1. Only available at the Wizards' Guild in Silver City. Takes 3 days.
+          </p>
+          <select
+            value={learnSpellHero}
+            onChange={(e) => { setLearnSpellHero(e.target.value); setLearnSpellName(""); setLearnSpellResult(null); }}
+            className="w-full text-sm rounded px-2 py-1.5 mb-2"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            <option value="">Choose a hero…</option>
+            {heroes.filter((h) => CASTER_SKILL[h.profession]).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+          </select>
+          {learnSpellHero && (() => {
+            const hero = heroes.find((h) => h.id === learnSpellHero);
+            const available = SPELLS.filter((s) => s.lvl <= hero.level && !(hero.spells || []).includes(s.name));
+            return (
+              <>
+                <select
+                  value={learnSpellName}
+                  onChange={(e) => setLearnSpellName(e.target.value)}
+                  className="w-full text-sm rounded px-2 py-1.5 mb-2"
+                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                >
+                  <option value="">Choose a spell (Level ≤ {hero.level})…</option>
+                  {available.map((s) => <option key={s.name} value={s.name}>{s.name} (Level {s.lvl})</option>)}
+                </select>
+                {available.length === 0 && (
+                  <p className="text-xs mb-2" style={{ color: palette.inkSoft }}>No learnable spells left at {hero.name}'s level, or all known already.</p>
+                )}
+                {learnSpellName && (
+                  <>
+                    <label className="flex items-center gap-2 text-xs mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+                      <input type="checkbox" checked={learnSpellGrimoire} onChange={(e) => setLearnSpellGrimoire(e.target.checked)} />
+                      Found via Grimoire (free)
+                    </label>
+                    <p className="text-xs mb-2 font-semibold" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
+                      Cost: {learnSpellGrimoire ? "Free" : `${learnCost(SPELLS.find((s) => s.name === learnSpellName).lvl)}c`}
+                    </p>
+                  </>
+                )}
+                <button
+                  onClick={confirmLearnSpell}
+                  disabled={!learnSpellName}
+                  className="w-full text-xs px-2 py-2 rounded font-semibold"
+                  style={{ background: learnSpellName ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: learnSpellName ? 1 : 0.5 }}
+                >
+                  Learn Spell
+                </button>
+              </>
+            );
+          })()}
+          {learnSpellResult && (
+            <div className="mt-2 rounded p-2 text-xs" style={{ background: "#fff", border: `1px solid ${learnSpellResult.ok ? palette.line : palette.crimson}`, fontFamily: "Crimson Pro, serif", color: learnSpellResult.ok ? palette.forestDark : palette.crimson, fontWeight: 600 }}>
+              {learnSpellResult.line}
+            </div>
+          )}
+        </Panel>
+      )}
+
+      {settlement && settlement.services.includes("Inner Sanctum") && (
+        <Panel className="mb-4">
+          <SectionTitle icon={Sparkles}>Inner Sanctum — Learn a Prayer</SectionTitle>
+          <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            200c + 100c per prayer level above 1. Only available at the Inner Sanctum in Silver City. Takes 1 day.
+          </p>
+          <select
+            value={learnPrayerHero}
+            onChange={(e) => { setLearnPrayerHero(e.target.value); setLearnPrayerName(""); setLearnPrayerResult(null); }}
+            className="w-full text-sm rounded px-2 py-1.5 mb-2"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            <option value="">Choose a hero…</option>
+            {heroes.filter((h) => PRAYER_SKILL[h.profession]).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+          </select>
+          {learnPrayerHero && (() => {
+            const hero = heroes.find((h) => h.id === learnPrayerHero);
+            const available = PRAYERS.filter((p) => p.lvl <= hero.level && !(hero.prayers || []).includes(p.name));
+            return (
+              <>
+                <select
+                  value={learnPrayerName}
+                  onChange={(e) => setLearnPrayerName(e.target.value)}
+                  className="w-full text-sm rounded px-2 py-1.5 mb-2"
+                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                >
+                  <option value="">Choose a prayer (Level ≤ {hero.level})…</option>
+                  {available.map((p) => <option key={p.name} value={p.name}>{p.name} (Level {p.lvl})</option>)}
+                </select>
+                {available.length === 0 && (
+                  <p className="text-xs mb-2" style={{ color: palette.inkSoft }}>No learnable prayers left at {hero.name}'s level, or all known already.</p>
+                )}
+                {learnPrayerName && (
+                  <p className="text-xs mb-2 font-semibold" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
+                    Cost: {learnCost(PRAYERS.find((p) => p.name === learnPrayerName).lvl)}c
+                  </p>
+                )}
+                <button
+                  onClick={confirmLearnPrayer}
+                  disabled={!learnPrayerName}
+                  className="w-full text-xs px-2 py-2 rounded font-semibold"
+                  style={{ background: learnPrayerName ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: learnPrayerName ? 1 : 0.5 }}
+                >
+                  Learn Prayer
+                </button>
+              </>
+            );
+          })()}
+          {learnPrayerResult && (
+            <div className="mt-2 rounded p-2 text-xs" style={{ background: "#fff", border: `1px solid ${learnPrayerResult.ok ? palette.line : palette.crimson}`, fontFamily: "Crimson Pro, serif", color: learnPrayerResult.ok ? palette.forestDark : palette.crimson, fontWeight: 600 }}>
+              {learnPrayerResult.line}
+            </div>
+          )}
+        </Panel>
+      )}
 
       <Panel className="mb-4">
         <SectionTitle icon={Map}>Maps</SectionTitle>

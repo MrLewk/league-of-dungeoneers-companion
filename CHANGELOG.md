@@ -3,6 +3,15 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.29.9] — 2026-08-11
+
+### Added
+- New "Wizards' Guild" and "Inner Sanctum" boxes appear on the Settlements tab when viewing Silver City, for actually learning a spell or prayer — pick a hero, pick from spells/prayers at or below their level, cost auto-calculates at 200c + 100c per level above 1 (spells have a "Found via Grimoire" free option), and confirming deducts the coins and adds it straight to the hero's sheet
+
+### Changed
+- Spells and Prayers can no longer be attached to a hero from the Compendium tab — that was a free, uncosted shortcut with no level or location check. Compendium is now reference-only for these two categories; learning happens through the new Wizards' Guild / Inner Sanctum boxes instead. Talents, Perks, and Special Rules are unaffected. Anything already attached via the old Compendium button stays on the hero sheet untouched
+- "Learn a Spell" and "Learn a Prayer" removed from the general Activities/Resolve-an-Activity lists, since they now have their own dedicated boxes
+
 ## [1.29.8] — 2026-08-11
 
 ### Fixed

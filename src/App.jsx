@@ -758,7 +758,6 @@ const MANOR_ROOMS = [
   { name: "Smithy", cost: 350, effect: "All heroes may automatically repair 1d3 Durability Points on all weapons and armour." },
   { name: "Crops, Hen House, and Pigsty", cost: 200, effect: "If a hero spends at least a full day tending to these, the party receives 1d8 + the number of spent days in free rations." },
   { name: "Garden", cost: 200, effect: "An Alchemist may gather 1d6+2 random ingredients from the garden, once between each quest." },
-  { name: "Sacred Grove", cost: 400, effect: "Not found on p159 of this rulebook copy — possibly expansion content. Flagged for confirmation.", unconfirmed: true },
   { name: "Kennel", cost: 75, requiresExpansion: "The Companions' Expansion", effect: "Leave any owned dogs behind between quests instead of bringing them." },
 ];
 
@@ -2017,6 +2016,15 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.31.1",
+    date: "2026-08-12",
+    sections: {
+      "Removed": [
+        "Sacred Grove removed from Furnishing the Manor — confirmed as Druid-specific content (where Druids level up), tied to The False Prophet expansion, which isn't in scope for this app",
+      ],
+    },
+  },
   {
     version: "1.31.0",
     date: "2026-08-12",

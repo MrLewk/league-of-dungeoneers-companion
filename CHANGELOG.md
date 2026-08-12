@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.31.1] — 2026-08-12
+
+### Removed
+- Sacred Grove removed from Furnishing the Manor — confirmed as Druid-specific content (where Druids level up), tied to The False Prophet expansion, which isn't in scope for this app
+
 ## [1.31.0] — 2026-08-12
 
 ### Added

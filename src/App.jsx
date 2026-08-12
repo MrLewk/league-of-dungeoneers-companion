@@ -1957,6 +1957,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.30.1",
+    date: "2026-08-12",
+    sections: {
+      "Added": [
+        "Header now shows a small badge stating which rulebook and QRS versions the app is built against (Core Rulebook v2.4 · QRS v2.24)",
+      ],
+    },
+  },
+  {
     version: "1.30.0",
     date: "2026-08-11",
     sections: {
@@ -9357,6 +9366,13 @@ export default function App() {
             <p style={{ color: "#B8A78A", fontFamily: "Crimson Pro, serif" }} className="text-xs italic">
               {campaigns.find((c) => c.id === campaignId)?.name || "Companion & Ledger"}
             </p>
+            <span
+              className="inline-block mt-1 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full"
+              style={{ background: "rgba(212,175,110,0.15)", color: palette.goldSoft, border: `1px solid ${palette.goldSoft}`, fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.03em" }}
+              title="This app is built against Core Rulebook v2.4 and QRS v2.24"
+            >
+              Rulebook v2.4 · QRS v2.24
+            </span>
           </div>
           <span className="text-xs" style={{ color: "#B8A78A", fontFamily: "JetBrains Mono, monospace" }}>
             {saveState === "saving" ? "saving…" : saveState === "saved" ? "saved ✓" : saveState === "error" ? "save failed" : ""}

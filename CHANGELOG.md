@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.30.1] — 2026-08-12
+
+### Added
+- Header now shows a small badge stating which rulebook and QRS versions the app is built against (Core Rulebook v2.4 · QRS v2.24)
+
 ## [1.30.0] — 2026-08-11
 
 ### Added

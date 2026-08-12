@@ -459,11 +459,25 @@ const defaultParty = () => ({
   travelLog: [], // [{label, cost}] — hexes entered so far today
   hungry: false,
   hungerConDeltas: {}, // heroId -> amount subtracted from CON, restored when the party eats again
+  estate: {
+    owned: false, rooms: [], items: [], pendingRoom: null, shrineGod: null,
+    heroTraining: {}, // heroId -> "Archery Range" | "Training Grounds", cleared each dungeon cycle
+    alchemistLabUsed: false, gardenUsed: false, // reset each dungeon cycle
+  },
+  transport: { horses: 0, camels: 0, mules: 0, wagons: 0, saddlebags: 0 }, // bought at Alberta's Magnificent Animals, Whiteport
+  storage: { mule: [], wagon: [], saddlebags: [] }, // ENC-capped item lists per transport type
+  grievingMother: "none", // "none" | "triggered" | "succeeded" | "failed"
+  pendingGhostlyEvent: null, // forces the next Ghostly Events roll straight to a specific entry (e.g. 8, after failing the Grieving Mother)
 });
 
 // Fills in any fields missing from a party saved before this update.
 function normalizeParty(p) {
-  return { ...defaultParty(), ...(p || {}) };
+  const merged = { ...defaultParty(), ...(p || {}) };
+  merged.estate = { ...defaultParty().estate, ...(p?.estate || {}) };
+  merged.estate.heroTraining = { ...(p?.estate?.heroTraining || {}) };
+  merged.transport = { ...defaultParty().transport, ...(p?.transport || {}) };
+  merged.storage = { ...defaultParty().storage, ...(p?.storage || {}) };
+  return merged;
 }
 
 const SANITY_EVENTS = [
@@ -733,6 +747,36 @@ const QUEST_AVAILABILITY = [
 // `locations` uses the standardized category names from SETTLEMENTS.services, so the
 // Settlement tab can filter this list down to what's actually offered at the current
 // settlement. "Any" means it doesn't depend on a specific shop/building.
+// Room costs and effects confirmed from rulebook p159. "Only one thing may be bought
+// in between every quest, and it cannot be used until after leaving the next dungeon."
+const MANOR_ROOMS = [
+  { name: "Alchemist Lab", cost: 500, effect: "An Alchemist making a recipe here may choose what kind of potion it yields. Only one recipe may be made between each dungeon visit." },
+  { name: "Archery Range", cost: 500, effect: "Any hero staying at the manor may increase their RS by +1d2, once between each visit to a dungeon. A hero may train at the Archery Range OR the Training Grounds, not both." },
+  { name: "Training Grounds", cost: 500, effect: "Any hero may increase CS or Dodge (choice) by +1d2, once between each visit to a dungeon. A hero may train at the Archery Range OR the Training Grounds, not both." },
+  { name: "Wizard's Study", cost: 500, effect: "A wizard may store any number of Familiars here for free (Companions' Expansion). Any Enchantment or Magic Scribble cast here gets a +20 modifier." },
+  { name: "Shrine", cost: 350, effect: "Dedicated to one god of the hero's choice (only one shrine, due to rivalry between gods). Any hero may pray at the shrine between quests for the standard boon, for free, succeeding on 1-4 on 1d6." },
+  { name: "Smithy", cost: 350, effect: "All heroes may automatically repair 1d3 Durability Points on all weapons and armour." },
+  { name: "Crops, Hen House, and Pigsty", cost: 200, effect: "If a hero spends at least a full day tending to these, the party receives 1d8 + the number of spent days in free rations." },
+  { name: "Garden", cost: 200, effect: "An Alchemist may gather 1d6+2 random ingredients from the garden, once between each quest." },
+  { name: "Sacred Grove", cost: 400, effect: "Not found on p159 of this rulebook copy — possibly expansion content. Flagged for confirmation.", unconfirmed: true },
+  { name: "Kennel", cost: 75, requiresExpansion: "The Companions' Expansion", effect: "Leave any owned dogs behind between quests instead of bringing them." },
+];
+
+// Ghostly Events Table (p160-161). Trigger: roll 1d10 the night before departure — on 7-10,
+// roll again on this table (also 1d10).
+const GHOSTLY_EVENTS = [
+  { roll: 1, name: "The Family Heirlooms", text: "The heroes may roll twice on the Wonderful Treasure deck. However, the lack of sleep deprives each hero of 1 Point of Energy." },
+  { roll: 2, name: "Guardian Spirits", text: "+1 Luck for all heroes during the coming quest." },
+  { roll: 3, name: "The Hidden Treasure", text: "Add a Side Quest Card to the first half of the pile when setting up the Dungeon Cards. When drawn, remove it and immediately draw the next card. On that card, add 1 extra door leading to the R10 tile — a normal door in all aspects, can be locked/trapped, but no encounters inside." },
+  { roll: 4, name: "Spiritual Guides", text: "All heroes get +5 CS / +5 RS during the coming quest." },
+  { roll: 5, name: "Protector", text: "Any wizard in the party will only miscast on 97-00 during the coming quest. If there's no wizard, ignore this and head out without any ghostly events." },
+  { roll: 6, name: "The Grieving Mother", text: "See the Grieving Mother Side Quest. If already succeeded, treat this as #2 instead. If tried and failed, may try again." },
+  { roll: 7, name: "Angered Ghost", text: "Any rations from the Crops, Hen House, and Pigsty are lost." },
+  { roll: 8, name: "Restless Night", text: "All heroes start the next quest with -2 Energy (minimum 0). Regained as usual after the quest has started." },
+  { roll: 9, name: "Lost Item", text: "Randomise which hero is affected, then randomise between all weapons, all pieces of armour, and all rations (a single item/category). It's left back at the estate and can't be used until after the next dungeon." },
+  { roll: 10, name: "The Curse", text: "Every hero suffers an individual curse from the Curse Table, which can't be lifted until they're back in the city." },
+];
+
 const SETTLEMENT_ACTIVITIES = [
   { name: "Arena Fighting", where: "Arena", ap: 1, locations: ["Arena"], resolverName: "Arena Fighting" },
   { name: "Banking", where: "Banks", ap: 1, locations: ["Banks"], resolverName: "Banking" },
@@ -932,6 +976,17 @@ const INGREDIENTS_TABLE = [
 const ALCHEMY_INGREDIENT_NAMES = INGREDIENTS_TABLE.map((r) => r.name);
 function ingredientsTableLookup(habitat, roll) {
   return INGREDIENTS_TABLE.find((row) => row[habitat] && roll >= row[habitat][0] && roll <= row[habitat][1]);
+}
+// Pure version of AlchemyTab's addComponent, for use anywhere a hero's alchemyComponents list needs updating
+// without needing the whole AlchemyTab component (e.g. the Estate Garden room).
+function addAlchemyComponent(hero, name, type, qty, exquisite) {
+  const existing = (hero.alchemyComponents || []).find((c) => c.name === name);
+  if (existing) {
+    return hero.alchemyComponents.map((c) =>
+      c.name === name ? { ...c, qty: c.qty + (exquisite ? 0 : qty), exquisiteQty: c.exquisiteQty + (exquisite ? qty : 0) } : c
+    );
+  }
+  return [...(hero.alchemyComponents || []), { id: uid(), name, type, qty: exquisite ? 0 : qty, exquisiteQty: exquisite ? qty : 0 }];
 }
 
 // Common Recipes (p76) — widely known among alchemists; available to any hero with the
@@ -1962,6 +2017,21 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.31.0",
+    date: "2026-08-12",
+    sections: {
+      "Added": [
+        "Buying an Estate (Settlements tab, Silver City only): 4000c one-time purchase, waives the inn fee automatically whenever the party stays overnight in Silver City",
+        "Furnishing the Manor: all 9 confirmed rooms from p159 (Alchemist Lab, Archery Range, Training Grounds, Wizard's Study, Shrine, Smithy, Crops/Hen House/Pigsty, Garden, Kennel), correctly limited to one commission between quests that isn't usable until after the next dungeon trip. Archery Range/Training Grounds, Shrine, Smithy, Crops, and Garden each get a working resolver (per-hero +1d2 training, free Pray with 1-4 on 1d6, party-wide +1d3 Durability repair, 1d8+days rations, 1d6+2 ingredient gather straight into the Alchemist's components) — Alchemist Lab/Wizard's Study/Kennel show their effect text but hook into other tabs or the Companions' Expansion instead of a dedicated resolver. A 10th room, \"Sacred Grove\", is included but flagged unconfirmed pending rulebook verification",
+        "Estate Storage: an unlimited item list at the estate, same editable ENC/Value/Durability fields as a hero's backpack",
+        "Ghostly Events: the full 1d10 trigger roll (7-10 on the night before departure) plus the 10-entry Ghostly Events Table, 8 of 10 entries fully mechanized (Luck/CS/RS/Energy buffs and penalties, wizard miscast range, and — reusing the same Curse Table as the Fortune Teller — a full multi-hero Curse resolution). Family Heirlooms and Hidden Treasure correctly surface as physical card-draw/dungeon-setup prompts rather than fabricated rolls",
+        "Side Quest: The Grieving Mother — full state tracker (triggered/succeeded/failed) with the quest's read-aloud text, a reward flow that adds the actual magical Longsword (+2 DMG) to a chosen hero's backpack, and automatic queuing of the forced Ghostly Event #8 on failure",
+        "Alberta's Magnificent Animals (Settlements tab, Whiteport only): purchase Horses, Camels, Saddlebags, Mules, and Wagons at their real costs, tracked as party-owned counts",
+        "Storage panel on the Travel tab: Mule (100 ENC), Wagon (500 ENC), and Saddlebags (10 ENC each) capacity, scaled by how many are owned, using the same item-list component as Estate Storage",
+      ],
+    },
+  },
   {
     version: "1.30.2",
     date: "2026-08-12",
@@ -3031,6 +3101,66 @@ function SectionTitle({ icon: Icon, children }) {
       >
         {children}
       </h3>
+    </div>
+  );
+}
+
+// Reusable ENC-tracked item list — used for Estate storage (no cap) and Mule/Wagon/Saddlebags (capped).
+function StorageBox({ items, onChange, cap }) {
+  const totalEnc = items.reduce((s, i) => s + (Number(i.enc) || 0), 0);
+  const addItem = () => onChange([...items, { id: uid(), name: "", value: "", enc: "", dur: "" }]);
+  const updateItem = (id, patch) => onChange(items.map((it) => (it.id === id ? { ...it, ...patch } : it)));
+  const removeItem = (id) => onChange(items.filter((it) => it.id !== id));
+
+  return (
+    <div>
+      {cap != null && (
+        <div className="flex justify-between items-baseline mb-2">
+          <span className="text-xs font-semibold" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>
+            {totalEnc} / {cap} ENC
+          </span>
+          {totalEnc > cap && <span className="text-[10px] font-semibold" style={{ color: palette.crimson }}>Overloaded</span>}
+        </div>
+      )}
+      <div className="space-y-1.5 mb-2">
+        {items.map((item) => (
+          <div key={item.id} className="rounded px-2 py-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <input
+                value={item.name}
+                onChange={(e) => updateItem(item.id, { name: e.target.value })}
+                placeholder="Item name"
+                className="flex-1 min-w-0 text-sm font-bold rounded px-2 py-1"
+                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Cinzel, serif", color: palette.ink }}
+              />
+              <button onClick={() => removeItem(item.id)} className="w-6 h-6 shrink-0 flex items-center justify-center" style={{ color: palette.crimson }}>
+                <Trash2 size={13} />
+              </button>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <label className="flex items-center gap-1 text-[10px]" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+                Val
+                <input value={item.value} onChange={(e) => updateItem(item.id, { value: e.target.value })} className="w-12 rounded px-1 py-0.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+              </label>
+              <label className="flex items-center gap-1 text-[10px]" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+                ENC
+                <input value={item.enc} onChange={(e) => updateItem(item.id, { enc: e.target.value })} className="w-10 rounded px-1 py-0.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+              </label>
+              <label className="flex items-center gap-1 text-[10px]" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+                Dur
+                <input value={item.dur} onChange={(e) => updateItem(item.id, { dur: e.target.value })} className="w-12 rounded px-1 py-0.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+              </label>
+            </div>
+          </div>
+        ))}
+      </div>
+      <button
+        onClick={addItem}
+        className="w-full flex items-center justify-center gap-1.5 text-xs py-1.5 rounded font-semibold"
+        style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+      >
+        <Plus size={13} /> Add Item
+      </button>
     </div>
   );
 }
@@ -4695,6 +4825,20 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const [learnPrayerHero, setLearnPrayerHero] = useState("");
   const [learnPrayerName, setLearnPrayerName] = useState("");
   const [learnPrayerResult, setLearnPrayerResult] = useState(null);
+  const [estateMsg, setEstateMsg] = useState(null);
+  const [trainHero, setTrainHero] = useState("");
+  const [trainResult, setTrainResult] = useState(null);
+  const [smithyResult, setSmithyResult] = useState(null);
+  const [cropsDays, setCropsDays] = useState(1);
+  const [cropsResult, setCropsResult] = useState(null);
+  const [gardenHero, setGardenHero] = useState("");
+  const [gardenHabitat, setGardenHabitat] = useState("Plains");
+  const [gardenResult, setGardenResult] = useState(null);
+  const [shrinePrayHero, setShrinePrayHero] = useState("");
+  const [shrineResult, setShrineResult] = useState(null);
+  const [trainChoice, setTrainChoice] = useState("CS");
+  const [ghostlyResult, setGhostlyResult] = useState(null);
+  const [gmRewardHero, setGmRewardHero] = useState("");
   // Tracks opted-OUT heroes rather than opted-in, so heroes added later still default to selected.
   const [restExcluded, setRestExcluded] = useState(() => new Set());
 
@@ -4856,7 +5000,8 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const restAtInn = () => {
     const selected = heroes.filter((h) => !restExcluded.has(h.id));
     if (selected.length === 0) return;
-    const canAfford = party.innCostPerNight <= party.coins;
+    const freeStay = isSilverCity && party.estate?.owned;
+    const canAfford = freeStay || party.innCostPerNight <= party.coins;
     const summary = [];
     selected.forEach((hero) => {
       let newHp, newMana, newEnergy, newLuck;
@@ -4887,7 +5032,10 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         luck: { ...hero.luck, cur: newLuck },
       });
     });
-    if (canAfford && party.innCostPerNight > 0) {
+    if (freeStay) {
+      summary.push(`Stayed at the Estate — no fee (the party owns the Key to the House).`);
+      addLog(`Party stays at the Estate for free — no inn fee owed.`);
+    } else if (canAfford && party.innCostPerNight > 0) {
       setParty((prev) => ({ ...prev, coins: prev.coins - prev.innCostPerNight }));
       summary.push(`Paid ${party.innCostPerNight}c for the inn.`);
       addLog(`Paid ${party.innCostPerNight}c for the inn (whole party).`);
@@ -5359,6 +5507,216 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
     setLearnPrayerName("");
   };
 
+  // ---------- Estate: Furnishing the Manor resolvers ----------
+  const buyRoom = (room) => {
+    if (party.estate.pendingRoom) { setEstateMsg({ ok: false, line: "Only one thing may be commissioned between quests — activate the pending room first (once you've returned from your next dungeon trip)." }); return; }
+    if (party.coins < room.cost) { setEstateMsg({ ok: false, line: `Can't afford ${room.name}: ${room.cost}c needed, party only has ${party.coins}c.` }); return; }
+    setParty((prev) => ({ ...prev, coins: prev.coins - room.cost, estate: { ...prev.estate, pendingRoom: { name: room.name, cost: room.cost } } }));
+    setEstateMsg({ ok: true, line: `${room.name} commissioned for ${room.cost}c. It'll be ready once you've left your next dungeon.` });
+    addLog(`The party commissions a ${room.name} at the estate for ${room.cost}c.`);
+  };
+  const activatePendingRoom = () => {
+    const pending = party.estate.pendingRoom;
+    if (!pending) return;
+    setParty((prev) => ({ ...prev, estate: { ...prev.estate, rooms: [...prev.estate.rooms, pending.name], pendingRoom: null } }));
+    setEstateMsg({ ok: true, line: `${pending.name} is now ready to use.` });
+    addLog(`The ${pending.name} at the estate is now furnished and ready.`);
+  };
+
+  const trainAtManor = (which) => {
+    const hero = heroes.find((h) => h.id === trainHero);
+    if (!hero) { setTrainResult({ ok: false, line: "Pick a hero first." }); return; }
+    if ((party.estate.heroTraining || {})[hero.id]) { setTrainResult({ ok: false, line: `${hero.name} already trained between this visit and the next dungeon.` }); return; }
+    const roll = rollDie(2);
+    let patch, line;
+    if (which === "Archery Range") {
+      patch = addTempEffect(hero, `Manor training: Archery Range (+${roll} RS)`, { skill: "rs", amount: roll });
+      line = `${hero.name} trains at the Archery Range: +${roll} RS.`;
+    } else {
+      // Training Grounds — choice of CS or Dodge
+      patch = addTempEffect(hero, `Manor training: Training Grounds (+${roll} ${trainChoice})`, { skill: trainChoice === "Dodge" ? "dodge" : "cs", amount: roll });
+      line = `${hero.name} trains at the Training Grounds: +${roll} ${trainChoice}.`;
+    }
+    updateHero({ ...hero, ...patch });
+    setParty((prev) => ({ ...prev, estate: { ...prev.estate, heroTraining: { ...prev.estate.heroTraining, [hero.id]: which } } }));
+    setTrainResult({ ok: true, line: `${line} (see Temporary Effects on ${hero.name}'s card).` });
+    addLog(line);
+  };
+
+  const repairAtSmithy = () => {
+    const roll = rollDie(3);
+    heroes.forEach((h) => {
+      const weapon = h.weapon?.dur ? { ...h.weapon, dur: { ...h.weapon.dur, cur: Math.min(h.weapon.dur.max, h.weapon.dur.cur + roll) } } : h.weapon;
+      const armour = { ...h.armour };
+      ["head", "arms", "torso", "legs"].forEach((slot) => {
+        if (armour[slot]?.dur) armour[slot] = { ...armour[slot], dur: { ...armour[slot].dur, cur: Math.min(armour[slot].dur.max, armour[slot].dur.cur + roll) } };
+      });
+      updateHero({ ...h, weapon, armour });
+    });
+    const line = `Rolled ${roll} — every hero's weapon and armour repaired +${roll} Durability at the Smithy.`;
+    setSmithyResult({ line });
+    addLog(`Smithy: ${line}`);
+  };
+
+  const tendCrops = () => {
+    const days = Math.max(1, Number(cropsDays) || 1);
+    const roll = rollDie(8);
+    const gained = roll + days;
+    setParty((prev) => ({ ...prev, food: (prev.food || 0) + gained }));
+    const line = `Rolled ${roll} + ${days} day(s) tending = ${gained} free rations.`;
+    setCropsResult({ line });
+    addLog(`Crops, Hen House, and Pigsty: ${line}`);
+  };
+
+  const gatherFromGarden = () => {
+    if (party.estate.gardenUsed) { setGardenResult({ ok: false, line: "Already gathered from the garden between this visit and the next dungeon." }); return; }
+    const hero = heroes.find((h) => h.id === gardenHero);
+    if (!hero) { setGardenResult({ ok: false, line: "Pick the Alchemist first." }); return; }
+    const qty = rollDie(6) + 2;
+    let current = hero;
+    const found = [];
+    for (let i = 0; i < qty; i++) {
+      const tableRoll = rollPercent();
+      const entry = ingredientsTableLookup(gardenHabitat, tableRoll);
+      if (entry) {
+        found.push(entry.name);
+        current = { ...current, alchemyComponents: addAlchemyComponent(current, entry.name, "Ingredient", 1, false) };
+      }
+    }
+    updateHero(current);
+    setParty((prev) => ({ ...prev, estate: { ...prev.estate, gardenUsed: true } }));
+    const line = `${hero.name} gathers ${qty} ingredients from the garden: ${found.join(", ") || "nothing usable came up"}.`;
+    setGardenResult({ ok: true, line });
+    addLog(`Garden: ${line}`);
+  };
+
+  const prayAtShrine = () => {
+    if (!party.estate.shrineGod) { setShrineResult({ ok: false, line: "Choose which god the shrine is dedicated to first." }); return; }
+    const hero = heroes.find((h) => h.id === shrinePrayHero);
+    if (!hero) { setShrineResult({ ok: false, line: "Pick a hero first." }); return; }
+    const roll = rollDie(6);
+    if (roll > 4) {
+      setShrineResult({ ok: true, line: `Rolled ${roll} — ${party.estate.shrineGod} doesn't answer this time. (Free — no offering needed.)` });
+      addLog(`${hero.name} prays at the estate shrine of ${party.estate.shrineGod}: no answer (rolled ${roll}).`);
+      return;
+    }
+    const boon = TEMPLE_BOONS[party.estate.shrineGod];
+    let effect, line = boon.label;
+    if (boon.kind === "stat") effect = { stat: boon.stat, amount: boon.amount };
+    else if (boon.kind === "hp") effect = { hp: boon.amount };
+    else if (boon.kind === "luck") effect = { luck: boon.amount };
+    else if (boon.kind === "energy") effect = { energy: boon.amount };
+    else if (boon.kind === "choice") { effect = { skill: "cs", amount: boon.amount }; line = `+5 CS (Ohlnir's boon; use the Temple resolver for the RS option)`; }
+    updateHero({ ...hero, ...addTempEffect(hero, `Estate Shrine (${party.estate.shrineGod}): ${line}`, effect) });
+    setShrineResult({ ok: true, line: `Rolled ${roll} — ${party.estate.shrineGod} answers! ${line} applied — see Temporary Effects on ${hero.name}'s card.` });
+    addLog(`${hero.name} prays at the estate shrine of ${party.estate.shrineGod}: success (${roll}). ${line}.`);
+  };
+
+  // ---------- Ghostly Events ----------
+  const applyGhostlyEntry = (rollValue, prefix) => {
+    let effectiveRoll = rollValue;
+    let redirectNote = "";
+    if (effectiveRoll === 6 && party.grievingMother === "succeeded") {
+      effectiveRoll = 2;
+      redirectNote = " (already succeeded the Grieving Mother — treated as #2 instead)";
+    }
+    const entry = GHOSTLY_EVENTS.find((e) => e.roll === effectiveRoll);
+    const lines = [`${prefix}${rollValue} — #${effectiveRoll} ${entry.name}${redirectNote}.`, entry.text];
+
+    if (effectiveRoll === 1) {
+      heroes.forEach((h) => updateHero({ ...h, energy: { ...h.energy, cur: Math.max(0, h.energy.cur - 1) } }));
+      lines.push("Draw 2 cards from the Wonderful Treasure deck. Every hero's Energy -1 (applied).");
+    } else if (effectiveRoll === 2) {
+      heroes.forEach((h) => updateHero({ ...h, ...addTempEffect(h, "Ghostly Event: Guardian Spirits (+1 Luck)", { luck: 1 }) }));
+      lines.push("+1 Luck applied to every hero (see Temporary Effects).");
+    } else if (effectiveRoll === 3) {
+      lines.push("Remember to add the Side Quest Card and the extra R10 door when building the dungeon this trip.");
+    } else if (effectiveRoll === 4) {
+      heroes.forEach((h) => {
+        const withCs = { ...h, ...addTempEffect(h, "Ghostly Event: Spiritual Guides (+5 CS)", { skill: "cs", amount: 5 }) };
+        updateHero({ ...withCs, ...addTempEffect(withCs, "Ghostly Event: Spiritual Guides (+5 RS)", { skill: "rs", amount: 5 }) });
+      });
+      lines.push("+5 CS / +5 RS applied to every hero (see Temporary Effects).");
+    } else if (effectiveRoll === 5) {
+      const wizard = heroes.find((h) => h.profession === "Wizard");
+      if (wizard) {
+        updateHero({ ...wizard, ...addTempEffect(wizard, "Ghostly Event: Protector (miscasts only on 97-00)", null) });
+        lines.push(`${wizard.name} only miscasts on 97-00 this quest (reminder added to Temporary Effects).`);
+      } else {
+        lines.push("No wizard in the party — no effect.");
+      }
+    } else if (effectiveRoll === 6) {
+      setParty((prev) => ({ ...prev, grievingMother: "triggered" }));
+      lines.push("The Grieving Mother side quest is now active — see the tracker below.");
+    } else if (effectiveRoll === 7) {
+      lines.push("If you're tracking Crops/Hen House/Pigsty rations separately from the rest, remove them now — this app pools all rations together, so apply manually.");
+    } else if (effectiveRoll === 8) {
+      heroes.forEach((h) => updateHero({ ...h, energy: { ...h.energy, cur: Math.max(0, h.energy.cur - 2) } }));
+      lines.push("Every hero's Energy -2 (min 0), applied.");
+    } else if (effectiveRoll === 9) {
+      const victim = heroes[Math.floor(Math.random() * heroes.length)];
+      if (!victim) { lines.push("No heroes to affect."); }
+      else {
+        const category = ["Weapon", "Armour", "Rations"][Math.floor(Math.random() * 3)];
+        let itemLine = category;
+        if (category === "Weapon" && victim.weapon?.name) itemLine = `Weapon: ${victim.weapon.name}`;
+        else if (category === "Armour") {
+          const worn = ["head", "arms", "torso", "legs"].map((slot) => victim.armour?.[slot]?.name).filter(Boolean);
+          if (worn.length) itemLine = `Armour: ${worn[Math.floor(Math.random() * worn.length)]}`;
+        } else if (category === "Rations") itemLine = "1 Ration";
+        lines.push(`${victim.name} loses access to their ${itemLine} until after the next dungeon (remove it manually — this app doesn't track locked items yet).`);
+      }
+    } else if (effectiveRoll === 10) {
+      heroes.forEach((h) => {
+        const curseRoll = rollDie(10);
+        const curse = CURSES_TABLE.find((c) => c.roll === curseRoll);
+        let effect = curse.effect;
+        let detail = curse.text;
+        if (effect === "randomSkill") {
+          const key = Object.keys(SKILL_LABELS)[Math.floor(Math.random() * Object.keys(SKILL_LABELS).length)];
+          effect = { skill: key, amount: -5 };
+          detail = `${SKILL_LABELS[key]} -5`;
+        }
+        updateHero({ ...h, ...addTempEffect(h, `Ghostly Event: The Curse (${detail})`, effect) });
+        lines.push(`${h.name}: curse roll ${curseRoll} → ${detail} (applied — lasts until back in the city).`);
+      });
+    }
+
+    setGhostlyResult({ lines });
+    addLog(`Ghostly Events: ${lines.join(" ")}`);
+  };
+
+  const rollGhostlyEvents = () => {
+    if (party.pendingGhostlyEvent) {
+      const forced = party.pendingGhostlyEvent;
+      setParty((prev) => ({ ...prev, pendingGhostlyEvent: null }));
+      applyGhostlyEntry(forced, "Forced by a failed Grieving Mother attempt — automatically rolling #");
+      return;
+    }
+    const triggerRoll = rollDie(10);
+    if (triggerRoll < 7) {
+      const line = `Rolled ${triggerRoll} on the trigger roll — no contact tonight.`;
+      setGhostlyResult({ lines: [line] });
+      addLog(`Ghostly Events: ${line}`);
+      return;
+    }
+    const tableRoll = rollDie(10);
+    applyGhostlyEntry(tableRoll, `Trigger roll ${triggerRoll} (contact!). Table roll `);
+  };
+
+  // ---------- The Grieving Mother ----------
+  const markGrievingMotherFailed = () => {
+    setParty((prev) => ({ ...prev, grievingMother: "failed", pendingGhostlyEvent: 8 }));
+    addLog("The Grieving Mother side quest ends in failure — Ghostly Event #8 (Restless Night) will automatically trigger before the next quest.");
+  };
+  const markGrievingMotherSucceeded = () => {
+    const hero = heroes.find((h) => h.id === gmRewardHero);
+    if (!hero) return;
+    updateHero({ ...hero, backpack: [...hero.backpack, { id: uid(), name: "Longsword (magical, +2 DMG)", value: "", enc: 10, dur: "6/6" }] });
+    setParty((prev) => ({ ...prev, grievingMother: "succeeded" }));
+    addLog(`${hero.name} buries the remains at the estate. The next morning, a magical Longsword (+2 DMG) is found on the dining table. The old lady is never seen again.`);
+  };
+
   return (
     <div>
       <Panel className="mb-4">
@@ -5568,6 +5926,251 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
               {learnPrayerResult.line}
             </div>
           )}
+        </Panel>
+      )}
+
+      {isSilverCity && (
+        <Panel className="mb-4">
+          <SectionTitle icon={Landmark}>{party.estate?.owned ? "Your Estate" : "Buying an Estate"}</SectionTitle>
+
+          {!party.estate?.owned ? (
+            <>
+              <p className="text-xs mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+                A one-time purchase of the Key to the House. Once owned, the party can stay at the estate instead of paying the inn, and store unlimited excess equipment there.
+              </p>
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-semibold" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>4000c</span>
+                <button
+                  onClick={() => {
+                    if (party.coins < 4000) { setEstateMsg({ ok: false, line: `Can't afford it: 4000c needed, party only has ${party.coins}c.` }); return; }
+                    setParty((prev) => ({ ...prev, coins: prev.coins - 4000, estate: { owned: true, rooms: [], items: [] } }));
+                    setEstateMsg({ ok: true, line: "The party now owns the Key to the House." });
+                    addLog("The party buys an Estate in Silver City for 4000c.");
+                  }}
+                  className="text-xs px-3 py-1.5 rounded font-semibold"
+                  style={{ background: palette.crimsonDark, color: palette.parchment }}
+                >
+                  Buy the Estate
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink, fontStyle: "italic" }}>
+                No inn fee while staying here. (The rulebook also allows unlimited equipment storage at the estate — this app doesn't have per-location inventory tracking yet, so treat items as available whenever convenient.)
+              </p>
+              <p className="text-xs font-semibold mb-2" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Furnishing the Manor</p>
+              <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+                Only one thing may be commissioned between quests, and it isn't usable until after leaving the next dungeon.
+              </p>
+
+              {party.estate.pendingRoom && (
+                <div className="flex justify-between items-center text-xs rounded px-2 py-2 mb-2" style={{ background: "#fff", border: `1px solid ${palette.crimson}` }}>
+                  <span style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+                    <b>{party.estate.pendingRoom.name}</b> commissioned — ready after your next dungeon trip.
+                  </span>
+                  <button onClick={activatePendingRoom} className="text-[10px] px-2 py-1 rounded font-semibold shrink-0 ml-2" style={{ background: palette.crimsonDark, color: palette.parchment }}>
+                    Activate Now
+                  </button>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                {MANOR_ROOMS.map((room) => {
+                  const owned = (party.estate.rooms || []).includes(room.name);
+                  return (
+                    <div key={room.name} className="text-xs rounded px-2 py-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <span className="font-semibold" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>{room.name}</span>
+                          {room.requiresExpansion && <span className="block text-[10px]" style={{ color: palette.crimson }}>Requires {room.requiresExpansion}</span>}
+                          {room.unconfirmed && <span className="block text-[10px]" style={{ color: palette.crimson }}>Unconfirmed — see note below</span>}
+                          {!owned && <span className="block text-[10px] italic" style={{ color: palette.inkSoft }}>{room.cost}c</span>}
+                        </div>
+                        {owned ? (
+                          <span className="text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 ml-2" style={{ background: "#00000010", color: palette.forestDark }}>Built</span>
+                        ) : (
+                          <button onClick={() => buyRoom(room)} className="text-[10px] px-2 py-1 rounded font-semibold shrink-0 ml-2" style={{ background: palette.crimsonDark, color: palette.parchment }}>
+                            Commission
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[10px] mt-1 italic" style={{ color: palette.inkSoft }}>{room.effect}</p>
+
+                      {owned && (room.name === "Archery Range" || room.name === "Training Grounds") && (
+                        <div className="mt-2 pt-2" style={{ borderTop: `1px solid ${palette.line}` }}>
+                          <select value={trainHero} onChange={(e) => { setTrainHero(e.target.value); setTrainResult(null); }} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+                            <option value="">Choose a hero to train…</option>
+                            {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                          </select>
+                          {room.name === "Training Grounds" && (
+                            <div className="flex gap-1.5 mb-1.5">
+                              {["CS", "Dodge"].map((c) => (
+                                <button key={c} onClick={() => setTrainChoice(c)} className="flex-1 text-[10px] px-2 py-1 rounded font-semibold" style={{ background: trainChoice === c ? palette.crimsonDark : "#00000010", color: trainChoice === c ? palette.parchment : palette.ink }}>{c}</button>
+                              ))}
+                            </div>
+                          )}
+                          <button onClick={() => trainAtManor(room.name)} disabled={!trainHero} className="w-full text-[10px] px-2 py-1.5 rounded font-semibold" style={{ background: trainHero ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: trainHero ? 1 : 0.5 }}>
+                            Train (+1d2)
+                          </button>
+                        </div>
+                      )}
+
+                      {owned && room.name === "Shrine" && (
+                        <div className="mt-2 pt-2" style={{ borderTop: `1px solid ${palette.line}` }}>
+                          {!party.estate.shrineGod ? (
+                            <select onChange={(e) => e.target.value && setParty((prev) => ({ ...prev, estate: { ...prev.estate, shrineGod: e.target.value } }))} className="w-full text-xs rounded px-2 py-1" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+                              <option value="">Dedicate the shrine to…</option>
+                              {Object.keys(TEMPLE_BOONS).map((g) => <option key={g} value={g}>{g}</option>)}
+                            </select>
+                          ) : (
+                            <>
+                              <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft }}>Dedicated to {party.estate.shrineGod}</p>
+                              <select value={shrinePrayHero} onChange={(e) => { setShrinePrayHero(e.target.value); setShrineResult(null); }} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+                                <option value="">Choose a hero to pray…</option>
+                                {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                              </select>
+                              <button onClick={prayAtShrine} disabled={!shrinePrayHero} className="w-full text-[10px] px-2 py-1.5 rounded font-semibold" style={{ background: shrinePrayHero ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: shrinePrayHero ? 1 : 0.5 }}>
+                                Pray (free, 1-4 on 1d6)
+                              </button>
+                            </>
+                          )}
+                          {shrineResult && <p className="text-[10px] mt-1.5 font-semibold" style={{ color: shrineResult.ok ? palette.forestDark : palette.crimson }}>{shrineResult.line}</p>}
+                        </div>
+                      )}
+
+                      {owned && room.name === "Smithy" && (
+                        <div className="mt-2 pt-2" style={{ borderTop: `1px solid ${palette.line}` }}>
+                          <button onClick={repairAtSmithy} className="w-full text-[10px] px-2 py-1.5 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>
+                            Repair Whole Party (+1d3 Durability)
+                          </button>
+                          {smithyResult && <p className="text-[10px] mt-1.5 font-semibold" style={{ color: palette.forestDark }}>{smithyResult.line}</p>}
+                        </div>
+                      )}
+
+                      {owned && room.name === "Crops, Hen House, and Pigsty" && (
+                        <div className="mt-2 pt-2" style={{ borderTop: `1px solid ${palette.line}` }}>
+                          <label className="flex items-center gap-2 text-[10px] mb-1.5" style={{ color: palette.inkSoft }}>
+                            Days spent tending:
+                            <input type="number" min="1" value={cropsDays} onChange={(e) => setCropsDays(e.target.value)} className="w-12 rounded px-1 py-0.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }} />
+                          </label>
+                          <button onClick={tendCrops} className="w-full text-[10px] px-2 py-1.5 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>
+                            Tend (1d8 + days rations)
+                          </button>
+                          {cropsResult && <p className="text-[10px] mt-1.5 font-semibold" style={{ color: palette.forestDark }}>{cropsResult.line}</p>}
+                        </div>
+                      )}
+
+                      {owned && room.name === "Garden" && (
+                        <div className="mt-2 pt-2" style={{ borderTop: `1px solid ${palette.line}` }}>
+                          <select value={gardenHero} onChange={(e) => { setGardenHero(e.target.value); setGardenResult(null); }} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+                            <option value="">Choose the Alchemist…</option>
+                            {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                          </select>
+                          <select value={gardenHabitat} onChange={(e) => setGardenHabitat(e.target.value)} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+                            {["Roadside", "Plains", "Woods", "Water", "Highland", "Site"].map((h) => <option key={h} value={h}>{h} table</option>)}
+                          </select>
+                          <button onClick={gatherFromGarden} disabled={!gardenHero || party.estate.gardenUsed} className="w-full text-[10px] px-2 py-1.5 rounded font-semibold" style={{ background: gardenHero && !party.estate.gardenUsed ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: gardenHero && !party.estate.gardenUsed ? 1 : 0.5 }}>
+                            {party.estate.gardenUsed ? "Already gathered this cycle" : "Gather (1d6+2 ingredients)"}
+                          </button>
+                          {gardenResult && <p className="text-[10px] mt-1.5 font-semibold" style={{ color: gardenResult.ok ? palette.forestDark : palette.crimson }}>{gardenResult.line}</p>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="h-px my-3" style={{ background: palette.line }} />
+              <p className="text-xs font-semibold mb-2" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Estate Storage (unlimited)</p>
+              <StorageBox items={party.estate.items || []} onChange={(items) => setParty((prev) => ({ ...prev, estate: { ...prev.estate, items } }))} />
+
+              <div className="h-px my-3" style={{ background: palette.line }} />
+              <p className="text-xs font-semibold mb-1" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Ghostly Events</p>
+              <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+                Rolled the night before departure, between every quest.
+              </p>
+              <button onClick={rollGhostlyEvents} className="w-full text-xs px-2 py-2 rounded font-semibold mb-2" style={{ background: palette.crimsonDark, color: palette.parchment }}>
+                {party.pendingGhostlyEvent ? `Roll Forced Event #${party.pendingGhostlyEvent}` : "Roll for Ghostly Contact"}
+              </button>
+              {ghostlyResult && (
+                <div className="rounded p-2 text-xs space-y-1" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+                  {ghostlyResult.lines.map((l, i) => <p key={i} className={i === 0 ? "font-semibold" : ""}>{l}</p>)}
+                </div>
+              )}
+
+              {party.grievingMother !== "none" && (
+                <>
+                  <div className="h-px my-3" style={{ background: palette.line }} />
+                  <p className="text-xs font-semibold mb-1" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Side Quest: The Grieving Mother</p>
+                  {party.grievingMother === "triggered" && (
+                    <>
+                      <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>
+                        Active — add a Side Quest Card to the pile this dungeon. When drawn, put it aside and pull the next card instead; that card leads to the hidden Objective Room. Two Giant Spiders guard the remains inside (ENC 8 to carry out). Once beaten, Wandering Monsters from that point on are 1d2 Giant Spiders from that opening.
+                      </p>
+                      <select value={gmRewardHero} onChange={(e) => setGmRewardHero(e.target.value)} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+                        <option value="">Who's carrying the Longsword reward?</option>
+                        {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                      </select>
+                      <div className="flex gap-2">
+                        <button onClick={markGrievingMotherSucceeded} disabled={!gmRewardHero} className="flex-1 text-[10px] px-2 py-1.5 rounded font-semibold" style={{ background: gmRewardHero ? palette.forestDark : "#00000020", color: palette.parchment, opacity: gmRewardHero ? 1 : 0.5 }}>
+                          Brought Back the Remains
+                        </button>
+                        <button onClick={markGrievingMotherFailed} className="flex-1 text-[10px] px-2 py-1.5 rounded font-semibold" style={{ background: palette.crimson, color: palette.parchment }}>
+                          Ended in Failure
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  {party.grievingMother === "succeeded" && <p className="text-[10px]" style={{ color: palette.forestDark }}>Succeeded — the old lady is at rest, and a magical Longsword (+2 DMG) was left behind.</p>}
+                  {party.grievingMother === "failed" && <p className="text-[10px]" style={{ color: palette.crimson }}>Failed — a forced Ghostly Event #8 (Restless Night) will trigger automatically on the next roll. Rolling #6 again will let the party retry.</p>}
+                </>
+              )}
+            </>
+          )}
+
+          {estateMsg && (
+            <div className="mt-3 rounded p-2 text-xs" style={{ background: "#fff", border: `1px solid ${estateMsg.ok ? palette.line : palette.crimson}`, fontFamily: "Crimson Pro, serif", color: estateMsg.ok ? palette.forestDark : palette.crimson, fontWeight: 600 }}>
+              {estateMsg.line}
+            </div>
+          )}
+        </Panel>
+      )}
+
+      {settlement && settlement.services.includes("Alberta's Magnificent Animals") && (
+        <Panel className="mb-4">
+          <SectionTitle icon={Wheat}>Alberta's Magnificent Animals</SectionTitle>
+          <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            Mounts and carrying capacity for the Travel tab. Owning all-horses or all-camels gives the party 6 Movement Points/day instead of 3; a Mule or Wagon replaces walking's carry limit.
+          </p>
+          <div className="space-y-1.5">
+            {[
+              ["horses", "Horse", 1000],
+              ["camels", "Camel", 1250],
+              ["saddlebags", "Saddlebags (10 ENC each)", 250],
+              ["mules", "Mule (100 ENC)", 800],
+              ["wagons", "Wagon (500 ENC)", 1500],
+            ].map(([key, label, cost]) => (
+              <div key={key} className="flex justify-between items-center text-xs rounded px-2 py-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                <div>
+                  <span className="font-semibold" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>{label}</span>
+                  <span className="block text-[10px]" style={{ color: palette.inkSoft }}>{cost}c · Owned: {party.transport[key] || 0}</span>
+                </div>
+                <button
+                  onClick={() => {
+                    if (party.coins < cost) { setEstateMsg({ ok: false, line: `Can't afford a ${label}: ${cost}c needed, party only has ${party.coins}c.` }); return; }
+                    setParty((prev) => ({ ...prev, coins: prev.coins - cost, transport: { ...prev.transport, [key]: (prev.transport[key] || 0) + 1 } }));
+                    setEstateMsg({ ok: true, line: `Bought a ${label} for ${cost}c.` });
+                    addLog(`The party buys a ${label} for ${cost}c.`);
+                  }}
+                  className="text-[10px] px-2 py-1 rounded font-semibold"
+                  style={{ background: palette.crimsonDark, color: palette.parchment }}
+                >
+                  Buy
+                </button>
+              </div>
+            ))}
+          </div>
         </Panel>
       )}
 
@@ -6119,15 +6722,7 @@ function AlchemyTab({ heroes, updateHero, addLog }) {
   const activeHero = heroes.find((h) => h.id === activeHeroId) || heroes[0];
 
   const addComponent = (hero, name, type, qty, exquisite) => {
-    const existing = hero.alchemyComponents.find((c) => c.name === name);
-    let next;
-    if (existing) {
-      next = hero.alchemyComponents.map((c) =>
-        c.name === name ? { ...c, qty: c.qty + (exquisite ? 0 : qty), exquisiteQty: c.exquisiteQty + (exquisite ? qty : 0) } : c
-      );
-    } else {
-      next = [...hero.alchemyComponents, { id: uid(), name, type, qty: exquisite ? 0 : qty, exquisiteQty: exquisite ? qty : 0 }];
-    }
+    const next = addAlchemyComponent(hero, name, type, qty, exquisite);
     updateHero({ ...hero, alchemyComponents: next });
     return next;
   };
@@ -9053,6 +9648,57 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
             New Day (reset)
           </button>
         </div>
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={Wheat}>Storage</SectionTitle>
+        <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+          Carrying capacity beyond what heroes carry themselves. Bought at Alberta's Magnificent Animals in Whiteport.
+        </p>
+        {(party.transport?.mules || 0) === 0 && (party.transport?.wagons || 0) === 0 && (party.transport?.saddlebags || 0) === 0 ? (
+          <p className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+            The party doesn't own a Mule, Wagon, or Saddlebags yet — buy one from the Settlements tab while in Whiteport.
+          </p>
+        ) : (
+          <>
+            {(party.transport?.mules || 0) > 0 && (
+              <div className="mb-3">
+                <p className="text-xs font-semibold mb-2" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>
+                  Mule{party.transport.mules > 1 ? `s (${party.transport.mules})` : ""}
+                </p>
+                <StorageBox
+                  items={party.storage?.mule || []}
+                  onChange={(items) => setParty((prev) => ({ ...prev, storage: { ...prev.storage, mule: items } }))}
+                  cap={100 * party.transport.mules}
+                />
+              </div>
+            )}
+            {(party.transport?.wagons || 0) > 0 && (
+              <div className="mb-3">
+                <p className="text-xs font-semibold mb-2" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>
+                  Wagon{party.transport.wagons > 1 ? `s (${party.transport.wagons})` : ""}
+                </p>
+                <StorageBox
+                  items={party.storage?.wagon || []}
+                  onChange={(items) => setParty((prev) => ({ ...prev, storage: { ...prev.storage, wagon: items } }))}
+                  cap={500 * party.transport.wagons}
+                />
+              </div>
+            )}
+            {(party.transport?.saddlebags || 0) > 0 && (
+              <div>
+                <p className="text-xs font-semibold mb-2" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>
+                  Saddlebags ({party.transport.saddlebags})
+                </p>
+                <StorageBox
+                  items={party.storage?.saddlebags || []}
+                  onChange={(items) => setParty((prev) => ({ ...prev, storage: { ...prev.storage, saddlebags: items } }))}
+                  cap={10 * party.transport.saddlebags}
+                />
+              </div>
+            )}
+          </>
+        )}
       </Panel>
 
       <Panel>

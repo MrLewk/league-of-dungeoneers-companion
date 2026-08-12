@@ -3,6 +3,17 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.31.0] — 2026-08-12
+
+### Added
+- Buying an Estate (Settlements tab, Silver City only): 4000c one-time purchase, waives the inn fee automatically whenever the party stays overnight in Silver City
+- Furnishing the Manor: all 9 confirmed rooms from p159 (Alchemist Lab, Archery Range, Training Grounds, Wizard's Study, Shrine, Smithy, Crops/Hen House/Pigsty, Garden, Kennel), correctly limited to one commission between quests that isn't usable until after the next dungeon trip. Archery Range/Training Grounds, Shrine, Smithy, Crops, and Garden each get a working resolver (per-hero +1d2 training, free Pray with 1-4 on 1d6, party-wide +1d3 Durability repair, 1d8+days rations, 1d6+2 ingredient gather straight into the Alchemist's components) — Alchemist Lab/Wizard's Study/Kennel show their effect text but hook into other tabs or the Companions' Expansion instead of a dedicated resolver. A 10th room, "Sacred Grove", is included but flagged unconfirmed pending rulebook verification
+- Estate Storage: an unlimited item list at the estate, same editable ENC/Value/Durability fields as a hero's backpack
+- Ghostly Events: the full 1d10 trigger roll (7-10 on the night before departure) plus the 10-entry Ghostly Events Table, 8 of 10 entries fully mechanized (Luck/CS/RS/Energy buffs and penalties, wizard miscast range, and — reusing the same Curse Table as the Fortune Teller — a full multi-hero Curse resolution). Family Heirlooms and Hidden Treasure correctly surface as physical card-draw/dungeon-setup prompts rather than fabricated rolls
+- Side Quest: The Grieving Mother — full state tracker (triggered/succeeded/failed) with the quest's read-aloud text, a reward flow that adds the actual magical Longsword (+2 DMG) to a chosen hero's backpack, and automatic queuing of the forced Ghostly Event #8 on failure
+- Alberta's Magnificent Animals (Settlements tab, Whiteport only): purchase Horses, Camels, Saddlebags, Mules, and Wagons at their real costs, tracked as party-owned counts
+- Storage panel on the Travel tab: Mule (100 ENC), Wagon (500 ENC), and Saddlebags (10 ENC each) capacity, scaled by how many are owned, using the same item-list component as Estate Storage
+
 ## [1.30.2] — 2026-08-12
 
 ### Added

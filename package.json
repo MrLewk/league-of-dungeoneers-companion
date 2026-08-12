@@ -1,7 +1,7 @@
 {
   "name": "league-of-dungeoneers-companion",
   "private": true,
-  "version": "1.30.2",
+  "version": "1.31.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

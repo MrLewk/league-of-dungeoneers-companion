@@ -3,6 +3,16 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.31.2] — 2026-08-13
+
+### Fixed
+- Manor training (Archery Range / Training Grounds) gave no feedback when clicked — the result was being calculated but never displayed
+- Commissioning a Manor room now shows a clear "Pending" badge and disables further commissions until it's activated, instead of looking like nothing happened
+- Alberta's Magnificent Animals purchases (Horse, Camel, Saddlebags, Mule, Wagon) gave no feedback on success or when the party couldn't afford it — the message was being set but rendered in the wrong panel
+
+### Added
+- Estate Storage and the Travel tab's Mule/Wagon/Saddlebags storage now have an "Add from table…" catalog picker (Weapons, Armour & Shields, Alchemy, Consumables, Jewellery, Light, Misc, Tools), matching the picker already on a hero's backpack, alongside the existing manual item entry
+
 ## [1.31.1] — 2026-08-12
 
 ### Removed

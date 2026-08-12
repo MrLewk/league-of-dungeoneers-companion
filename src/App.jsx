@@ -2017,6 +2017,20 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.31.2",
+    date: "2026-08-13",
+    sections: {
+      "Fixed": [
+        "Manor training (Archery Range / Training Grounds) gave no feedback when clicked — the result was being calculated but never displayed",
+        "Commissioning a Manor room now shows a clear \"Pending\" badge and disables further commissions until it's activated, instead of looking like nothing happened",
+        "Alberta's Magnificent Animals purchases (Horse, Camel, Saddlebags, Mule, Wagon) gave no feedback on success or when the party couldn't afford it — the message was being set but rendered in the wrong panel",
+      ],
+      "Added": [
+        "Estate Storage and the Travel tab's Mule/Wagon/Saddlebags storage now have an \"Add from table…\" catalog picker (Weapons, Armour & Shields, Alchemy, Consumables, Jewellery, Light, Misc, Tools), matching the picker already on a hero's backpack, alongside the existing manual item entry",
+      ],
+    },
+  },
+  {
     version: "1.31.1",
     date: "2026-08-12",
     sections: {
@@ -3119,9 +3133,36 @@ function StorageBox({ items, onChange, cap }) {
   const addItem = () => onChange([...items, { id: uid(), name: "", value: "", enc: "", dur: "" }]);
   const updateItem = (id, patch) => onChange(items.map((it) => (it.id === id ? { ...it, ...patch } : it)));
   const removeItem = (id) => onChange(items.filter((it) => it.id !== id));
+  const addFromCatalog = (name) => {
+    const wpn = WEAPONS.find((x) => x.name === name);
+    if (wpn) { onChange([...items, { id: uid(), name: wpn.name, value: wpn.cost, enc: wpn.enc, dur: "6/6" }]); return; }
+    const arm = ARMOUR_AND_SHIELDS.find((x) => x.name === name);
+    if (arm) { onChange([...items, { id: uid(), name: arm.name, value: arm.cost, enc: arm.enc, dur: "6/6" }]); return; }
+    const gen = GENERAL_EQUIPMENT.find((x) => x.name === name);
+    if (gen) onChange([...items, { id: uid(), name: gen.name, value: gen.cost, enc: gen.enc, dur: gen.dur }]);
+  };
 
   return (
     <div>
+      <select
+        value=""
+        onChange={(e) => e.target.value && addFromCatalog(e.target.value)}
+        className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+        style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}
+      >
+        <option value="">Add from table…</option>
+        <optgroup label="Weapons">
+          {WEAPONS.map((w) => <option key={w.name} value={w.name}>{w.name} — {w.cost}c</option>)}
+        </optgroup>
+        <optgroup label="Armour & Shields">
+          {ARMOUR_AND_SHIELDS.map((a) => <option key={a.name} value={a.name}>{a.name} — {a.cost}c</option>)}
+        </optgroup>
+        {["Alchemy", "Consumables", "Jewellery", "Light", "Misc", "Tools"].map((cat) => (
+          <optgroup key={cat} label={cat}>
+            {GENERAL_EQUIPMENT.filter((i) => i.category === cat).map((i) => <option key={i.name} value={i.name}>{i.name} — {i.cost}c</option>)}
+          </optgroup>
+        ))}
+      </select>
       {cap != null && (
         <div className="flex justify-between items-baseline mb-2">
           <span className="text-xs font-semibold" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>
@@ -5986,6 +6027,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
               <div className="space-y-1.5">
                 {MANOR_ROOMS.map((room) => {
                   const owned = (party.estate.rooms || []).includes(room.name);
+                  const isPending = party.estate.pendingRoom?.name === room.name;
                   return (
                     <div key={room.name} className="text-xs rounded px-2 py-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
                       <div className="flex justify-between items-center">
@@ -5993,12 +6035,14 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
                           <span className="font-semibold" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>{room.name}</span>
                           {room.requiresExpansion && <span className="block text-[10px]" style={{ color: palette.crimson }}>Requires {room.requiresExpansion}</span>}
                           {room.unconfirmed && <span className="block text-[10px]" style={{ color: palette.crimson }}>Unconfirmed — see note below</span>}
-                          {!owned && <span className="block text-[10px] italic" style={{ color: palette.inkSoft }}>{room.cost}c</span>}
+                          {!owned && !isPending && <span className="block text-[10px] italic" style={{ color: palette.inkSoft }}>{room.cost}c</span>}
                         </div>
                         {owned ? (
                           <span className="text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 ml-2" style={{ background: "#00000010", color: palette.forestDark }}>Built</span>
+                        ) : isPending ? (
+                          <span className="text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 ml-2" style={{ background: "#00000010", color: palette.crimson }}>Pending</span>
                         ) : (
-                          <button onClick={() => buyRoom(room)} className="text-[10px] px-2 py-1 rounded font-semibold shrink-0 ml-2" style={{ background: palette.crimsonDark, color: palette.parchment }}>
+                          <button onClick={() => buyRoom(room)} disabled={!!party.estate.pendingRoom} className="text-[10px] px-2 py-1 rounded font-semibold shrink-0 ml-2" style={{ background: party.estate.pendingRoom ? "#00000020" : palette.crimsonDark, color: palette.parchment, opacity: party.estate.pendingRoom ? 0.5 : 1 }}>
                             Commission
                           </button>
                         )}
@@ -6021,6 +6065,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
                           <button onClick={() => trainAtManor(room.name)} disabled={!trainHero} className="w-full text-[10px] px-2 py-1.5 rounded font-semibold" style={{ background: trainHero ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: trainHero ? 1 : 0.5 }}>
                             Train (+1d2)
                           </button>
+                          {trainResult && <p className="text-[10px] mt-1.5 font-semibold" style={{ color: trainResult.ok ? palette.forestDark : palette.crimson }}>{trainResult.line}</p>}
                         </div>
                       )}
 
@@ -6179,6 +6224,11 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
               </div>
             ))}
           </div>
+          {estateMsg && (
+            <div className="mt-3 rounded p-2 text-xs" style={{ background: "#fff", border: `1px solid ${estateMsg.ok ? palette.line : palette.crimson}`, fontFamily: "Crimson Pro, serif", color: estateMsg.ok ? palette.forestDark : palette.crimson, fontWeight: 600 }}>
+              {estateMsg.line}
+            </div>
+          )}
         </Panel>
       )}
 

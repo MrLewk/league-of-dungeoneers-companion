@@ -3,6 +3,12 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.30.2] — 2026-08-12
+
+### Added
+- New "Travel" tab covering overland movement between settlements/dungeons (rulebook "Travelling and Skirmishes" chapter): a Movement calculator (Walking/Wagon/Mule = 3 MP vs all Horses/Camels = 6 MP, tap to log Road/Off-road/Desert hexes with running MP totals and undo), a Daily Event Roll (1d12, correct trigger range and event card type per terrain), Rations & Foraging (1 ration/day feeds the whole party, 2/day in the Ancient Lands where Foraging isn't possible; Foraging is a single roll for the whole party with +10 in trees/-10 on a road, auto-applies the hunger penalty — every hero's CON halved and Party Morale -4, non-cumulative, lifted automatically next time the party eats — on a failed roll), and a Daily Rest resolver (+1d6 HP and Energy regen per hero, full Energy with a Bed Roll)
+- Skirmishes note added to the Travel tab pointing at the Combat tab for resolution, with a reference table for which of the four outdoor tile types to use
+
 ## [1.30.1] — 2026-08-12
 
 ### Added

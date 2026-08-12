@@ -453,6 +453,12 @@ const defaultParty = () => ({
   round: 1,
   lightSources: [], // [{id, name, remaining}] — turns left before it goes out
   dungeonLuck: 0, // party-held Luck Points from Black Lever result 8 — lost on leaving the dungeon
+  travelMode: "walking", // "walking" | "mounted"
+  allCamels: false,
+  mpSpent: 0,
+  travelLog: [], // [{label, cost}] — hexes entered so far today
+  hungry: false,
+  hungerConDeltas: {}, // heroId -> amount subtracted from CON, restored when the party eats again
 });
 
 // Fills in any fields missing from a party saved before this update.
@@ -1956,6 +1962,16 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.30.2",
+    date: "2026-08-12",
+    sections: {
+      "Added": [
+        "New \"Travel\" tab covering overland movement between settlements/dungeons (rulebook \"Travelling and Skirmishes\" chapter): a Movement calculator (Walking/Wagon/Mule = 3 MP vs all Horses/Camels = 6 MP, tap to log Road/Off-road/Desert hexes with running MP totals and undo), a Daily Event Roll (1d12, correct trigger range and event card type per terrain), Rations & Foraging (1 ration/day feeds the whole party, 2/day in the Ancient Lands where Foraging isn't possible; Foraging is a single roll for the whole party with +10 in trees/-10 on a road, auto-applies the hunger penalty — every hero's CON halved and Party Morale -4, non-cumulative, lifted automatically next time the party eats — on a failed roll), and a Daily Rest resolver (+1d6 HP and Energy regen per hero, full Energy with a Bed Roll)",
+        "Skirmishes note added to the Travel tab pointing at the Combat tab for resolution, with a reference table for which of the four outdoor tile types to use",
+      ],
+    },
+  },
   {
     version: "1.30.1",
     date: "2026-08-12",
@@ -8835,6 +8851,340 @@ function Reference() {
   );
 }
 
+// ---------- Travel & Skirmishes ----------
+function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
+  const [eventTerrain, setEventTerrain] = useState("offroad");
+  const [eventResult, setEventResult] = useState(null);
+  const [restSummary, setRestSummary] = useState(null);
+  const [ancientLands, setAncientLands] = useState(false);
+  const [forageHero, setForageHero] = useState("");
+  const [forageTerrain, setForageTerrain] = useState("neither");
+  const [forageResult, setForageResult] = useState(null);
+
+  const rationCost = ancientLands ? 2 : 1;
+
+  const feedParty = () => {
+    if (party.hungry) {
+      heroes.forEach((h) => {
+        const delta = (party.hungerConDeltas || {})[h.id];
+        if (delta) updateHero(h.id, { ...h, stats: { ...h.stats, CON: h.stats.CON + delta } });
+      });
+    }
+    setParty((prev) => ({ ...prev, hungry: false, hungerConDeltas: {} }));
+  };
+
+  const useRations = () => {
+    if ((party.food || 0) < rationCost) {
+      setForageResult({ ok: false, line: `Not enough rations: need ${rationCost}, party only has ${party.food || 0}.` });
+      return;
+    }
+    setParty((prev) => ({ ...prev, food: prev.food - rationCost }));
+    feedParty();
+    const line = `Party eats — ${rationCost} ration${rationCost > 1 ? "s" : ""} used.${party.hungry ? " Hunger penalty lifted." : ""}`;
+    setForageResult({ ok: true, line });
+    addLog(`Rations: ${line}`);
+  };
+
+  const rollForage = () => {
+    const hero = heroes.find((h) => h.id === forageHero);
+    if (!hero) { setForageResult({ ok: false, line: "Pick a hero to forage first." }); return; }
+    const mod = forageTerrain === "trees" ? 10 : forageTerrain === "road" ? -10 : 0;
+    const target = (Number(hero.skills.foraging) || 0) + mod;
+    const roll = rollDie(100);
+    const success = roll <= target;
+    if (success) {
+      feedParty();
+      const line = `${hero.name} forages — rolled ${roll} vs target ${target} (Foraging ${hero.skills.foraging}${mod !== 0 ? `, ${mod > 0 ? "+" : ""}${mod} terrain` : ""}) — Success! Party fed for the day, no ration used.`;
+      setForageResult({ ok: true, line });
+      addLog(`Foraging: ${line}`);
+    } else {
+      const wasAlreadyHungry = party.hungry;
+      const deltas = {};
+      heroes.forEach((h) => {
+        const delta = Math.floor((Number(h.stats.CON) || 0) / 2);
+        deltas[h.id] = delta;
+        if (!wasAlreadyHungry) updateHero(h.id, { ...h, stats: { ...h.stats, CON: h.stats.CON - delta } });
+      });
+      setParty((prev) => ({
+        ...prev,
+        hungry: true,
+        hungerConDeltas: wasAlreadyHungry ? prev.hungerConDeltas : deltas,
+        morale: wasAlreadyHungry ? prev.morale : prev.morale - 4,
+      }));
+      const line = `${hero.name} forages — rolled ${roll} vs target ${target} (Foraging ${hero.skills.foraging}${mod !== 0 ? `, ${mod > 0 ? "+" : ""}${mod} terrain` : ""}) — Failed. Party goes hungry${wasAlreadyHungry ? " (already hungry, no further penalty — not cumulative)" : ": every hero's CON halved, Party Morale -4, until they eat again"}.`;
+      setForageResult({ ok: false, line });
+      addLog(`Foraging: ${line}`);
+    }
+  };
+
+  const mpPool = party.travelMode === "mounted" ? 6 : 3;
+  const mpSpent = party.mpSpent || 0;
+  const travelLog = party.travelLog || [];
+
+  const hexCost = (type) => {
+    if (type === "Road") return 1;
+    if (type === "Off-road") return 1.5;
+    if (type === "Desert") return party.travelMode === "mounted" && party.allCamels ? 1.5 : 2;
+    return 0;
+  };
+
+  const enterHex = (type) => {
+    const cost = hexCost(type);
+    setParty((prev) => ({
+      ...prev,
+      mpSpent: (prev.mpSpent || 0) + cost,
+      travelLog: [...(prev.travelLog || []), { label: type, cost }],
+    }));
+  };
+
+  const undoLastHex = () => {
+    setParty((prev) => {
+      const log = prev.travelLog || [];
+      if (log.length === 0) return prev;
+      const last = log[log.length - 1];
+      return { ...prev, mpSpent: Math.max(0, (prev.mpSpent || 0) - last.cost), travelLog: log.slice(0, -1) };
+    });
+  };
+
+  const newDay = () => {
+    setParty((prev) => ({ ...prev, mpSpent: 0, travelLog: [] }));
+    setEventResult(null);
+    setRestSummary(null);
+  };
+
+  const rollEvent = () => {
+    const roll = rollDie(12);
+    let triggered, cardType;
+    if (eventTerrain === "offroad") {
+      triggered = roll >= 11;
+      cardType = "Wilderness Event Card";
+    } else if (eventTerrain === "road") {
+      triggered = roll >= 10;
+      cardType = "Road Event Card";
+    } else {
+      triggered = roll >= 10;
+      cardType = "Desert Event Card";
+    }
+    const line = triggered ? `Rolled ${roll} — Event! Draw a ${cardType}.` : `Rolled ${roll} — no event.`;
+    setEventResult({ triggered, line });
+    addLog(`Daily Event Roll: ${line}`);
+  };
+
+  const dailyRest = () => {
+    const lines = [];
+    heroes.forEach((h) => {
+      const hpRoll = rollDie(6);
+      const newHp = Math.min(h.hp.max, h.hp.cur + hpRoll);
+      const hasBedroll = (h.backpack || []).some((it) => it.name === "Bed Roll");
+      let newEnergyCur = h.energy.cur;
+      let energyLine;
+      if (hasBedroll) {
+        newEnergyCur = h.energy.max;
+        energyLine = "Energy fully regained (Bed Roll).";
+      } else {
+        const missing = h.energy.max - h.energy.cur;
+        let regained = 0;
+        for (let i = 0; i < missing; i++) if (rollDie(6) <= 3) regained++;
+        newEnergyCur = Math.min(h.energy.max, h.energy.cur + regained);
+        energyLine = missing > 0 ? `+${regained}/${missing} Energy.` : "Energy already full.";
+      }
+      updateHero(h.id, { ...h, hp: { ...h.hp, cur: newHp }, energy: { ...h.energy, cur: newEnergyCur } });
+      lines.push(`${h.name}: +${hpRoll} HP (${newHp}/${h.hp.max}). ${energyLine}`);
+    });
+    setRestSummary(lines);
+    addLog(`Daily Rest: ${lines.join(" ")}`);
+  };
+
+  return (
+    <div className="space-y-4">
+      <Panel>
+        <SectionTitle icon={Map}>Movement</SectionTitle>
+        <div className="flex gap-2 mb-2">
+          <button
+            onClick={() => setParty((prev) => ({ ...prev, travelMode: "walking" }))}
+            className="flex-1 text-xs px-2 py-2 rounded font-semibold"
+            style={{ background: party.travelMode !== "mounted" ? palette.crimsonDark : "#00000010", color: party.travelMode !== "mounted" ? palette.parchment : palette.ink }}
+          >
+            Walking / Wagon / Mule (3 MP)
+          </button>
+          <button
+            onClick={() => setParty((prev) => ({ ...prev, travelMode: "mounted" }))}
+            className="flex-1 text-xs px-2 py-2 rounded font-semibold"
+            style={{ background: party.travelMode === "mounted" ? palette.crimsonDark : "#00000010", color: party.travelMode === "mounted" ? palette.parchment : palette.ink }}
+          >
+            All Horses/Camels (6 MP)
+          </button>
+        </div>
+        {party.travelMode === "mounted" && (
+          <label className="flex items-center gap-2 text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+            <input type="checkbox" checked={!!party.allCamels} onChange={(e) => setParty((prev) => ({ ...prev, allCamels: e.target.checked }))} />
+            All party riding camels (Desert hexes cost 1.5 MP instead of 2)
+          </label>
+        )}
+
+        <div className="flex justify-between items-baseline mb-2">
+          <span className="text-sm font-semibold" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>
+            {mpSpent} / {mpPool} MP spent today
+          </span>
+          {mpSpent > mpPool && <span className="text-xs font-semibold" style={{ color: palette.crimson }}>Over pool by {mpSpent - mpPool}</span>}
+        </div>
+
+        <div className="flex gap-2 mb-2">
+          <button onClick={() => enterHex("Road")} className="flex-1 text-xs px-2 py-2 rounded font-semibold" style={{ background: "#00000010", color: palette.ink }}>Road (1)</button>
+          <button onClick={() => enterHex("Off-road")} className="flex-1 text-xs px-2 py-2 rounded font-semibold" style={{ background: "#00000010", color: palette.ink }}>Off-road (1.5)</button>
+          <button onClick={() => enterHex("Desert")} className="flex-1 text-xs px-2 py-2 rounded font-semibold" style={{ background: "#00000010", color: palette.ink }}>Desert ({hexCost("Desert")})</button>
+        </div>
+
+        {travelLog.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-2">
+            {travelLog.map((t, i) => (
+              <span key={i} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: "#00000010", color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+                {t.label} +{t.cost}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <button onClick={undoLastHex} disabled={travelLog.length === 0} className="flex-1 text-xs px-2 py-2 rounded font-semibold" style={{ background: "#00000010", color: palette.ink, opacity: travelLog.length === 0 ? 0.5 : 1 }}>
+            Undo Last Hex
+          </button>
+          <button onClick={newDay} className="flex-1 text-xs px-2 py-2 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>
+            New Day (reset)
+          </button>
+        </div>
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={Wheat}>Rations &amp; Foraging</SectionTitle>
+        <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+          1 ration feeds the whole party for the day (2 in the Ancient Lands, where Foraging isn't possible). Foraging is one roll for the whole party, once per day.
+        </p>
+        <label className="flex items-center gap-2 text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+          <input type="checkbox" checked={ancientLands} onChange={(e) => { setAncientLands(e.target.checked); setForageResult(null); }} />
+          Travelling in the Ancient Lands
+        </label>
+
+        {party.hungry && (
+          <div className="rounded p-2 text-xs mb-2 font-semibold" style={{ background: "#fff", border: `1px solid ${palette.crimson}`, color: palette.crimson, fontFamily: "Crimson Pro, serif" }}>
+            Party is hungry — every hero's CON is halved and Party Morale took -4, until they eat again.
+          </div>
+        )}
+
+        <div className="flex justify-between items-baseline mb-2">
+          <span className="text-sm font-semibold" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Rations: {party.food || 0}</span>
+          <button onClick={useRations} className="text-xs px-3 py-1.5 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>
+            Use {rationCost} Ration{rationCost > 1 ? "s" : ""}
+          </button>
+        </div>
+
+        {!ancientLands && (
+          <>
+            <div className="h-px my-3" style={{ background: palette.line }} />
+            <p className="text-xs font-semibold mb-2" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Forage Instead</p>
+            <select
+              value={forageHero}
+              onChange={(e) => { setForageHero(e.target.value); setForageResult(null); }}
+              className="w-full text-sm rounded px-2 py-1.5 mb-2"
+              style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+            >
+              <option value="">Choose the forager…</option>
+              {heroes.map((h) => <option key={h.id} value={h.id}>{h.name} (Foraging {h.skills.foraging})</option>)}
+            </select>
+            <div className="flex gap-2 mb-2">
+              {[["neither", "No modifier"], ["trees", "In trees (+10)"], ["road", "On road (-10)"]].map(([k, l]) => (
+                <button
+                  key={k}
+                  onClick={() => setForageTerrain(k)}
+                  className="flex-1 text-[10px] px-1 py-2 rounded font-semibold"
+                  style={{ background: forageTerrain === k ? palette.crimsonDark : "#00000010", color: forageTerrain === k ? palette.parchment : palette.ink }}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={rollForage}
+              disabled={!forageHero}
+              className="w-full text-xs px-2 py-2 rounded font-semibold"
+              style={{ background: forageHero ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: forageHero ? 1 : 0.5 }}
+            >
+              Roll Foraging
+            </button>
+          </>
+        )}
+
+        {forageResult && (
+          <div className="mt-2 rounded p-2 text-xs" style={{ background: "#fff", border: `1px solid ${forageResult.ok ? palette.line : palette.crimson}`, fontFamily: "Crimson Pro, serif", color: forageResult.ok ? palette.forestDark : palette.crimson, fontWeight: 600 }}>
+            {forageResult.line}
+          </div>
+        )}
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={Dice5}>Daily Event Roll</SectionTitle>
+        <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+          Rolled once per day, before moving. Off-road triggers on 11-12. Road or Desert triggers on 10-12.
+        </p>
+        <div className="flex gap-2 mb-2">
+          {["offroad", "road", "desert"].map((t) => (
+            <button
+              key={t}
+              onClick={() => { setEventTerrain(t); setEventResult(null); }}
+              className="flex-1 text-xs px-2 py-2 rounded font-semibold capitalize"
+              style={{ background: eventTerrain === t ? palette.crimsonDark : "#00000010", color: eventTerrain === t ? palette.parchment : palette.ink }}
+            >
+              {t === "offroad" ? "Off-road" : t === "road" ? "Road" : "Desert"}
+            </button>
+          ))}
+        </div>
+        <button onClick={rollEvent} className="w-full text-xs px-2 py-2 rounded font-semibold mb-2" style={{ background: palette.crimsonDark, color: palette.parchment }}>
+          Roll 1d12
+        </button>
+        {eventResult && (
+          <div className="rounded p-2 text-xs" style={{ background: "#fff", border: `1px solid ${eventResult.triggered ? palette.crimson : palette.line}`, fontFamily: "Crimson Pro, serif", fontWeight: 600, color: eventResult.triggered ? palette.crimson : palette.forestDark }}>
+            {eventResult.line}
+          </div>
+        )}
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={Bed}>Daily Rest</SectionTitle>
+        <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+          Once per day: +1d6 HP per hero, and 1d6 per missing Energy point (regained on 1-3), or full Energy with a Bed Roll.
+        </p>
+        <button onClick={dailyRest} disabled={heroes.length === 0} className="w-full text-xs px-2 py-2 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment, opacity: heroes.length === 0 ? 0.5 : 1 }}>
+          Rest for the Day
+        </button>
+        {restSummary && (
+          <ul className="mt-2 text-xs list-disc pl-4 space-y-0.5" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+            {restSummary.map((l, i) => <li key={i}>{l}</li>)}
+          </ul>
+        )}
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={Swords}>Skirmishes</SectionTitle>
+        <p className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+          Event Cards or mini-quests sometimes trigger a skirmish — use the Combat tab as normal to run it. The outdoor tile matches how the skirmish was triggered:
+        </p>
+        <ul className="text-xs list-disc pl-4 mt-2 space-y-0.5" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+          <li><b>Roads</b> tile — triggered by a Road Event</li>
+          <li><b>Wilderness</b> tile — triggered by a Wilderness Event</li>
+          <li><b>Village / Camp / Standing Stones / Quest Site Entrance / City Street</b> — used when the quest or event specifically calls for it</li>
+        </ul>
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={Landmark}>Staying at Inns</SectionTitle>
+        <p className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+          Ending movement in a settlement or the City Hex requires paying to stay at the inn overnight — see the Settlements tab. If only staying the night, just the inn fee is owed.
+        </p>
+      </Panel>
+    </div>
+  );
+}
+
 // ---------- Campaigns ----------
 function CampaignsTab({ campaigns, activeId, onNew, onLoad, onRename, onDelete, onExport, onImport, disabled }) {
   const [creating, setCreating] = useState(false);
@@ -9337,6 +9687,7 @@ export default function App() {
   const tabs = [
     ["party", "Party", Flame],
     ["turn", "Turn", Timer],
+    ["travel", "Travel", Map],
     ["settlement", "Settlement", Landmark],
     ["heroes", "Heroes", Users],
     ["combat", "Combat", Swords],
@@ -9412,6 +9763,9 @@ export default function App() {
       <main className="max-w-2xl mx-auto px-4 pb-16 pt-2">
         {tab === "party" && <PartyPanel party={party} setParty={setParty} log={log} addLog={addLog} heroes={heroes} updateHero={updateHero} pushToast={pushToast} />}
         {tab === "turn" && <TurnTab party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />}
+        {tab === "travel" && (
+          <TravelTab party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />
+        )}
         {tab === "settlement" && (
           <SettlementTab party={party} setParty={setParty} heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />
         )}

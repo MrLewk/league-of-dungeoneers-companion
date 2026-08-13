@@ -3,6 +3,17 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.32.0] — 2026-08-13
+
+### Added
+- Mithril: a "Make Mithril" toggle on a hero's weapon and each armour piece, applying the confirmed rulebook bonus (+1 DMG/-2 ENC for weapons, +1 DEF/-1 ENC for armour and shields), fully reversible
+- Magic Workshop (Settlements tab, any settlement with an Inn): Enchant Objects (pick a hero who knows Enchant Item, a full-durability unenchanted item, roll Arcane Arts vs Casting Value 25 — success enchants the item to 8/8 Durability, failure destroys it) and Create a Scroll (pick a hero who knows Magic Scribbles, a known spell to inscribe, roll vs CV 20 — success adds a real Scroll item to the backpack, failure destroys the parchment), both correctly limited to one enchant OR two scroll attempts between quests
+- Charge a Magic Item and Identify a Magic Item added to the Wizards' Guild box — Charge deterministically restores a dissipated (but not broken) magic item's Durability max back to 8, Identify rolls Arcane Arts against any named item
+- A "Dissipate" button appears on enchanted weapons/armour in the Hero tab, for when 00 is rolled in combat — drops the item's Durability max back to 6 and clears its enchantment (recharge later at the Wizards' Guild)
+
+### Changed
+- The "Returned From Dungeon" reset (Estate room uses) moved out of the Silver-City-only Estate panel into a new "Between Quests" panel visible on the Settlements tab everywhere, since Magic Workshop's once-per-cycle limits needed the same reset and shouldn't require owning an estate
+
 ## [1.31.4] — 2026-08-13
 
 ### Added

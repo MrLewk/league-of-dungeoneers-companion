@@ -468,6 +468,7 @@ const defaultParty = () => ({
   storage: { mule: [], wagon: [], saddlebags: [] }, // ENC-capped item lists per transport type
   grievingMother: "none", // "none" | "triggered" | "succeeded" | "failed"
   pendingGhostlyEvent: null, // forces the next Ghostly Events roll straight to a specific entry (e.g. 8, after failing the Grieving Mother)
+  magicWorkshop: { enchantUsed: false, scrollAttempts: 0 }, // reset each dungeon cycle — "only one object OR two scroll attempts between quests"
 });
 
 // Fills in any fields missing from a party saved before this update.
@@ -477,6 +478,7 @@ function normalizeParty(p) {
   merged.estate.heroTraining = { ...(p?.estate?.heroTraining || {}) };
   merged.transport = { ...defaultParty().transport, ...(p?.transport || {}) };
   merged.storage = { ...defaultParty().storage, ...(p?.storage || {}) };
+  merged.magicWorkshop = { ...defaultParty().magicWorkshop, ...(p?.magicWorkshop || {}) };
   return merged;
 }
 
@@ -986,6 +988,20 @@ function addAlchemyComponent(hero, name, type, qty, exquisite) {
     );
   }
   return [...(hero.alchemyComponents || []), { id: uid(), name, type, qty: exquisite ? 0 : qty, exquisiteQty: exquisite ? qty : 0 }];
+}
+// Lists a hero's weapon + worn armour as {key, label, piece} for the Enchant/Charge resolvers.
+function heroEquippedItems(hero) {
+  const items = [];
+  if (hero.weapon?.name) items.push({ key: "weapon", label: `${hero.weapon.name} (weapon)`, piece: hero.weapon });
+  ["head", "arms", "torso", "legs"].forEach((slot) => {
+    if (hero.armour?.[slot]?.name) items.push({ key: `armour:${slot}`, label: `${hero.armour[slot].name} (${slot})`, piece: hero.armour[slot] });
+  });
+  return items;
+}
+function applyItemPatch(hero, key, patch) {
+  if (key === "weapon") return { ...hero, weapon: { ...hero.weapon, ...patch } };
+  const slot = key.split(":")[1];
+  return { ...hero, armour: { ...hero.armour, [slot]: { ...hero.armour[slot], ...patch } } };
 }
 
 // Common Recipes (p76) — widely known among alchemists; available to any hero with the
@@ -2016,6 +2032,21 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.32.0",
+    date: "2026-08-13",
+    sections: {
+      "Added": [
+        "Mithril: a \"Make Mithril\" toggle on a hero's weapon and each armour piece, applying the confirmed rulebook bonus (+1 DMG/-2 ENC for weapons, +1 DEF/-1 ENC for armour and shields), fully reversible",
+        "Magic Workshop (Settlements tab, any settlement with an Inn): Enchant Objects (pick a hero who knows Enchant Item, a full-durability unenchanted item, roll Arcane Arts vs Casting Value 25 — success enchants the item to 8/8 Durability, failure destroys it) and Create a Scroll (pick a hero who knows Magic Scribbles, a known spell to inscribe, roll vs CV 20 — success adds a real Scroll item to the backpack, failure destroys the parchment), both correctly limited to one enchant OR two scroll attempts between quests",
+        "Charge a Magic Item and Identify a Magic Item added to the Wizards' Guild box — Charge deterministically restores a dissipated (but not broken) magic item's Durability max back to 8, Identify rolls Arcane Arts against any named item",
+        "A \"Dissipate\" button appears on enchanted weapons/armour in the Hero tab, for when 00 is rolled in combat — drops the item's Durability max back to 6 and clears its enchantment (recharge later at the Wizards' Guild)",
+      ],
+      "Changed": [
+        "The \"Returned From Dungeon\" reset (Estate room uses) moved out of the Silver-City-only Estate panel into a new \"Between Quests\" panel visible on the Settlements tab everywhere, since Magic Workshop's once-per-cycle limits needed the same reset and shouldn't require owning an estate",
+      ],
+    },
+  },
   {
     version: "1.31.4",
     date: "2026-08-13",
@@ -3439,6 +3470,28 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
     update({ ...hero, weapon: { name: w.name, dmg: w.dmg, enc: w.enc, dur: { cur: 6, max: 6 } } });
   };
   const setArmourPiece = (loc, patch) => update({ ...hero, armour: { ...hero.armour, [loc]: { ...hero.armour[loc], ...patch } } });
+  const toggleWeaponMithril = () => {
+    if (hero.weapon.mithril) {
+      setWeapon({ mithril: false, dmg: hero.weapon.mithrilOrigDmg || hero.weapon.dmg, enc: hero.weapon.enc + 2, mithrilOrigDmg: "" });
+    } else {
+      setWeapon({ mithril: true, mithrilOrigDmg: hero.weapon.dmg, dmg: `${hero.weapon.dmg}+1`, enc: Math.max(0, hero.weapon.enc - 2) });
+    }
+  };
+  const toggleArmourMithril = (loc) => {
+    const piece = hero.armour[loc];
+    if (piece.mithril) {
+      setArmourPiece(loc, { mithril: false, def: piece.def - 1, enc: piece.enc + 1 });
+    } else {
+      setArmourPiece(loc, { mithril: true, def: piece.def + 1, enc: Math.max(0, piece.enc - 1) });
+    }
+  };
+  const dissipateWeaponMagic = () => {
+    setWeapon({ enchanted: false, dur: { cur: Math.min(hero.weapon.dur.cur, 6), max: 6 } });
+  };
+  const dissipateArmourMagic = (loc) => {
+    const piece = hero.armour[loc];
+    setArmourPiece(loc, { enchanted: false, dur: { cur: Math.min(piece.dur.cur, 6), max: 6 } });
+  };
   const pickArmour = (loc, name) => {
     const a = ARMOUR_AND_SHIELDS.find((x) => x.name === name);
     if (!a) return;
@@ -4493,6 +4546,26 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
                 <input type="number" value={hero.weapon.dur.max} onChange={(e) => setWeapon({ dur: { ...hero.weapon.dur, max: Number(e.target.value) || 0 } })}
                   className="w-9 rounded px-1 py-0.5" style={{ border: `1px solid ${palette.line}` }} />
               </label>
+              {hero.weapon.name && (
+                <button
+                  onClick={toggleWeaponMithril}
+                  className="text-[10px] px-2 py-1 rounded font-semibold"
+                  style={{ background: hero.weapon.mithril ? palette.crimsonDark : "#00000010", color: hero.weapon.mithril ? palette.parchment : palette.inkSoft }}
+                  title="Only Dwarfs (or the Mithril Smith talent) know how to work Mithril. +1 DMG, -2 ENC."
+                >
+                  {hero.weapon.mithril ? "★ Mithril" : "Make Mithril"}
+                </button>
+              )}
+              {hero.weapon.enchanted && (
+                <button
+                  onClick={dissipateWeaponMagic}
+                  className="text-[10px] px-2 py-1 rounded font-semibold"
+                  style={{ background: "#00000010", color: palette.crimson }}
+                  title="Tap if you rolled 00 attacking with this weapon — the magic dissipates permanently (unless recharged at the Wizards' Guild) and Durability max drops to 6."
+                >
+                  ✨ Dissipate
+                </button>
+              )}
             </div>
             {weaponRef && (
               <div className="text-[10px] mt-1 rounded px-2 py-1" style={{ background: "#00000008", color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
@@ -4568,6 +4641,26 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
                         <input type="number" value={piece.dur.max} onChange={(e) => setArmourPiece(loc, { dur: { ...piece.dur, max: Number(e.target.value) || 0 } })}
                           className="w-8 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}` }} />
                       </label>
+                      {piece.name && (
+                        <button
+                          onClick={() => toggleArmourMithril(loc)}
+                          className="text-[10px] px-2 py-1 rounded font-semibold"
+                          style={{ background: piece.mithril ? palette.crimsonDark : "#00000010", color: piece.mithril ? palette.parchment : palette.inkSoft }}
+                          title="Only Dwarfs (or the Mithril Smith talent) know how to work Mithril. +1 DEF, -1 ENC."
+                        >
+                          {piece.mithril ? "★ Mithril" : "Make Mithril"}
+                        </button>
+                      )}
+                      {piece.enchanted && (
+                        <button
+                          onClick={() => dissipateArmourMagic(loc)}
+                          className="text-[10px] px-2 py-1 rounded font-semibold"
+                          style={{ background: "#00000010", color: palette.crimson }}
+                          title="Tap if you rolled 00 with this piece — the magic dissipates permanently (unless recharged at the Wizards' Guild) and Durability max drops to 6."
+                        >
+                          ✨ Dissipate
+                        </button>
+                      )}
                     </div>
                     {ref && (
                       <div className="text-[10px] mt-0.5 rounded px-1.5 py-0.5" style={{ background: "#00000008", color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
@@ -4910,6 +5003,18 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const [trainChoice, setTrainChoice] = useState("CS");
   const [ghostlyResult, setGhostlyResult] = useState(null);
   const [gmRewardHero, setGmRewardHero] = useState("");
+  const [enchantHero, setEnchantHero] = useState("");
+  const [enchantTarget, setEnchantTarget] = useState("");
+  const [enchantResult, setEnchantResult] = useState(null);
+  const [scrollHero, setScrollHero] = useState("");
+  const [scrollSpell, setScrollSpell] = useState("");
+  const [scrollResult, setScrollResult] = useState(null);
+  const [chargeHero, setChargeHero] = useState("");
+  const [chargeTarget, setChargeTarget] = useState("");
+  const [chargeResult, setChargeResult] = useState(null);
+  const [identifyHero, setIdentifyHero] = useState("");
+  const [identifyName, setIdentifyName] = useState("");
+  const [identifyResult, setIdentifyResult] = useState(null);
   // Tracks opted-OUT heroes rather than opted-in, so heroes added later still default to selected.
   const [restExcluded, setRestExcluded] = useState(() => new Set());
 
@@ -5598,13 +5703,14 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         alchemistLabUsed: false,
         gardenUsed: false,
       },
+      magicWorkshop: { enchantUsed: false, scrollAttempts: 0 },
     }));
     const lines = [];
     if (pending) lines.push(`${pending.name} is now ready to use.`);
-    lines.push("Archery Range/Training Grounds, Alchemist Lab, and Garden uses are reset for this new visit.");
+    lines.push("Archery Range/Training Grounds, Alchemist Lab, Garden, Enchant Objects, and Create a Scroll uses are reset for this new visit.");
     setEstateMsg({ ok: true, line: lines.join(" ") });
     setReturnResult(lines.join(" "));
-    addLog(`Returned from a dungeon trip — estate room uses reset.${pending ? ` The ${pending.name} is now furnished and ready.` : ""}`);
+    addLog(`Returned from a dungeon trip — room and downtime uses reset.${pending ? ` The ${pending.name} is now furnished and ready.` : ""}`);
   };
 
   const trainAtManor = (which) => {
@@ -5801,6 +5907,81 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
     addLog(`${hero.name} buries the remains at the estate. The next morning, a magical Longsword (+2 DMG) is found on the dining table. The old lady is never seen again.`);
   };
 
+  // ---------- Enchantments & Magic Items ----------
+  const confirmEnchant = () => {
+    const hero = heroes.find((h) => h.id === enchantHero);
+    if (!hero) { setEnchantResult({ ok: false, line: "Pick a hero first." }); return; }
+    if (!(hero.spells || []).includes("Enchant Item")) { setEnchantResult({ ok: false, line: `${hero.name} doesn't know the Enchant Item spell.` }); return; }
+    if (party.magicWorkshop.enchantUsed) { setEnchantResult({ ok: false, line: "Already enchanted an object between this visit and the next dungeon." }); return; }
+    const eligible = heroEquippedItems(hero).filter((i) => i.piece.dur && i.piece.dur.cur === i.piece.dur.max && !i.piece.enchanted);
+    const item = eligible.find((i) => i.key === enchantTarget);
+    if (!item) { setEnchantResult({ ok: false, line: "Pick a full-durability, unenchanted item." }); return; }
+    const aa = Number(hero.skills.arcaneArts) || 0;
+    const target = aa - 25;
+    const roll = rollPercent();
+    const success = roll <= target;
+    setParty((prev) => ({ ...prev, magicWorkshop: { ...prev.magicWorkshop, enchantUsed: true } }));
+    if (success) {
+      updateHero(applyItemPatch(hero, item.key, { enchanted: true, wasEverEnchanted: true, dur: { cur: 8, max: 8 } }));
+      const line = `Rolled ${roll} vs target ${target} — Success! ${item.piece.name} is now enchanted (Durability 8/8). Note the Powerstone's magical trait manually — the app doesn't have a Powerstone table yet.`;
+      setEnchantResult({ ok: true, line });
+      addLog(`${hero.name} enchants ${item.piece.name}. ${line}`);
+    } else {
+      const blank = item.key === "weapon" ? { name: "", dmg: "", enc: 0, dur: { cur: 0, max: 0 }, mithril: false, enchanted: false } : { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 }, mithril: false, enchanted: false };
+      updateHero(applyItemPatch(hero, item.key, blank));
+      const line = `Rolled ${roll} vs target ${target} — Failed. The object is destroyed (the Powerstone can be reused).`;
+      setEnchantResult({ ok: false, line });
+      addLog(`${hero.name} attempts to enchant ${item.piece.name} — fails, item destroyed.`);
+    }
+  };
+
+  const confirmScroll = () => {
+    const hero = heroes.find((h) => h.id === scrollHero);
+    if (!hero) { setScrollResult({ ok: false, line: "Pick a hero first." }); return; }
+    if (!(hero.spells || []).includes("Magic Scribbles")) { setScrollResult({ ok: false, line: `${hero.name} doesn't know Magic Scribbles.` }); return; }
+    if ((party.magicWorkshop.scrollAttempts || 0) >= 2) { setScrollResult({ ok: false, line: "Already made 2 scroll attempts between this visit and the next dungeon." }); return; }
+    if (!scrollSpell) { setScrollResult({ ok: false, line: "Pick which spell to inscribe." }); return; }
+    const aa = Number(hero.skills.arcaneArts) || 0;
+    const target = aa - 20;
+    const roll = rollPercent();
+    const success = roll <= target;
+    setParty((prev) => ({ ...prev, magicWorkshop: { ...prev.magicWorkshop, scrollAttempts: (prev.magicWorkshop.scrollAttempts || 0) + 1 } }));
+    if (success) {
+      updateHero({ ...hero, backpack: [...hero.backpack, { id: uid(), name: `Scroll of ${scrollSpell}`, value: "", enc: 1, dur: "1" }] });
+      const line = `Rolled ${roll} vs target ${target} — Success! A Scroll of ${scrollSpell} is added to ${hero.name}'s backpack.`;
+      setScrollResult({ ok: true, line });
+      addLog(`${hero.name}: ${line}`);
+    } else {
+      const line = `Rolled ${roll} vs target ${target} — Failed. The parchment is destroyed.`;
+      setScrollResult({ ok: false, line });
+      addLog(`${hero.name}: ${line}`);
+    }
+  };
+
+  const confirmCharge = () => {
+    const hero = heroes.find((h) => h.id === chargeHero);
+    if (!hero) { setChargeResult({ ok: false, line: "Pick a hero first." }); return; }
+    const eligible = heroEquippedItems(hero).filter((i) => i.piece.wasEverEnchanted && !i.piece.enchanted && i.piece.dur && i.piece.dur.cur > 0);
+    const item = eligible.find((i) => i.key === chargeTarget);
+    if (!item) { setChargeResult({ ok: false, line: "Pick a dissipated (but not broken) magic item to recharge." }); return; }
+    updateHero(applyItemPatch(hero, item.key, { enchanted: true, dur: { ...item.piece.dur, max: 8 } }));
+    const line = `${item.piece.name} recharged at the Wizards' Guild — magic restored, Durability max back to 8.`;
+    setChargeResult({ ok: true, line });
+    addLog(`${hero.name}: ${line}`);
+  };
+
+  const confirmIdentify = () => {
+    const hero = heroes.find((h) => h.id === identifyHero);
+    if (!hero) { setIdentifyResult({ ok: false, line: "Pick a hero first." }); return; }
+    if (!identifyName.trim()) { setIdentifyResult({ ok: false, line: "Enter the item's name." }); return; }
+    const aa = Number(hero.skills.arcaneArts) || 0;
+    const roll = rollPercent();
+    const success = roll <= aa;
+    const line = success ? `Rolled ${roll} vs Arcane Arts ${aa} — Success! ${identifyName} is identified.` : `Rolled ${roll} vs Arcane Arts ${aa} — Failed. Only one attempt per party/object — try again in a different settlement.`;
+    setIdentifyResult({ ok: success, line });
+    addLog(`${hero.name} attempts to identify ${identifyName}: ${line}`);
+  };
+
   return (
     <div>
       <Panel className="mb-4">
@@ -5895,6 +6076,86 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         )}
       </Panel>
 
+      <Panel className="mb-4">
+        <SectionTitle icon={ClipboardList}>Between Quests</SectionTitle>
+        <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+          Tap after each dungeon trip to reset once-per-cycle downtime activities (Estate rooms, Enchant Objects, Create a Scroll).
+        </p>
+        <button onClick={returnFromDungeon} className="w-full text-xs px-2 py-2 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>
+          Returned From Dungeon
+        </button>
+        {returnResult && (
+          <p className="text-[10px] mt-1.5 font-semibold" style={{ color: palette.forestDark, fontFamily: "Crimson Pro, serif" }}>
+            {returnResult}
+          </p>
+        )}
+      </Panel>
+
+      {settlement && settlement.services.includes("Inn") && (
+        <Panel className="mb-4">
+          <SectionTitle icon={Sparkles}>Magic Workshop</SectionTitle>
+          <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            Enchant Objects and Create a Scroll — done at the Inn, can't be done while travelling. Only one object enchanted OR two scroll attempts allowed between quests.
+          </p>
+
+          <p className="text-xs font-semibold mb-2" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Enchant Objects</p>
+          {party.magicWorkshop.enchantUsed ? (
+            <p className="text-[10px] mb-3" style={{ color: palette.inkSoft }}>Already used this cycle — reset via "Between Quests" above.</p>
+          ) : (
+            <>
+              <select value={enchantHero} onChange={(e) => { setEnchantHero(e.target.value); setEnchantTarget(""); setEnchantResult(null); }} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+                <option value="">Choose a hero who knows Enchant Item…</option>
+                {heroes.filter((h) => (h.spells || []).includes("Enchant Item")).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+              </select>
+              {enchantHero && (() => {
+                const hero = heroes.find((h) => h.id === enchantHero);
+                const eligible = heroEquippedItems(hero).filter((i) => i.piece.dur && i.piece.dur.cur === i.piece.dur.max && !i.piece.enchanted);
+                return (
+                  <>
+                    <select value={enchantTarget} onChange={(e) => setEnchantTarget(e.target.value)} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+                      <option value="">Choose a full-durability item…</option>
+                      {eligible.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
+                    </select>
+                    {eligible.length === 0 && <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft }}>No eligible items — must be at full Durability and not already enchanted.</p>}
+                    <button onClick={confirmEnchant} disabled={!enchantTarget} className="w-full text-[10px] px-2 py-1.5 rounded font-semibold mb-1.5" style={{ background: enchantTarget ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: enchantTarget ? 1 : 0.5 }}>
+                      Attempt Enchantment
+                    </button>
+                  </>
+                );
+              })()}
+              {enchantResult && <p className="text-[10px] mb-3 font-semibold" style={{ color: enchantResult.ok ? palette.forestDark : palette.crimson }}>{enchantResult.line}</p>}
+            </>
+          )}
+
+          <div className="h-px my-3" style={{ background: palette.line }} />
+          <p className="text-xs font-semibold mb-2" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Create a Scroll</p>
+          {(party.magicWorkshop.scrollAttempts || 0) >= 2 ? (
+            <p className="text-[10px]" style={{ color: palette.inkSoft }}>2/2 attempts used this cycle — reset via "Between Quests" above.</p>
+          ) : (
+            <>
+              <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft }}>{party.magicWorkshop.scrollAttempts || 0}/2 attempts used this cycle.</p>
+              <select value={scrollHero} onChange={(e) => { setScrollHero(e.target.value); setScrollSpell(""); setScrollResult(null); }} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+                <option value="">Choose a hero who knows Magic Scribbles…</option>
+                {heroes.filter((h) => (h.spells || []).includes("Magic Scribbles")).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+              </select>
+              {scrollHero && (() => {
+                const hero = heroes.find((h) => h.id === scrollHero);
+                return (
+                  <select value={scrollSpell} onChange={(e) => setScrollSpell(e.target.value)} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+                    <option value="">Choose a spell to inscribe…</option>
+                    {(hero.spells || []).filter((s) => s !== "Magic Scribbles").map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                );
+              })()}
+              <button onClick={confirmScroll} disabled={!scrollSpell} className="w-full text-[10px] px-2 py-1.5 rounded font-semibold" style={{ background: scrollSpell ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: scrollSpell ? 1 : 0.5 }}>
+                Attempt Scroll (1 day)
+              </button>
+              {scrollResult && <p className="text-[10px] mt-1.5 font-semibold" style={{ color: scrollResult.ok ? palette.forestDark : palette.crimson }}>{scrollResult.line}</p>}
+            </>
+          )}
+        </Panel>
+      )}
+
       {settlement && settlement.services.includes("Guilds") && (
         <Panel className="mb-4">
           <SectionTitle icon={BookOpen}>Wizards' Guild — Learn a Spell</SectionTitle>
@@ -5954,6 +6215,48 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
               {learnSpellResult.line}
             </div>
           )}
+
+          <div className="h-px my-3" style={{ background: palette.line }} />
+          <p className="text-xs font-semibold mb-2" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Charge a Magic Item</p>
+          <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            Recharges a magic item whose power has dissipated (00 rolled in combat), as long as it isn't broken. No roll needed.
+          </p>
+          <select value={chargeHero} onChange={(e) => { setChargeHero(e.target.value); setChargeTarget(""); setChargeResult(null); }} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+            <option value="">Choose a hero…</option>
+            {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+          </select>
+          {chargeHero && (() => {
+            const hero = heroes.find((h) => h.id === chargeHero);
+            const eligible = heroEquippedItems(hero).filter((i) => i.piece.wasEverEnchanted && !i.piece.enchanted && i.piece.dur && i.piece.dur.cur > 0);
+            return (
+              <>
+                <select value={chargeTarget} onChange={(e) => setChargeTarget(e.target.value)} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+                  <option value="">Choose a dissipated item…</option>
+                  {eligible.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
+                </select>
+                {eligible.length === 0 && <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft }}>No dissipated items to recharge (item must have been enchanted before, currently isn't, and isn't broken).</p>}
+                <button onClick={confirmCharge} disabled={!chargeTarget} className="w-full text-[10px] px-2 py-1.5 rounded font-semibold" style={{ background: chargeTarget ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: chargeTarget ? 1 : 0.5 }}>
+                  Recharge
+                </button>
+              </>
+            );
+          })()}
+          {chargeResult && <p className="text-[10px] mt-1.5 font-semibold" style={{ color: chargeResult.ok ? palette.forestDark : palette.crimson }}>{chargeResult.line}</p>}
+
+          <div className="h-px my-3" style={{ background: palette.line }} />
+          <p className="text-xs font-semibold mb-2" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Identify a Magic Item</p>
+          <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            Also available at a Scryer. Only one attempt per party/object.
+          </p>
+          <select value={identifyHero} onChange={(e) => { setIdentifyHero(e.target.value); setIdentifyResult(null); }} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+            <option value="">Choose a hero…</option>
+            {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+          </select>
+          <input value={identifyName} onChange={(e) => setIdentifyName(e.target.value)} placeholder="Item name…" className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }} />
+          <button onClick={confirmIdentify} disabled={!identifyHero || !identifyName.trim()} className="w-full text-[10px] px-2 py-1.5 rounded font-semibold" style={{ background: identifyHero && identifyName.trim() ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: identifyHero && identifyName.trim() ? 1 : 0.5 }}>
+            Attempt to Identify
+          </button>
+          {identifyResult && <p className="text-[10px] mt-1.5 font-semibold" style={{ color: identifyResult.ok ? palette.forestDark : palette.crimson }}>{identifyResult.line}</p>}
         </Panel>
       )}
 
@@ -6045,25 +6348,15 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
               </p>
               <p className="text-xs font-semibold mb-2" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Furnishing the Manor</p>
               <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-                Only one thing may be commissioned between quests, and it isn't usable until after leaving the next dungeon.
+                Only one thing may be commissioned between quests, and it isn't usable until after leaving the next dungeon. Use the "Between Quests" panel above to mark a dungeon trip complete.
               </p>
 
-              <div className="flex justify-between items-center text-xs rounded px-2 py-2 mb-2" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
-                <span style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
-                  {party.estate.pendingRoom ? (
-                    <><b>{party.estate.pendingRoom.name}</b> commissioned — ready after your next dungeon trip.</>
-                  ) : (
-                    "Tap after each dungeon trip to reset Archery Range/Training Grounds, Alchemist Lab, and Garden uses."
-                  )}
-                </span>
-                <button onClick={returnFromDungeon} className="text-[10px] px-2 py-1 rounded font-semibold shrink-0 ml-2" style={{ background: palette.crimsonDark, color: palette.parchment }}>
-                  Returned From Dungeon
-                </button>
-              </div>
-              {returnResult && (
-                <p className="text-[10px] mb-2 font-semibold" style={{ color: palette.forestDark, fontFamily: "Crimson Pro, serif" }}>
-                  {returnResult}
-                </p>
+              {party.estate.pendingRoom && (
+                <div className="text-xs rounded px-2 py-2 mb-2" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                  <span style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+                    <b>{party.estate.pendingRoom.name}</b> commissioned — ready after your next dungeon trip.
+                  </span>
+                </div>
               )}
 
               <div className="space-y-1.5">

@@ -2101,6 +2101,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.32.2",
+    date: "2026-08-13",
+    sections: {
+      "Fixed": [
+        "Wizards' Guild box header read \"Wizards' Guild — Learn a Spell\", crowding out the fact that Charge and Identify live there too — now just \"Wizards' Guild\", with \"Learn a Spell\" as its own subheading matching the other two",
+      ],
+    },
+  },
+  {
     version: "1.32.1",
     date: "2026-08-13",
     sections: {
@@ -6239,7 +6248,8 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
 
       {settlement && settlement.services.includes("Guilds") && (
         <Panel className="mb-4">
-          <SectionTitle icon={BookOpen}>Wizards' Guild — Learn a Spell</SectionTitle>
+          <SectionTitle icon={BookOpen}>Wizards' Guild</SectionTitle>
+          <p className="text-xs font-semibold mb-2" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Learn a Spell</p>
           <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
             200c + 100c per spell level above 1. Only available to Wizards and Druids, at the Wizards' Guild in Silver City. Takes 3 days.
           </p>

@@ -86,6 +86,7 @@ const defaultHero = () => ({
   spells: [],
   prayers: [],
   specialRules: [],
+  legendaryItems: [],
   conditions: [],
   backpackUpgrade: "",
   tempEffects: [],
@@ -183,7 +184,7 @@ const BACKGROUNDS_DATA = [
   {
     id: "proving-your-worth", roll: 10, name: "Proving Your Worth",
     text: "Personal Quest: Kill (or have your party kill) an enemy worth 450+ XP, then return to your father's (randomised, non-Silver-City) home settlement for 1 Movement Point to claim the Armour of the Father (see Legendary Items).",
-    reward: { type: "item", name: "Armour of the Father", note: "See the Legendary Items chapter for its stats." },
+    reward: { type: "item", name: "Armour of the Father", note: "Now in the Compendium's Legendary Items list — attach it there once claimed." },
   },
   {
     id: "the-fraud", roll: 11, name: "The Fraud",
@@ -631,6 +632,19 @@ const TEMPLE_BOONS = {
   Ramos: { kind: "stat", stat: "STR", amount: 5, label: "+5 STR" },
 };
 
+// Table of Relics (p194) — permanent Warrior-Priest-only magic items, one per god, distinct
+// from the Temple boons above. Only 2 may be worn at once unless the Reliquary talent is
+// known. Effect uses the same shape as TALENT_EFFECTS/LEGENDARY_ITEM_EFFECTS where possible;
+// Metheia's is reference-only since it modifies future heal rolls rather than a flat stat.
+const RELIC_EFFECTS = {
+  Charus: { energy: 1, label: "+1 Energy Point" },
+  Metheia: { label: "+1d3 to any healing done by the Priest (reference only — apply the roll manually when healing)" },
+  Iphy: { stat: "RES", amount: 5, label: "+5 Resolve" },
+  Rhidnir: { luck: 1, label: "+1 Luck" },
+  Ohlnir: { skill: "cs", amount: 5, label: "+5 CS" },
+  Ramos: { stat: "STR", amount: 5, label: "+5 STR" },
+};
+
 // Fortune Teller (p143) — 50c, 1d6.
 const FORTUNE_TELLER_TABLE = [
   { roll: 1, text: "Foresees an upcoming battle in such detail that the hero may treat one successful enemy attack as a miss during the next quest." },
@@ -862,6 +876,21 @@ const WEAPON_CLASS_STR_REQ = {
   4: { twoH: 40, oneH: 50 },
   5: { twoH: 55, oneH: null },
   6: { twoH: 20, oneH: null },
+};
+
+// Profession armour Tier caps and weapon Class caps, from each profession's "Limitations"
+// text (Creating Your Character). Professions not listed here (Warrior, Warrior Priest)
+// showed no Limitations section — treated as unrestricted.
+const PROFESSION_ARMOUR_TIER_LIMIT = {
+  Rogue: 3,
+  Alchemist: 3,
+  Thief: 3,
+  Barbarian: 3,
+  Wizard: 2,
+  Ranger: 3,
+};
+const PROFESSION_WEAPON_CLASS_LIMIT = {
+  Thief: 2,
 };
 
 // Armour & Shields table (Equipment Appendix) — Def, ENC, which hero.armour location(s)
@@ -1700,6 +1729,60 @@ const SPECIAL_RULES = [
   { name: "Web", type: "Active", effect: "Casts webs as a special attack — works just like the net weapon." },
 ];
 
+// Legendary Items (p201-211). Unique, unsellable, never run out of magic or break, but
+// must be identified before use (Identify a Magic Item). Type = which slot it uses.
+const LEGENDARY_ITEMS = [
+  { name: "Horn of Alfheim", type: "Item", effect: "Sound it (needs a ready slot, takes a full turn, costs 2 Energy) to give all heroes +3 DMG (magical and physical) until the end of the battle." },
+  { name: "Bow of Divine Twilight", type: "Weapon (Shortbow)", effect: "+5 chance of Bloodlust (cumulative with Talents/Perks). If Bloodlust triggers, that shot also deals +5 DMG on top of Bloodlust's own bonus." },
+  { name: "Legendary Elixir", type: "Potion", effect: "Randomise a basic stat and increase it by +10, permanently. The party may find more than one." },
+  { name: "Dagger of Vrunior", type: "Weapon (Dagger)", effect: "All attacks with this dagger are treated as being made from behind." },
+  { name: "The Summoner's Staff", type: "Weapon (Staff)", effect: "Any Conjuring Spell cast while wielding this staff gets +20 Arcane Arts. Any elemental or demon summoned with it gets 1 extra initiative token." },
+  { name: "The Headsman's Axe", type: "Weapon (Greataxe)", effect: "+2 Damage for every consecutive hit that deals damage. Any miss or hit dealing no damage resets the bonus to 0; it also resets after each battle. Otherwise a standard Greataxe." },
+  { name: "Sword of Lightning", type: "Weapon (Longsword)", effect: "Any hit rolled with an odd number causes lightning to also strike the target for +1d6 wounds, no armour save. Half that roll (RDD) passes to the character closest to the target (not the wielder) — randomise if tied. Otherwise a standard Longsword." },
+  { name: "Ohlnir's Hammer", type: "Weapon (Battlehammer)", effect: "Stuns the enemy on every hit, no test needed. Not cumulative — an enemy can never lose more than 1 Action per turn from this. Otherwise a standard Battlehammer." },
+  { name: "The Breastplate of Rannulf", type: "Armour (Torso)", effect: "DEF 8, ENC 7. Denies the Double Damage roll made by Large Creatures." },
+  { name: "The Golden Khopesh", type: "Weapon", effect: "DMG 1d12+1, Class 4, ENC 10. Ignores all armour and Natural Armour saves. All Higher Undead will always attempt to attack the wielder, forgoing normal targeting priority." },
+  { name: "Vial of Never Ending", type: "Alchemy Tool", effect: "Any healing potion mixed in this vial (must be mixed in it originally, not poured from another bottle) restores the drinker to full health. Reusable, and the party may find this several times. Destroyed if hit during battle." },
+  { name: "Ring of the Hierophant", type: "Ring", effect: "Any Undead attacking the wearer does so at -15 CS." },
+  { name: "Amulet of Haamile", type: "Necklace", effect: "+15 Wisdom." },
+  { name: "Boots of Stability", type: "Boots", effect: "The wearer can never fall down, and ignores any destabilising effects." },
+  { name: "Stone of Valheir", type: "Item", effect: "Stores up to 3 Focus bonuses (10-30 each), letting a wizard cast a spell with the bonus without spending Focus Actions. Storing a bonus takes a full turn and a successful Arcane Arts roll, or can be filled between quests with no roll needed. Each time a bonus is drawn from the stone, pass a RES Test or lose 1 Sanity Point." },
+  { name: "Gauntlets of Hraefnir", type: "Item (no armour slot)", effect: "+15 Strength. Doesn't take up an armour slot — just note it in the inventory." },
+  { name: "Belt of Copperbane", type: "Item", effect: "+20 Constitution, but all Goblins fighting the wearer gain the Hate Special Rule." },
+  { name: "Ring of Regeneration", type: "Ring", effect: "Grants the Regeneration Special Rule, but with 1d3 HP instead of the normal 1d6 HP." },
+  { name: "Crown of Resolve", type: "Item (head)", effect: "+15 RES, but prevents the use of a helmet or cap." },
+  { name: "Boots of Energy", type: "Boots", effect: "+2 Points of Energy." },
+  { name: "Ring of Awareness", type: "Ring", effect: "+1 initiative token on the first round of battle (cumulative up to +3 if the party finds more than one), and +15 Perception when detecting traps." },
+  { name: "Cloak of Elsewhyr", type: "Item", effect: "+15 Dodge." },
+  { name: "Priestly Dice", type: "Item", effect: "+2 points of extra Luck." },
+  { name: "The Vampire's Brooch", type: "Necklace", effect: "Every time the owner wounds an enemy, restores 1d6 Hit Points to the owner (up to the amount of damage dealt). However, on a roll of 6 it instead drains 1d6 Hit Points from the closest hero." },
+  { name: "The Helmet of Golgorosh the Ram", type: "Armour (Head)", effect: "DEF 6, ENC 5, treated as a metal helmet. Hits to the head no longer cause -1 Sanity even if the helmet fails to absorb all damage. However, if hit in the head, the wearer must pass a RES Test or spend their next Action Point stunned, passively enjoying the fairy voices. Shoving while wearing the helmet gets +15." },
+  { name: "The Goblin Scimitar", type: "Weapon (Broadsword)", effect: "The wielder gains the Frenzy Perk. Otherwise has the same stats as a Broadsword." },
+  { name: "The Halfling Backpack", type: "Item", effect: "All objects carried in this bag have their ENC halved (RDD)." },
+  { name: "Trap-sensing Ring", type: "Ring", effect: "+10 Perception for every member of the party when rolling to detect traps (not just the wearer)." },
+  { name: "Necklace of Flight", type: "Necklace", effect: "Lets the wearer walk across water, chasms, and pits (and stay on such a square), and makes them immune to pit traps. Cannot be used to cross lava." },
+  { name: "Armour of the Father", type: "Armour (Torso)", effect: "The hero chooses whether this is a Padded Vest, Leather Vest, Chainmail Shirt, or Breastplate depending on their profession. Same stats as that armour type, but with a +1 DEF modifier and +15 RES." },
+  { name: "Necklace of Deflection", type: "Necklace", effect: "Whenever hit by a projectile from ranged weapons or traps (arrows, darts, sling stones), roll 1d6: 1-3 the projectile misses completely, 4 hits an arm, 5 hits a leg, 6 hits the head." },
+];
+// Flat, unconditional, permanent bonuses for Legendary Items — applied the same way as
+// TALENT_EFFECTS. Items needing live combat judgement (Sword of Lightning, Golden Khopesh's
+// targeting override, Vampire's Brooch's per-hit roll, etc.) are reference-only — no entry here.
+const LEGENDARY_ITEM_EFFECTS = {
+  "Amulet of Haamile": { stat: "WIS", amount: 15, label: "+15 WIS" },
+  "Gauntlets of Hraefnir": { stat: "STR", amount: 15, label: "+15 STR" },
+  "Belt of Copperbane": { stat: "CON", amount: 20, label: "+20 CON" },
+  "Crown of Resolve": { stat: "RES", amount: 15, label: "+15 RES" },
+  "Cloak of Elsewhyr": { skill: "dodge", amount: 15, label: "+15 Dodge" },
+  "Priestly Dice": { luck: 2, label: "+2 Luck" },
+  "Boots of Energy": { energy: 2, label: "+2 Energy" },
+  "Ring of Awareness": { skill: "perception", amount: 15, label: "+15 Perception (traps)" },
+  "Trap-sensing Ring": { skill: "perception", amount: 10, label: "+10 Perception (traps)" },
+  "Armour of the Father": { stat: "RES", amount: 15, label: "+15 RES" },
+};
+function legendaryItemEffectPatch(hero, itemName, sign) {
+  return applyEffectDelta(hero, LEGENDARY_ITEM_EFFECTS[itemName], sign);
+}
+
 const TALENTS = [
   { name: "Assassin", type: "Sneaky", effect: "Automatically hits any target from behind with a class 1 or 2 weapon." },
   { name: "Axeman", type: "Combat", effect: "Bloodlust triggers on 1-10 (instead of 1-5) with all axes." },
@@ -2013,6 +2096,7 @@ function CompendiumTab({ heroes, updateHero, addLog }) {
     ["prayers", "Prayers", PRAYERS, true, false, "prayers"],
     ["spells", "Spells", SPELLS, true, true, "spells"],
     ["rules", "Special Rules", SPECIAL_RULES, false, true, "specialRules"],
+    ["legendary", "Legendary Items", LEGENDARY_ITEMS, false, true, "legendaryItems"],
   ];
   const [, , items, showLevel, showType, field] = cats.find((c) => c[0] === cat);
   const pickedHero = heroes.find((h) => h.id === heroPick);
@@ -2022,10 +2106,10 @@ function CompendiumTab({ heroes, updateHero, addLog }) {
     if (!pickedHero || !field || isLearnedElsewhere) return;
     const list = pickedHero[field] || [];
     if (list.includes(name)) return;
-    const effectPatch = field === "talents" ? talentEffectPatch(pickedHero, name, 1) : {};
+    const effectPatch = field === "talents" ? talentEffectPatch(pickedHero, name, 1) : field === "legendaryItems" ? legendaryItemEffectPatch(pickedHero, name, 1) : {};
     updateHero({ ...pickedHero, [field]: [...list, name], ...effectPatch });
-    const eff = field === "talents" ? TALENT_EFFECTS[name] : null;
-    if (eff && addLog) addLog(`${pickedHero.name}: gained Talent "${name}" (${eff.label}, applied automatically).`);
+    const eff = field === "talents" ? TALENT_EFFECTS[name] : field === "legendaryItems" ? LEGENDARY_ITEM_EFFECTS[name] : null;
+    if (eff && addLog) addLog(`${pickedHero.name}: gained ${field === "talents" ? "Talent" : "Legendary Item"} "${name}" (${eff.label}, applied automatically).`);
   };
 
   return (
@@ -2045,6 +2129,13 @@ function CompendiumTab({ heroes, updateHero, addLog }) {
         </div>
       </Panel>
 
+      {cat === "legendary" && (
+        <Panel className="mb-4">
+          <p className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+            Legendary Items are unique (unless otherwise noted, only found once) and can never be sold. Unlike ordinary magic items, they never run out of magic and can't be damaged — but they must be identified (see the Wizards' Guild or a Scryer on the Settlements tab) before use. Attaching one below auto-applies its bonus if it's a flat stat increase; effects that need live combat judgement stay as reference text only.
+          </p>
+        </Panel>
+      )}
       {isLearnedElsewhere ? (
         <Panel className="mb-4">
           <p className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
@@ -2100,6 +2191,18 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.33.0",
+    date: "2026-08-13",
+    sections: {
+      "Added": [
+        "Legendary Items: new Compendium category with all 31 items (p201-211) — unique, unsellable, never run out of magic or break, must be identified before use. 11 items with flat, unconditional bonuses (Amulet of Haamile, Gauntlets of Hraefnir, Belt of Copperbane, Crown of Resolve, Cloak of Elsewhyr, Priestly Dice, Boots of Energy, Ring of Awareness, Trap-sensing Ring, Armour of the Father) auto-apply when attached to a hero, same mechanism as Talents, reversible on removal. The rest stay as full reference text since their effects need live combat judgement (Sword of Lightning's chain lightning, Golden Khopesh's Undead-targeting override, Vampire's Brooch's per-hit roll, etc.)",
+        "Profession equipment limits: armour Tier caps (Rogue/Alchemist/Thief/Barbarian/Ranger at Tier 3, Wizard at Tier 2) and Thief's Class 2 weapon cap now show as warnings directly on the Hero tab's weapon/armour editor, matching the existing STR-requirement warning style",
+        "Apply Starting Equipment: new panel on the Hero tab, shown once a profession is picked. Auto-equips each profession's confirmed starting gear (weapon, armour, backpack items, backpack upgrade), with pickers for \"of choice\" items (weapon choice for Barbarian/Warrior/Warrior Priest, Rogue's Shortsword-or-Rapier, and a God + Ring/Amulet picker for the Warrior Priest's starting Religious Relic)",
+        "Table of Relics (p194): the Warrior Priest's starting relic now applies its real effect — Charus +1 Energy, Iphy +5 RES, Rhidnir +1 Luck, Ohlnir +5 CS, Ramos +5 STR, Metheia +1d3 healing (reference-only, since it modifies a future roll rather than a flat stat) — plus a note on the 2-relic cap (3 with the Reliquary talent)",
+      ],
+    },
+  },
   {
     version: "1.32.2",
     date: "2026-08-13",
@@ -3522,6 +3625,48 @@ function AttachedItemList({ label, names, dataset, color, onRemove, groupKey, ef
   );
 }
 
+// Starting Equipment per profession (Creating Your Character, p31-38). weaponOptions is
+// either a fixed list to choose from, or "any" for a free pick from the full Weapons table.
+// manualNote covers anything not automatable here (needs the Alchemy tab, a relic table
+// I don't have data for, etc).
+const STARTING_EQUIPMENT = {
+  Alchemist: {
+    weaponOptions: ["Shortsword"],
+    armour: null,
+    backpackItems: [{ name: "Alchemist Tool", enc: 5, value: 200 }, { name: "Alchemist Belt", enc: 0, value: 300 }],
+    manualNote: "Also gets: 3 potions of choice (Standard strength), a bag with 3 random ingredients + 3 freely chosen parts, and 1 freely chosen recipe for a Weak Potion — add these via the Alchemy tab.",
+  },
+  Barbarian: { weaponOptions: "any", armour: null, backpackItems: [], manualNote: "" },
+  Ranger: {
+    weaponOptions: ["Longbow"],
+    armour: null,
+    backpackItems: [{ name: "Arrows x10", enc: 2 }],
+    manualNote: "",
+  },
+  Rogue: {
+    weaponOptions: ["Shortsword", "Rapier"],
+    armour: "Padded Jacket",
+    backpackItems: [{ name: "Lock Picks x10", enc: 2 }],
+    backpackUpgrade: "Medium",
+    manualNote: "",
+  },
+  Thief: {
+    weaponOptions: ["Dagger"],
+    armour: null,
+    backpackItems: [{ name: "Rope", enc: 2, value: 50 }, { name: "Lock Picks x10", enc: 2 }],
+    manualNote: "",
+  },
+  Warrior: { weaponOptions: "any", armour: "Leather Jacket", backpackItems: [], manualNote: "" },
+  "Warrior Priest": {
+    weaponOptions: "any",
+    armour: null,
+    backpackItems: [],
+    relicChoice: true,
+    manualNote: "",
+  },
+  Wizard: { weaponOptions: ["Staff"], armour: null, backpackItems: [], manualNote: "" },
+};
+
 function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) {
   const [sanityEvent, setSanityEvent] = useState(SANITY_EVENTS[0].label);
   const [pendingCondition, setPendingCondition] = useState(null);
@@ -3529,6 +3674,61 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const set = (patch) => update({ ...hero, ...patch });
+  const [startWeaponChoice, setStartWeaponChoice] = useState("");
+  const [startRelicGod, setStartRelicGod] = useState("");
+  const [startRelicType, setStartRelicType] = useState("Ring");
+  const [startEquipResult, setStartEquipResult] = useState(null);
+  const startingCfg = STARTING_EQUIPMENT[hero.profession];
+  const applyStartingEquipment = () => {
+    if (!startingCfg) return;
+    const weaponName = startingCfg.weaponOptions === "any" ? startWeaponChoice : (Array.isArray(startingCfg.weaponOptions) && startingCfg.weaponOptions.length === 1 ? startingCfg.weaponOptions[0] : startWeaponChoice);
+    if ((startingCfg.weaponOptions === "any" || (Array.isArray(startingCfg.weaponOptions) && startingCfg.weaponOptions.length > 1)) && !weaponName) {
+      setStartEquipResult({ ok: false, line: "Choose a weapon first." });
+      return;
+    }
+    if (startingCfg.relicChoice && !startRelicGod) {
+      setStartEquipResult({ ok: false, line: "Choose a god for the Religious Relic first." });
+      return;
+    }
+    let patch = {};
+    const lines = [];
+    if (weaponName) {
+      const w = WEAPONS.find((x) => x.name === weaponName);
+      if (w) {
+        patch.weapon = { name: w.name, dmg: w.dmg, enc: w.enc, dur: { cur: 6, max: 6 } };
+        lines.push(w.name);
+      }
+    }
+    if (startingCfg.armour) {
+      const a = ARMOUR_AND_SHIELDS.find((x) => x.name === startingCfg.armour);
+      if (a) {
+        patch.armour = { ...hero.armour, [a.covers[0]]: { name: a.name, def: a.def, enc: a.enc, dur: { cur: 6, max: 6 } } };
+        lines.push(a.name);
+      }
+    }
+    const newBackpackItems = (startingCfg.backpackItems || []).map((it) => ({ id: uid(), name: it.name, value: it.value ?? "", enc: it.enc ?? "", dur: "" }));
+    if (startingCfg.relicChoice) {
+      const relicEffect = RELIC_EFFECTS[startRelicGod];
+      newBackpackItems.push({ id: uid(), name: `Religious Relic of ${startRelicGod} (${startRelicType})`, value: "", enc: 0, dur: "" });
+      if (relicEffect) {
+        const relicPatch = applyEffectDelta(hero, relicEffect, 1);
+        patch = { ...patch, ...relicPatch };
+      }
+      lines.push(`Religious Relic of ${startRelicGod} (${startRelicType}) — ${relicEffect ? relicEffect.label : ""}`);
+    }
+    patch.backpack = [...hero.backpack, ...newBackpackItems];
+    lines.push(...newBackpackItems.filter((it) => !it.name.startsWith("Religious Relic")).map((it) => it.name));
+    if (startingCfg.backpackUpgrade) {
+      patch.backpackUpgrade = startingCfg.backpackUpgrade;
+      lines.push(`${startingCfg.backpackUpgrade} Backpack`);
+    }
+    update({ ...hero, ...patch });
+    const line = `Starting equipment applied: ${lines.join(", ")}.${startingCfg.manualNote ? ` ${startingCfg.manualNote}` : ""}`;
+    setStartEquipResult({ ok: true, line });
+    addLog(`${hero.name}: ${line}`);
+  };
+
+
   const setStat = (k, v) => update({ ...hero, stats: { ...hero.stats, [k]: v } });
   const CREATION_POINT_CAP_PER_STAT = 10;
   const spendCreationPoint = (k, sign) => {
@@ -3994,6 +4194,9 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
   // twoH is always the lower/easier bar (wielding one-handed needs more STR, where possible
   // at all) — so that's the real "can this hero use it" threshold.
   const strTooWeak = strReq ? (Number(hero.stats.STR) || 0) < strReq.twoH : false;
+  const weaponClassLimit = PROFESSION_WEAPON_CLASS_LIMIT[hero.profession];
+  const weaponClassTooHeavy = weaponRef && weaponClassLimit ? weaponRef.class > weaponClassLimit : false;
+  const armourTierLimit = PROFESSION_ARMOUR_TIER_LIMIT[hero.profession];
 
   const pickBackpackUpgrade = (newUpgrade) => {
     const oldPenalty = BACKPACK_UPGRADES[hero.backpackUpgrade || ""]?.dexPenalty || 0;
@@ -4107,6 +4310,59 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
             <p className="text-xs mt-1" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
               {PROFESSIONS.find((p) => p.name === hero.profession)?.desc}
             </p>
+          )}
+          {startingCfg && (
+            <div className="mt-2 rounded p-2" style={{ background: "#00000008" }}>
+              <p className="text-xs font-semibold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Starting Equipment</p>
+              {(startingCfg.weaponOptions === "any" || (Array.isArray(startingCfg.weaponOptions) && startingCfg.weaponOptions.length > 1)) && (
+                <select
+                  value={startWeaponChoice}
+                  onChange={(e) => setStartWeaponChoice(e.target.value)}
+                  className="w-full text-xs rounded px-2 py-1 mb-1.5"
+                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                >
+                  <option value="">Choose starting weapon…</option>
+                  {startingCfg.weaponOptions === "any"
+                    ? WEAPONS.map((w) => <option key={w.name} value={w.name}>{w.name}</option>)
+                    : startingCfg.weaponOptions.map((w) => <option key={w} value={w}>{w}</option>)}
+                </select>
+              )}
+              {startingCfg.relicChoice && (
+                <>
+                  <p className="text-[10px] mb-1" style={{ color: palette.inkSoft }}>
+                    Only 2 relics may be worn at once unless the Reliquary talent is known. Counts as a magic item.
+                  </p>
+                  <div className="flex gap-1.5 mb-1.5">
+                    <select
+                      value={startRelicGod}
+                      onChange={(e) => setStartRelicGod(e.target.value)}
+                      className="flex-1 text-xs rounded px-2 py-1"
+                      style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                    >
+                      <option value="">Choose a god…</option>
+                      {Object.keys(RELIC_EFFECTS).map((g) => <option key={g} value={g}>{g} ({RELIC_EFFECTS[g].label})</option>)}
+                    </select>
+                    <select
+                      value={startRelicType}
+                      onChange={(e) => setStartRelicType(e.target.value)}
+                      className="text-xs rounded px-2 py-1"
+                      style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                    >
+                      <option value="Ring">Ring</option>
+                      <option value="Amulet">Amulet</option>
+                    </select>
+                  </div>
+                </>
+              )}
+              <button onClick={applyStartingEquipment} className="w-full text-xs px-2 py-1.5 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>
+                Apply Starting Equipment
+              </button>
+              {startEquipResult && (
+                <p className="text-[10px] mt-1.5" style={{ color: startEquipResult.ok ? palette.forestDark : palette.crimson, fontWeight: 600 }}>
+                  {startEquipResult.line}
+                </p>
+              )}
+            </div>
           )}
           {speciesData && speciesData.note && (
             <p className="text-xs mt-1" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
@@ -4664,6 +4920,11 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
                     {" · "}Requires STR {strReq.oneH ? `${strReq.oneH} (1H) / ` : ""}{strReq.twoH} (2H){strTooWeak ? " — under this hero's STR" : ""}
                   </span>
                 )}
+                {weaponClassLimit && (
+                  <span style={{ color: weaponClassTooHeavy ? palette.crimson : palette.inkSoft, fontWeight: weaponClassTooHeavy ? 700 : 400 }}>
+                    {" · "}{hero.profession} limit: Class {weaponClassLimit}{weaponClassTooHeavy ? " — this weapon is too heavy" : ""}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -4754,6 +5015,11 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
                     {ref && (
                       <div className="text-[10px] mt-0.5 rounded px-1.5 py-0.5" style={{ background: "#00000008", color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
                         Tier {ref.tier || "—"}{ref.special ? ` · ${ref.special}` : ""} · {ref.cost}c (avail {ref.avail}){ref.covers.length > 1 ? ` · Also covers: ${ref.covers.filter((c) => c !== loc).join(", ")}` : ""}
+                        {armourTierLimit && ref.tier > armourTierLimit && (
+                          <span style={{ color: palette.crimson, fontWeight: 700 }}>
+                            {" · "}{hero.profession} limit: Tier {armourTierLimit} — too heavy
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -4922,7 +5188,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
             style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
           />
 
-          {(hero.talents.length > 0 || hero.perks.length > 0 || hero.spells.length > 0 || hero.prayers.length > 0 || hero.specialRules.length > 0) && (
+          {(hero.talents.length > 0 || hero.perks.length > 0 || hero.spells.length > 0 || hero.prayers.length > 0 || hero.specialRules.length > 0 || (hero.legendaryItems || []).length > 0) && (
             <div className="mt-2">
               <AttachedItemList
                 label="Talents"
@@ -4941,6 +5207,19 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
               <AttachedItemList label="Spells" names={hero.spells} dataset={SPELLS} color="#5B6FA8" groupKey={(i) => i.school} onRemove={(t) => set({ spells: hero.spells.filter((x) => x !== t) })} />
               <AttachedItemList label="Prayers" names={hero.prayers} dataset={PRAYERS} color={palette.crimson} groupKey={(i) => `Level ${i.lvl}`} onRemove={(t) => set({ prayers: hero.prayers.filter((x) => x !== t) })} />
               <AttachedItemList label="Special Rules" names={hero.specialRules} dataset={SPECIAL_RULES} color={palette.ember} groupKey={(i) => i.type} onRemove={(t) => set({ specialRules: hero.specialRules.filter((x) => x !== t) })} />
+              <AttachedItemList
+                label="Legendary Items"
+                names={hero.legendaryItems || []}
+                dataset={LEGENDARY_ITEMS}
+                color={palette.gold}
+                groupKey={(i) => i.type}
+                effects={LEGENDARY_ITEM_EFFECTS}
+                onRemove={(t) => {
+                  const reversePatch = legendaryItemEffectPatch(hero, t, -1);
+                  set({ legendaryItems: (hero.legendaryItems || []).filter((x) => x !== t), ...reversePatch });
+                  if (LEGENDARY_ITEM_EFFECTS[t]) addLog && addLog(`${hero.name}: removed Legendary Item "${t}" (${LEGENDARY_ITEM_EFFECTS[t].label} reversed).`);
+                }}
+              />
             </div>
           )}
         </div>

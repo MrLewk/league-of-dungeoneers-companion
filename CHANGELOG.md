@@ -3,6 +3,14 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.33.0] — 2026-08-13
+
+### Added
+- Legendary Items: new Compendium category with all 31 items (p201-211) — unique, unsellable, never run out of magic or break, must be identified before use. 11 items with flat, unconditional bonuses (Amulet of Haamile, Gauntlets of Hraefnir, Belt of Copperbane, Crown of Resolve, Cloak of Elsewhyr, Priestly Dice, Boots of Energy, Ring of Awareness, Trap-sensing Ring, Armour of the Father) auto-apply when attached to a hero, same mechanism as Talents, reversible on removal. The rest stay as full reference text since their effects need live combat judgement (Sword of Lightning's chain lightning, Golden Khopesh's Undead-targeting override, Vampire's Brooch's per-hit roll, etc.)
+- Profession equipment limits: armour Tier caps (Rogue/Alchemist/Thief/Barbarian/Ranger at Tier 3, Wizard at Tier 2) and Thief's Class 2 weapon cap now show as warnings directly on the Hero tab's weapon/armour editor, matching the existing STR-requirement warning style
+- Apply Starting Equipment: new panel on the Hero tab, shown once a profession is picked. Auto-equips each profession's confirmed starting gear (weapon, armour, backpack items, backpack upgrade), with pickers for "of choice" items (weapon choice for Barbarian/Warrior/Warrior Priest, Rogue's Shortsword-or-Rapier, and a God + Ring/Amulet picker for the Warrior Priest's starting Religious Relic)
+- Table of Relics (p194): the Warrior Priest's starting relic now applies its real effect — Charus +1 Energy, Iphy +5 RES, Rhidnir +1 Luck, Ohlnir +5 CS, Ramos +5 STR, Metheia +1d3 healing (reference-only, since it modifies a future roll rather than a flat stat) — plus a note on the 2-relic cap (3 with the Reliquary talent)
+
 ## [1.32.2] — 2026-08-13
 
 ### Fixed

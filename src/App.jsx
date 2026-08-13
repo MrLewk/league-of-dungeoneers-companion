@@ -1000,8 +1000,20 @@ function heroEquippedItems(hero) {
 }
 function applyItemPatch(hero, key, patch) {
   if (key === "weapon") return { ...hero, weapon: { ...hero.weapon, ...patch } };
-  const slot = key.split(":")[1];
-  return { ...hero, armour: { ...hero.armour, [slot]: { ...hero.armour[slot], ...patch } } };
+  if (key.startsWith("armour:")) {
+    const slot = key.split(":")[1];
+    return { ...hero, armour: { ...hero.armour, [slot]: { ...hero.armour[slot], ...patch } } };
+  }
+  const id = key.split(":")[1];
+  return { ...hero, backpack: hero.backpack.map((it) => (it.id === id ? { ...it, ...patch } : it)) };
+}
+// Weapon + worn armour + backpack items, for pickers where any owned item is a valid target (e.g. Identify).
+function heroAllItems(hero) {
+  const items = heroEquippedItems(hero);
+  (hero.backpack || []).forEach((it) => {
+    if (it.name) items.push({ key: `backpack:${it.id}`, label: `${it.name} (backpack)`, piece: it });
+  });
+  return items;
 }
 
 // Common Recipes (p76) — widely known among alchemists; available to any hero with the
@@ -1345,6 +1357,62 @@ const SEARCH_TILE_TABLE = [
 function searchTileResult(roll) {
   const clamped = Math.min(100, roll);
   return SEARCH_TILE_TABLE.find((r) => clamped >= r.roll[0] && clamped <= r.roll[1]);
+}
+// Furniture Search Table (Appendix V, p191-192). Roll 1d10 per furniture type searched.
+const FURNITURE_TABLE = {
+  "Alchemist Table": [{ roll: [1, 3], text: "1d3 Potions." }, { roll: [4, 7], text: "1d10 Ingredients." }, { roll: [8, 10], text: "Nothing of any value." }],
+  "Altar": [{ roll: [1, 3], text: "1d3 Potions." }, { roll: [4, 7], text: "1d6x10 c." }, { roll: [8, 10], text: "Nothing of any value." }],
+  "Archery Target": [{ roll: [1, 4], text: "1d10 arrows or bolts (you choose)." }, { roll: [5, 10], text: "Nothing." }],
+  "Armour Rack": [{ roll: [1, 4], text: "1d3 random armour parts, with 1d4 lost Durability Points." }, { roll: [5, 10], text: "Nothing." }],
+  "Backpack": [{ roll: [1, 5], text: "1 Mundane Treasure." }, { roll: [6, 7], text: "1d100 c." }, { roll: [8, 10], text: "Nothing." }],
+  "Barrels": [{ roll: [1, 2], text: "1 Mundane Treasure." }, { roll: [3, 10], text: "Nothing." }],
+  "Bed": [{ roll: [1, 2], text: "1 Mundane Treasure." }, { roll: [3, 4], text: "1d100 c." }, { roll: [5, 10], text: "Nothing." }],
+  "Bedroll with pack": [{ roll: [1, 3], text: "1 Mundane Treasure." }, { roll: [4, 5], text: "1d100 c." }, { roll: [6, 10], text: "Nothing." }],
+  "Bookshelf": [{ roll: [1, 2], text: "1 Fine Treasure." }, { roll: [3, 5], text: "A Scroll. Randomize what spell it contains using the Spell Tables." }, { roll: [6, 10], text: "Nothing." }],
+  "Bookstand": [{ roll: [1, 5], text: "A Grimoire with 1 random spell." }, { roll: [6, 10], text: "Nothing." }],
+  "Boxes": [{ roll: [1, 4], text: "1 Mundane Treasure." }, { roll: [5, 10], text: "Nothing." }],
+  "Campfire": [{ roll: [1, 4], text: "1d3 Rations." }, { roll: [5, 10], text: "Nothing." }],
+  "Chest": [{ roll: [1, 1], text: "1 Wonderful Treasure." }, { roll: [2, 4], text: "2 Fine Treasures." }, { roll: [5, 8], text: "1 Fine Treasure." }, { roll: [9, 10], text: "Nothing." }],
+  "Coffin": [{ roll: [1, 2], text: "1 Fine treasure." }, { roll: [3, 8], text: "Nothing." }, { roll: [9, 10], text: "You awaken 1 zombie. Randomly place it next to the coffin." }],
+  "Crate": [{ roll: [1, 1], text: "Gemstones worth 1d100 c." }, { roll: [2, 3], text: "1 Mundane Treasure." }, { roll: [4, 4], text: "1 Pickaxe." }, { roll: [5, 10], text: "Nothing." }],
+  "Dead Adventurer": [{ roll: [1, 3], text: "Fine Treasure." }, { roll: [4, 7], text: "Mundane Treasure." }, { roll: [8, 9], text: "Nothing." }, { roll: [10, 10], text: "It's a Zombie, armed with a longsword and armour 1." }],
+  "Dining Table": [{ roll: [1, 4], text: "1 ration." }, { roll: [5, 10], text: "Nothing." }],
+  "Drawer": [{ roll: [1, 2], text: "1 Fine Treasure." }, { roll: [3, 8], text: "A small bag of coins, 2d20 c." }, { roll: [9, 10], text: "Nothing." }],
+  "Fountain": [{ roll: [1, 2], text: "Someone has seen fit to leave 1 Fine Treasure by the fountain." }, { roll: [3, 8], text: "There are 1d20 worth of coins sprinkled across the bottom of the fountain." }, { roll: [9, 10], text: "Nothing." }],
+  "Fountain (drink)": [{ roll: [1, 2], text: "You feel invigorated. Heal 1d4+1 Hit Points and 1 Energy Point." }, { roll: [3, 8], text: "Nothing happens." }, { roll: [9, 10], text: "Make an Alchemical roll (once for the whole party) before drinking. If you fail, you have become diseased." }],
+  "Grate (over a hole)": [{ roll: [1, 4], text: "1d6 lockpicks." }, { roll: [5, 10], text: "Nothing." }],
+  "Hearth": [{ roll: [1, 2], text: "1d4 Rations." }, { roll: [3, 10], text: "Nothing." }],
+  "Mine Cart": [{ roll: [1, 1], text: "Gemstones worth 2d100 c." }, { roll: [2, 3], text: "1d4 random Nuggets (all of the same kind)." }, { roll: [4, 4], text: "A Pickaxe." }, { roll: [5, 10], text: "Nothing." }],
+  "Objective Chest": [{ roll: [1, 3], text: "1 Fine treasure, 2 Wonderful Treasures." }, { roll: [4, 7], text: "2 Fine treasure, 1 Wonderful Treasure." }, { roll: [8, 10], text: "3 Fine Treasures." }],
+  "Pottery": [{ roll: [1, 2], text: "1 Mundane Treasure." }, { roll: [3, 4], text: "1d20 coins." }, { roll: [5, 5], text: "1 Ration." }, { roll: [6, 10], text: "Nothing." }],
+  "Rubble": [{ roll: [1, 2], text: "2d20 c." }, { roll: [3, 10], text: "Nothing." }],
+  "Sacks": [{ roll: [1, 3], text: "1 ration." }, { roll: [4, 10], text: "Nothing." }],
+  "Sarcophagus": [{ roll: [1, 2], text: "1 wonderful treasure." }, { roll: [3, 5], text: "2 fine treasures." }, { roll: [6, 8], text: "Nothing." }, { roll: [9, 10], text: "You awakened 1 Mummy! Randomly place it next to the sarcophagus." }],
+  "Statue": [{ roll: [1, 1], text: "Roll 1d6: 1-2 you have found a Wonderful Treasure, 3-6 a Fine Treasure." }, { roll: [2, 3], text: "There are 1d20 worth of coins left as offerings." }, { roll: [4, 9], text: "Nothing." }, { roll: [10, 10], text: "You awakened a Gargoyle! Place the Gargoyle on the statue." }],
+  "Study Table": [{ roll: [1, 4], text: "1 Mundane Treasure." }, { roll: [5, 10], text: "Nothing." }],
+  "Throne": [{ roll: [1, 2], text: "1 Fine Treasure." }, { roll: [3, 10], text: "Nothing." }],
+  "Torture Tools": [{ roll: [1, 2], text: "1d3 human blood for Alchemical use." }, { roll: [3, 10], text: "Nothing." }],
+  "Treasure Pile": [{ roll: [1, 2], text: "1d4*100 c, 1 Wonderful Treasure." }, { roll: [3, 5], text: "1d3*100 c, 2 Fine Treasures." }, { roll: [6, 10], text: "1d2*100 c, 1 Fine Treasure." }],
+  "Water Basin": [{ roll: [1, 2], text: "You feel invigorated. Heal 1d6+1 Hit Points and all Energy Points." }, { roll: [3, 8], text: "Nothing happens." }, { roll: [9, 10], text: "Make an Alchemical roll (once for the whole party). If you fail, you have become diseased." }],
+  "Weapons Rack": [{ roll: [1, 4], text: "Random weapon with 1d4 lost Durability Points." }, { roll: [5, 10], text: "Nothing." }],
+  "Well": [{ roll: [1, 1], text: "At the bottom of the well is a small chest tied to a rope. You may roll on the Chest Table." }, { roll: [2, 2], text: "A Mundane Treasure is lying by the well." }, { roll: [3, 9], text: "Nothing." }, { roll: [10, 10], text: "You awake an angry Water Spirit residing in the well. Place a Water Elemental next to the well." }],
+};
+const FURNITURE_NAMES = Object.keys(FURNITURE_TABLE);
+function furnitureSearchResult(furniture, roll) {
+  const table = FURNITURE_TABLE[furniture];
+  if (!table) return null;
+  const clamped = Math.min(10, Math.max(1, roll));
+  return table.find((r) => clamped >= r.roll[0] && clamped <= r.roll[1]);
+}
+// Finds "NdM" or "NdM*X" dice patterns in a result's text and appends the rolled value —
+// used so furniture/treasure results show a computed number, not just the dice notation.
+function annotateDiceInText(text) {
+  return text.replace(/(\d+)d(\d+)(\*(\d+))?/g, (match, count, sides, _mult, multiplier) => {
+    let total = 0;
+    for (let i = 0; i < Number(count); i++) total += rollDie(Number(sides));
+    if (multiplier) return `${match} (rolled ${total} × ${multiplier} = ${total * Number(multiplier)})`;
+    return `${match} (rolled ${total})`;
+  });
 }
 
 const LOOT_TABLES = {
@@ -2032,6 +2100,18 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.32.1",
+    date: "2026-08-13",
+    sections: {
+      "Fixed": [
+        "Identify a Magic Item required typing the item's name manually — it's now a dropdown of everything the hero actually owns (weapon, worn armour, and every backpack item), matching how Enchant Objects and Charge a Magic Item already work",
+      ],
+      "Added": [
+        "Search Furniture (Actions tab, next to Search a Tile): full 35-type table from Appendix V (p191-192) — pick the furniture, roll 1d10, get the correct result with any dice in it (coins, rations, etc.) auto-rolled and totalled. AP cost and skill check for this action aren't confirmed from the rulebook yet, so none is applied — treat it as a free action until that page turns up",
+      ],
+    },
+  },
   {
     version: "1.32.0",
     date: "2026-08-13",
@@ -5013,7 +5093,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const [chargeTarget, setChargeTarget] = useState("");
   const [chargeResult, setChargeResult] = useState(null);
   const [identifyHero, setIdentifyHero] = useState("");
-  const [identifyName, setIdentifyName] = useState("");
+  const [identifyTarget, setIdentifyTarget] = useState("");
   const [identifyResult, setIdentifyResult] = useState(null);
   // Tracks opted-OUT heroes rather than opted-in, so heroes added later still default to selected.
   const [restExcluded, setRestExcluded] = useState(() => new Set());
@@ -5973,13 +6053,14 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const confirmIdentify = () => {
     const hero = heroes.find((h) => h.id === identifyHero);
     if (!hero) { setIdentifyResult({ ok: false, line: "Pick a hero first." }); return; }
-    if (!identifyName.trim()) { setIdentifyResult({ ok: false, line: "Enter the item's name." }); return; }
+    const item = heroAllItems(hero).find((i) => i.key === identifyTarget);
+    if (!item) { setIdentifyResult({ ok: false, line: "Pick an item to identify." }); return; }
     const aa = Number(hero.skills.arcaneArts) || 0;
     const roll = rollPercent();
     const success = roll <= aa;
-    const line = success ? `Rolled ${roll} vs Arcane Arts ${aa} — Success! ${identifyName} is identified.` : `Rolled ${roll} vs Arcane Arts ${aa} — Failed. Only one attempt per party/object — try again in a different settlement.`;
+    const line = success ? `Rolled ${roll} vs Arcane Arts ${aa} — Success! ${item.piece.name} is identified.` : `Rolled ${roll} vs Arcane Arts ${aa} — Failed. Only one attempt per party/object — try again in a different settlement.`;
     setIdentifyResult({ ok: success, line });
-    addLog(`${hero.name} attempts to identify ${identifyName}: ${line}`);
+    addLog(`${hero.name} attempts to identify ${item.piece.name}: ${line}`);
   };
 
   return (
@@ -6248,12 +6329,24 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
           <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
             Also available at a Scryer. Only one attempt per party/object.
           </p>
-          <select value={identifyHero} onChange={(e) => { setIdentifyHero(e.target.value); setIdentifyResult(null); }} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+          <select value={identifyHero} onChange={(e) => { setIdentifyHero(e.target.value); setIdentifyTarget(""); setIdentifyResult(null); }} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
             <option value="">Choose a hero…</option>
             {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
           </select>
-          <input value={identifyName} onChange={(e) => setIdentifyName(e.target.value)} placeholder="Item name…" className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }} />
-          <button onClick={confirmIdentify} disabled={!identifyHero || !identifyName.trim()} className="w-full text-[10px] px-2 py-1.5 rounded font-semibold" style={{ background: identifyHero && identifyName.trim() ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: identifyHero && identifyName.trim() ? 1 : 0.5 }}>
+          {identifyHero && (() => {
+            const hero = heroes.find((h) => h.id === identifyHero);
+            const items = heroAllItems(hero);
+            return (
+              <>
+                <select value={identifyTarget} onChange={(e) => setIdentifyTarget(e.target.value)} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+                  <option value="">Choose an item…</option>
+                  {items.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
+                </select>
+                {items.length === 0 && <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft }}>{hero.name} isn't carrying anything yet.</p>}
+              </>
+            );
+          })()}
+          <button onClick={confirmIdentify} disabled={!identifyHero || !identifyTarget} className="w-full text-[10px] px-2 py-1.5 rounded font-semibold" style={{ background: identifyHero && identifyTarget ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: identifyHero && identifyTarget ? 1 : 0.5 }}>
             Attempt to Identify
           </button>
           {identifyResult && <p className="text-[10px] mt-1.5 font-semibold" style={{ color: identifyResult.ok ? palette.forestDark : palette.crimson }}>{identifyResult.line}</p>}
@@ -9024,6 +9117,8 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   const [searchersCount, setSearchersCount] = useState(1);
   const [inCorridor, setInCorridor] = useState(false);
   const [searchResult, setSearchResult] = useState(null);
+  const [furnitureType, setFurnitureType] = useState("");
+  const [furnitureResult, setFurnitureResult] = useState(null);
   const [searchFeedback, setSearchFeedback] = useState(null);
   const activeSearchHero = heroes.find((h) => h.id === searchHeroId) || heroes[0];
 
@@ -9045,6 +9140,15 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
     const entry = searchTileResult(tableRoll);
     setSearchResult({ perRoll, target, success: true, tableRoll, entry });
     addLog(`${activeSearchHero.name} searches the tile: Perception ${perRoll} vs ${target} — success! Rolled ${tableRoll}${inCorridor ? " (+10 corridor)" : ""} on the table: ${entry.text}`);
+  };
+
+  const searchFurniture = () => {
+    if (!furnitureType) return;
+    const roll = rollDie(10);
+    const entry = furnitureSearchResult(furnitureType, roll);
+    const annotated = annotateDiceInText(entry.text);
+    setFurnitureResult({ roll, text: annotated });
+    addLog(`Searches the ${furnitureType}: rolled ${roll} — ${annotated}`);
   };
 
   // Every model has a flat 2 AP per the QRS. Spends from the acting hero's pool
@@ -9648,6 +9752,36 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
                 <p className="text-sm font-bold" style={{ color: palette.forestDark, fontFamily: "Cinzel, serif" }}>{searchResult.entry.text}</p>
               </>
             )}
+          </div>
+        )}
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={ClipboardList}>Search Furniture</SectionTitle>
+        <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
+          Pick the furniture type, then roll 1d10 (Appendix V). AP cost/skill check for this specific action isn't confirmed yet — apply your own AP cost until that page's available.
+        </p>
+        <select
+          value={furnitureType}
+          onChange={(e) => { setFurnitureType(e.target.value); setFurnitureResult(null); }}
+          className="w-full text-xs rounded px-2 py-1.5 mb-2"
+          style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+        >
+          <option value="">Choose furniture…</option>
+          {FURNITURE_NAMES.map((name) => <option key={name} value={name}>{name}</option>)}
+        </select>
+        <button
+          onClick={searchFurniture}
+          disabled={!furnitureType}
+          className="w-full mb-2 px-3 py-2 rounded font-bold text-sm active:scale-95 transition-transform"
+          style={{ background: furnitureType ? palette.crimsonDark : "#00000020", color: palette.parchment, fontFamily: "Cinzel, serif", opacity: furnitureType ? 1 : 0.5 }}
+        >
+          Search
+        </button>
+        {furnitureResult && (
+          <div className="rounded p-3" style={{ background: "#00000010" }}>
+            <p className="text-xs mb-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>Roll: <b>{furnitureResult.roll}</b></p>
+            <p className="text-sm font-bold" style={{ color: palette.forestDark, fontFamily: "Cinzel, serif" }}>{furnitureResult.text}</p>
           </div>
         )}
       </Panel>

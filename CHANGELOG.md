@@ -3,6 +3,14 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.32.1] — 2026-08-13
+
+### Fixed
+- Identify a Magic Item required typing the item's name manually — it's now a dropdown of everything the hero actually owns (weapon, worn armour, and every backpack item), matching how Enchant Objects and Charge a Magic Item already work
+
+### Added
+- Search Furniture (Actions tab, next to Search a Tile): full 35-type table from Appendix V (p191-192) — pick the furniture, roll 1d10, get the correct result with any dice in it (coins, rations, etc.) auto-rolled and totalled. AP cost and skill check for this action aren't confirmed from the rulebook yet, so none is applied — treat it as a free action until that page turns up
+
 ## [1.32.0] — 2026-08-13
 
 ### Added

@@ -2017,6 +2017,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.31.4",
+    date: "2026-08-13",
+    sections: {
+      "Added": [
+        "A short supportive note above the Buy Me a Coffee button in the footer: \"Enjoying the app? A coffee keeps development going ☕\"",
+      ],
+    },
+  },
+  {
     version: "1.31.3",
     date: "2026-08-13",
     sections: {
@@ -3071,6 +3080,9 @@ function Footer() {
 
   return (
     <footer className="max-w-2xl mx-auto px-4 py-8 flex flex-col items-center gap-2">
+      <p className="text-xs text-center" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+        Enjoying the app? A coffee keeps development going ☕
+      </p>
       <BuyMeACoffeeButton />
       <p className="text-xs text-center" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
         © 2026 Luke Wilson. Designed by Luke Wilson.

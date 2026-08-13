@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.31.4] — 2026-08-13
+
+### Added
+- A short supportive note above the Buy Me a Coffee button in the footer: "Enjoying the app? A coffee keeps development going ☕"
+
 ## [1.31.3] — 2026-08-13
 
 ### Fixed

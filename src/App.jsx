@@ -2017,6 +2017,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.31.3",
+    date: "2026-08-13",
+    sections: {
+      "Fixed": [
+        "Once used, Garden gathering and Archery Range/Training Grounds training locked permanently — there was no way to reset them for a new dungeon cycle. A \"Returned From Dungeon\" button now always shows in the estate panel, which activates any commissioned room and resets Garden/Training Grounds/Archery Range/Alchemist Lab usage for the next visit",
+      ],
+    },
+  },
+  {
     version: "1.31.2",
     date: "2026-08-13",
     sections: {
@@ -5564,12 +5573,24 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
     setEstateMsg({ ok: true, line: `${room.name} commissioned for ${room.cost}c. It'll be ready once you've left your next dungeon.` });
     addLog(`The party commissions a ${room.name} at the estate for ${room.cost}c.`);
   };
-  const activatePendingRoom = () => {
+  const returnFromDungeon = () => {
     const pending = party.estate.pendingRoom;
-    if (!pending) return;
-    setParty((prev) => ({ ...prev, estate: { ...prev.estate, rooms: [...prev.estate.rooms, pending.name], pendingRoom: null } }));
-    setEstateMsg({ ok: true, line: `${pending.name} is now ready to use.` });
-    addLog(`The ${pending.name} at the estate is now furnished and ready.`);
+    setParty((prev) => ({
+      ...prev,
+      estate: {
+        ...prev.estate,
+        rooms: pending ? [...prev.estate.rooms, pending.name] : prev.estate.rooms,
+        pendingRoom: null,
+        heroTraining: {},
+        alchemistLabUsed: false,
+        gardenUsed: false,
+      },
+    }));
+    const lines = [];
+    if (pending) lines.push(`${pending.name} is now ready to use.`);
+    lines.push("Archery Range/Training Grounds, Alchemist Lab, and Garden uses are reset for this new visit.");
+    setEstateMsg({ ok: true, line: lines.join(" ") });
+    addLog(`Returned from a dungeon trip — estate room uses reset.${pending ? ` The ${pending.name} is now furnished and ready.` : ""}`);
   };
 
   const trainAtManor = (which) => {
@@ -6013,16 +6034,18 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
                 Only one thing may be commissioned between quests, and it isn't usable until after leaving the next dungeon.
               </p>
 
-              {party.estate.pendingRoom && (
-                <div className="flex justify-between items-center text-xs rounded px-2 py-2 mb-2" style={{ background: "#fff", border: `1px solid ${palette.crimson}` }}>
-                  <span style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
-                    <b>{party.estate.pendingRoom.name}</b> commissioned — ready after your next dungeon trip.
-                  </span>
-                  <button onClick={activatePendingRoom} className="text-[10px] px-2 py-1 rounded font-semibold shrink-0 ml-2" style={{ background: palette.crimsonDark, color: palette.parchment }}>
-                    Activate Now
-                  </button>
-                </div>
-              )}
+              <div className="flex justify-between items-center text-xs rounded px-2 py-2 mb-2" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                <span style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+                  {party.estate.pendingRoom ? (
+                    <><b>{party.estate.pendingRoom.name}</b> commissioned — ready after your next dungeon trip.</>
+                  ) : (
+                    "Tap after each dungeon trip to reset Archery Range/Training Grounds, Alchemist Lab, and Garden uses."
+                  )}
+                </span>
+                <button onClick={returnFromDungeon} className="text-[10px] px-2 py-1 rounded font-semibold shrink-0 ml-2" style={{ background: palette.crimsonDark, color: palette.parchment }}>
+                  Returned From Dungeon
+                </button>
+              </div>
 
               <div className="space-y-1.5">
                 {MANOR_ROOMS.map((room) => {

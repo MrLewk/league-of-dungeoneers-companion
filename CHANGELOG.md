@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.31.3] — 2026-08-13
+
+### Fixed
+- Once used, Garden gathering and Archery Range/Training Grounds training locked permanently — there was no way to reset them for a new dungeon cycle. A "Returned From Dungeon" button now always shows in the estate panel, which activates any commissioned room and resets Garden/Training Grounds/Archery Range/Alchemist Lab usage for the next visit
+
 ## [1.31.2] — 2026-08-13
 
 ### Fixed

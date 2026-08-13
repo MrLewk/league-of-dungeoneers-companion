@@ -4884,6 +4884,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const [learnPrayerName, setLearnPrayerName] = useState("");
   const [learnPrayerResult, setLearnPrayerResult] = useState(null);
   const [estateMsg, setEstateMsg] = useState(null);
+  const [returnResult, setReturnResult] = useState(null);
   const [trainHero, setTrainHero] = useState("");
   const [trainResult, setTrainResult] = useState(null);
   const [smithyResult, setSmithyResult] = useState(null);
@@ -5590,6 +5591,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
     if (pending) lines.push(`${pending.name} is now ready to use.`);
     lines.push("Archery Range/Training Grounds, Alchemist Lab, and Garden uses are reset for this new visit.");
     setEstateMsg({ ok: true, line: lines.join(" ") });
+    setReturnResult(lines.join(" "));
     addLog(`Returned from a dungeon trip — estate room uses reset.${pending ? ` The ${pending.name} is now furnished and ready.` : ""}`);
   };
 
@@ -6046,6 +6048,11 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
                   Returned From Dungeon
                 </button>
               </div>
+              {returnResult && (
+                <p className="text-[10px] mb-2 font-semibold" style={{ color: palette.forestDark, fontFamily: "Crimson Pro, serif" }}>
+                  {returnResult}
+                </p>
+              )}
 
               <div className="space-y-1.5">
                 {MANOR_ROOMS.map((room) => {

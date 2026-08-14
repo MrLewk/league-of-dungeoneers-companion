@@ -3,6 +3,14 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.37.0] — 2026-08-14
+
+### Added
+- Powerstones: successfully casting Enchant Item now auto-rolls the real 1d20 table and stores the result on the item — shown on the weapon's Dissipate button and logged. Full table also added to the Reference tab
+- Quest tab: Campaign Quests restructured to match the rulebook's actual structure — First Blood as a standalone introductory quest, The Dead Rising campaign (7 quests: Spring Cleaning, The Dead Rising, Highwaymen, The Burning Village, The Apprentice, 6A Sacrifice, 6B The Master), and Lair of the Spider Queen (3 levels: The Entrance, The Basement, The Tomb of the Spider Queen) — each with its own progress counter
+- Quest Book II section: Main Quests (11) and Backer Quests (12) checklists from its table of contents, plus a separate Mini Quests checklist (12 short standalone encounters)
+- "Check off as you complete" notes added across all quest checklists
+
 ## [1.36.1] — 2026-08-14
 
 ### Added

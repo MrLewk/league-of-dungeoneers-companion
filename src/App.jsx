@@ -636,10 +636,31 @@ const SETTLEMENTS = [
 // Campaign quests (Quest Book I) — known named quests. "Quests into the Ancient Lands"
 // has 5 quests but their names aren't confirmed from the rulebook yet, so it's left off
 // this list rather than guessed at.
-const CAMPAIGN_QUESTS = [
-  { name: "First Blood", note: "Introductory quest, p221" },
-  { name: "The Dead Rising", note: "p222" },
-  { name: "Lair of the Spider Queen", note: "p234" },
+const STANDALONE_QUESTS = [
+  { name: "First Blood", note: "Introductory quest, p221 — played before choosing a campaign" },
+];
+
+const CAMPAIGNS = [
+  {
+    name: "The Dead Rising",
+    quests: [
+      "Quest 1: Spring Cleaning",
+      "Quest 2: The Dead Rising",
+      "Quest 3: Highwaymen",
+      "Quest 4: The Burning Village",
+      "Quest 5: The Apprentice",
+      "Quest 6A: Sacrifice",
+      "Quest 6B: The Master",
+    ],
+  },
+  {
+    name: "Lair of the Spider Queen",
+    quests: [
+      "Level 1: The Entrance",
+      "Level 2: The Basement",
+      "Level 3: The Tomb of the Spider Queen",
+    ],
+  },
 ];
 
 // Quests into the Ancient Lands — 5 quests, each with 2 possible objective rooms
@@ -651,6 +672,54 @@ const ANCIENT_LANDS_QUESTS = [
   "Temple of Despair",
   "Hall of Amenhotep",
   "Crypt of Khaba",
+];
+
+// Quest Book II — from its own table of contents. Only titles are confirmed so far,
+// no page numbers or mechanics, since only the ToC has been reviewed.
+const BOOK2_MAIN_QUESTS = [
+  "Cult of the Hydra",
+  "Witches",
+  "Halls of the Goblin King",
+  "The Northern Tombs",
+  "The Lost Prayer",
+  "The Ghost of a King",
+  "A Kingdom Gone",
+  "The Toad",
+  "Corsairs",
+  "Giant Slayer",
+  "And Out Come The Wolves...",
+];
+
+const BOOK2_BACKER_QUESTS = [
+  "A Hell of a Night ...",
+  "The Grey Lady",
+  "Runes to Ruin",
+  "At the Bat",
+  "Black Acanthus",
+  "Not Even in Death Do We Part",
+  "A Beast For Every Occasion",
+  "Tower of the Troll King",
+  "Life in Death",
+  "Saving the Nordman",
+  "Rescue Operation",
+  "By Rose and Anchor",
+];
+
+// Quest Book II — Mini Quests chapter. Short standalone encounters, no roll table to
+// pick one — worked through one by one or chosen freely.
+const BOOK2_MINI_QUESTS = [
+  { name: "Spiders in the Forest", note: "p97" },
+  { name: "The Kidnapped Kid", note: "p97" },
+  { name: "Old Forgotten Tomb", note: "p97" },
+  { name: "The Old Lady", note: "p97" },
+  { name: "Old Temple", note: "p97" },
+  { name: "Old Ruin", note: "p97" },
+  { name: "Clear Out the Bandits", note: "p98" },
+  { name: "The Moonstone", note: "p99" },
+  { name: "Kill the Beast", note: "p100" },
+  { name: "Save the Farm", note: "p101 — requires the Companions Expansion" },
+  { name: "The Curse", note: "p102" },
+  { name: "Escort", note: "p103" },
 ];
 
 // Random Quests pool (p241) — roll 1d6, reroll on a 6.
@@ -1506,6 +1575,30 @@ const THREAT_TABLE_IN_COMBAT = [
   { roll: 8, title: "Fearsome!", text: "One enemy gains the Fear Special Rule — no level cap, though Talents that ignore fear still work.", decrease: -4 },
   { roll: 9, title: "Reinforcements", text: "Roll on the Encounter Table and place the result just outside a random door (open or not); it acts last this turn. If the door was previously unopened, it's now unlocked and untrapped.", decrease: -4 },
   { roll: 10, title: "Onwards!", text: "All enemies gain +10 CS until end of battle.", decrease: -6 },
+];
+
+// Powerstones — rolled when the Enchant Item spell succeeds (p69).
+const POWERSTONES = [
+  { roll: 1, name: "+2 Damage", appliesTo: "weapon", effect: "Improves any weapon's damage by 2." },
+  { roll: 2, name: "+3 Damage", appliesTo: "weapon", effect: "Improves any weapon's damage by 3." },
+  { roll: 3, name: "Poisonous", appliesTo: "weapon", effect: "Permanent poisonous ability — a monster wounded by this weapon loses 1 HP every turn until end of battle." },
+  { roll: 4, name: "Fire Damage", appliesTo: "weapon", effect: "The weapon causes Fire Damage (see the Combat chapter's Fire Damage rules)." },
+  { roll: 5, name: "+10 To Hit", appliesTo: "weapon", effect: "Perfectly balanced — increases chances to hit." },
+  { roll: 6, name: "+5 Strength", appliesTo: "ring/amulet", effect: "Enhances the bearer's STR by 5." },
+  { roll: 7, name: "+5 Constitution", appliesTo: "ring/amulet", effect: "Enhances the bearer's CON by 5." },
+  { roll: 8, name: "+5 Wisdom", appliesTo: "ring/amulet", effect: "Enhances the bearer's WIS by 5." },
+  { roll: 9, name: "+5 Resolve", appliesTo: "ring/amulet", effect: "Enhances the bearer's RES by 5." },
+  { roll: 10, name: "+5 Dexterity", appliesTo: "ring/amulet", effect: "Enhances the bearer's DEX by 5." },
+  { roll: 11, name: "Fast Reload", appliesTo: "weapon", effect: "Reduces reload time by 1 Action — the hero may fire twice in the first action (only once in the second)." },
+  { roll: 12, name: "+2 DEF", appliesTo: "armour/shield", effect: "Enhances a piece of armour or a shield's DEF by 2." },
+  { roll: 13, name: "+1 Energy Point per quest", appliesTo: "ring/amulet", effect: "The hero starts each quest with 1 more Energy Point than normal." },
+  { roll: 14, name: "+1 Luck Point", appliesTo: "ring/amulet", effect: "The bearer has 1 more Luck Point than usual." },
+  { roll: 15, name: "+10 chance to detect traps", appliesTo: "ring/amulet", effect: "Bonus applied whenever the hero checks for trap detection." },
+  { roll: 16, name: "+5 chance to surprise enemies when opening doors", appliesTo: "ring/amulet", effect: "Subtract 5 from enemies' DEX for that check." },
+  { roll: 17, name: "Re-roll failed Fear/Terror Test", appliesTo: "ring/amulet", effect: "The hero may re-roll a failed Fear or Terror Test." },
+  { roll: 18, name: "+2 Hit Points", appliesTo: "ring/amulet", effect: "Raises the hero's starting wounds (HP) before a quest by 2." },
+  { roll: 19, name: "+2 Party Morale", appliesTo: "ring/amulet", effect: "If a hero carries this object, Party Morale starts 2 points higher." },
+  { roll: 20, name: "+2 Sanity Points", appliesTo: "ring/amulet", effect: "The bearer has 2 more Sanity Points than normal." },
 ];
 
 const DAMAGE_TYPES = [
@@ -2601,6 +2694,18 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.37.0",
+    date: "2026-08-14",
+    sections: {
+      "Added": [
+        "Powerstones: successfully casting Enchant Item now auto-rolls the real 1d20 table and stores the result on the item — shown on the weapon's Dissipate button and logged. Full table also added to the Reference tab",
+        "Quest tab: Campaign Quests restructured to match the rulebook's actual structure — First Blood as a standalone introductory quest, The Dead Rising campaign (7 quests: Spring Cleaning, The Dead Rising, Highwaymen, The Burning Village, The Apprentice, 6A Sacrifice, 6B The Master), and Lair of the Spider Queen (3 levels: The Entrance, The Basement, The Tomb of the Spider Queen) — each with its own progress counter",
+        "Quest Book II section: Main Quests (11) and Backer Quests (12) checklists from its table of contents, plus a separate Mini Quests checklist (12 short standalone encounters)",
+        "\"Check off as you complete\" notes added across all quest checklists",
+      ],
+    },
+  },
   {
     version: "1.36.1",
     date: "2026-08-14",
@@ -5470,9 +5575,9 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
                   onClick={dissipateWeaponMagic}
                   className="text-[10px] px-2 py-1 rounded font-semibold"
                   style={{ background: "#00000010", color: palette.crimson }}
-                  title="Tap if you rolled 00 attacking with this weapon — the magic dissipates permanently (unless recharged at the Wizards' Guild) and Durability max drops to 6."
+                  title={hero.weapon.powerstone ? `Powerstone: ${hero.weapon.powerstone}. Tap if you rolled 00 attacking with this weapon — the magic dissipates permanently (unless recharged at the Wizards' Guild) and Durability max drops to 6.` : "Tap if you rolled 00 attacking with this weapon — the magic dissipates permanently (unless recharged at the Wizards' Guild) and Durability max drops to 6."}
                 >
-                  ✨ Dissipate
+                  ✨ Dissipate{hero.weapon.powerstone ? ` (${hero.weapon.powerstone})` : ""}
                 </button>
               )}
             </div>
@@ -6807,10 +6912,12 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
     const success = roll <= target;
     setParty((prev) => ({ ...prev, magicWorkshop: { ...prev.magicWorkshop, enchantUsed: true } }));
     if (success) {
-      updateHero(applyItemPatch(hero, item.key, { enchanted: true, wasEverEnchanted: true, dur: { cur: 8, max: 8 } }));
-      const line = `Rolled ${roll} vs target ${target} — Success! ${item.piece.name} is now enchanted (Durability 8/8). Note the Powerstone's magical trait manually — the app doesn't have a Powerstone table yet.`;
+      const stoneRoll = rollDie(20);
+      const stone = POWERSTONES.find((p) => p.roll === stoneRoll);
+      updateHero(applyItemPatch(hero, item.key, { enchanted: true, wasEverEnchanted: true, dur: { cur: 8, max: 8 }, powerstone: stone.name }));
+      const line = `Rolled ${roll} vs target ${target} — Success! ${item.piece.name} is now enchanted (Durability 8/8). Powerstone roll ${stoneRoll}: ${stone.name} (${stone.effect})`;
       setEnchantResult({ ok: true, line });
-      addLog(`${hero.name} enchants ${item.piece.name}. ${line}`);
+      addLog(`${hero.name} enchants ${item.piece.name} with ${stone.name}. ${stone.effect}`);
     } else {
       const blank = item.key === "weapon" ? { name: "", dmg: "", enc: 0, dur: { cur: 0, max: 0 }, mithril: false, enchanted: false } : { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 }, mithril: false, enchanted: false };
       updateHero(applyItemPatch(hero, item.key, blank));
@@ -11448,22 +11555,45 @@ function QuestRollerPanel({ party, setParty, addLog }) {
       </Panel>
 
       <Panel>
-        <SectionTitle icon={ScrollText}>Campaign Quests</SectionTitle>
-        {CAMPAIGN_QUESTS.map((q) => (
+        <SectionTitle icon={ScrollText}>Introductory Quest</SectionTitle>
+        <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+          Check off as you complete each one.
+        </p>
+        {STANDALONE_QUESTS.map((q) => (
           <QuestChecklistRow
             key={q.name}
             label={q.name}
             sub={q.note}
-            checked={quests.completed[`campaign:${q.name}`]}
-            onToggle={() => toggleCompleted(`campaign:${q.name}`, q.name)}
+            checked={quests.completed[`standalone:${q.name}`]}
+            onToggle={() => toggleCompleted(`standalone:${q.name}`, q.name)}
           />
         ))}
       </Panel>
 
+      {CAMPAIGNS.map((campaign) => {
+        const doneCount = campaign.quests.filter((q) => quests.completed[`campaign:${campaign.name}:${q}`]).length;
+        return (
+          <Panel key={campaign.name}>
+            <SectionTitle icon={ScrollText}>{campaign.name} <span className="text-xs font-normal" style={{ color: palette.inkSoft }}>({doneCount}/{campaign.quests.length})</span></SectionTitle>
+            <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+              Check off as you complete each one, in order.
+            </p>
+            {campaign.quests.map((q) => (
+              <QuestChecklistRow
+                key={q}
+                label={q}
+                checked={quests.completed[`campaign:${campaign.name}:${q}`]}
+                onToggle={() => toggleCompleted(`campaign:${campaign.name}:${q}`, `${campaign.name} — ${q}`)}
+              />
+            ))}
+          </Panel>
+        );
+      })}
+
       <Panel>
         <SectionTitle icon={ScrollText}>Quests into the Ancient Lands</SectionTitle>
         <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-          Each has 2 possible objective rooms depending on Ancient Lands tile access — check the right one at the table. Requires League of Dungeoneers membership (complete the first campaign) to reach via the Outpost.
+          Check off as you complete each one. Each has 2 possible objective rooms depending on Ancient Lands tile access — check the right one at the table. Requires League of Dungeoneers membership (complete the first campaign) to reach via the Outpost.
         </p>
         {ANCIENT_LANDS_QUESTS.map((name) => (
           <QuestChecklistRow
@@ -11478,7 +11608,7 @@ function QuestRollerPanel({ party, setParty, addLog }) {
       <Panel>
         <SectionTitle icon={Dice5}>Random Quests</SectionTitle>
         <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-          Roll 1d6 to pick an objective room (reroll on a 6). These can be replayed — layout shifts and difficulty scales with hero level.
+          Roll 1d6 to pick an objective room (reroll on a 6). These can be replayed — layout shifts and difficulty scales with hero level. Check off as you complete each one.
         </p>
         <button
           onClick={rollRandom}
@@ -11505,7 +11635,7 @@ function QuestRollerPanel({ party, setParty, addLog }) {
       <Panel>
         <SectionTitle icon={Dice5}>Side Quests</SectionTitle>
         <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-          A little extra spice added to any other quest — accepted during the city stay, doesn't add to the Day Count. Roll 1d6, or work through them one by one.
+          A little extra spice added to any other quest — accepted during the city stay, doesn't add to the Day Count. Roll 1d6, or work through them one by one. Check off as you complete each one.
         </p>
         <button
           onClick={rollSide}
@@ -11525,6 +11655,47 @@ function QuestRollerPanel({ party, setParty, addLog }) {
             label={name}
             checked={quests.completed[`side:${name}`]}
             onToggle={() => toggleCompleted(`side:${name}`, name)}
+          />
+        ))}
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={BookOpen}>Quest Book II</SectionTitle>
+        <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+          Only titles are confirmed so far (from its table of contents) — page numbers and mechanics for the main and Backer quests aren't in yet.
+        </p>
+        <p className="text-xs mb-1 font-bold uppercase" style={{ color: palette.goldSoft, fontFamily: "Cinzel, serif" }}>Main Quests</p>
+        {BOOK2_MAIN_QUESTS.map((name) => (
+          <QuestChecklistRow
+            key={name}
+            label={name}
+            checked={quests.completed[`book2main:${name}`]}
+            onToggle={() => toggleCompleted(`book2main:${name}`, name)}
+          />
+        ))}
+        <p className="text-xs mt-3 mb-1 font-bold uppercase" style={{ color: palette.goldSoft, fontFamily: "Cinzel, serif" }}>Backer Quests</p>
+        {BOOK2_BACKER_QUESTS.map((name) => (
+          <QuestChecklistRow
+            key={name}
+            label={name}
+            checked={quests.completed[`book2backer:${name}`]}
+            onToggle={() => toggleCompleted(`book2backer:${name}`, name)}
+          />
+        ))}
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={ScrollText}>Quest Book II: Mini Quests</SectionTitle>
+        <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+          Short standalone encounters — no roll table to pick one, work through them one by one or choose freely. Check off as you complete each one.
+        </p>
+        {BOOK2_MINI_QUESTS.map((q) => (
+          <QuestChecklistRow
+            key={q.name}
+            label={q.name}
+            sub={q.note}
+            checked={quests.completed[`book2mini:${q.name}`]}
+            onToggle={() => toggleCompleted(`book2mini:${q.name}`, q.name)}
           />
         ))}
       </Panel>
@@ -11580,6 +11751,18 @@ function Reference() {
           <p><b>Who can fight:</b> Adjacent models may strike each other. A weapon with the Reach rule can strike an enemy 1 square away, even through a friendly (not enemy) model. Missile weapons have a max reach of 10 squares in a dungeon, unlimited outdoors. Long Range weapons can't normally be fired if an enemy is adjacent to the firer.</p>
           <p><b>Zone of Control (ZOC):</b> a model's ZOC is any square directly to its side, diagonally in front, and in front of it. Moving from one ZOC square to another costs 2 Movement Points per square.</p>
           <p><b>End of Battle:</b> once all enemies are dead, continue the turn with whatever actions your heroes have remaining.</p>
+        </div>
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={Sparkles}>Powerstones (1d20)</SectionTitle>
+        <p className="text-xs mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+          Rolled automatically when the Enchant Item spell succeeds — result is stored on the item.
+        </p>
+        <div className="text-xs space-y-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+          {POWERSTONES.map((p) => (
+            <p key={p.roll}><b>{p.roll}.</b> {p.name} <span style={{ color: palette.inkSoft }}>({p.appliesTo})</span> — {p.effect}</p>
+          ))}
         </div>
       </Panel>
 

@@ -1088,7 +1088,9 @@ function buildPotionCatalog() {
     .map(([name, costs]) => ({ name, ...costs }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
-const ALCHEMISTS_GUILD_POTIONS = buildPotionCatalog();
+// NOTE: ALCHEMISTS_GUILD_POTIONS itself is built further down (after
+// WEAK_SUPREME_POTIONS_TABLE / STANDARD_POTIONS_SUBTABLES are declared) to avoid a
+// temporal-dead-zone crash — see the assignment just below those two tables.
 
 // The Dark Guild — Skill Training list (p146): CS, RS, Pick Locks, Perception.
 const DARK_GUILD_SKILLS = ["cs", "rs", "pickLocks", "perception"];
@@ -1318,6 +1320,7 @@ const STANDARD_POTIONS_SUBTABLES = {
     { roll: 10, potion: null, cost: null }, // "Roll again"
   ],
 };
+const ALCHEMISTS_GUILD_POTIONS = buildPotionCatalog();
 // Rolls a random potion for the given strength, re-rolling on Standard's "Roll again".
 function rollRandomPotion(strength) {
   if (strength === "Weak" || strength === "Supreme") {

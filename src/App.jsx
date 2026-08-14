@@ -642,6 +642,17 @@ const CAMPAIGN_QUESTS = [
   { name: "Lair of the Spider Queen", note: "p234" },
 ];
 
+// Quests into the Ancient Lands — 5 quests, each with 2 possible objective rooms
+// depending on whether the party has access to the Ancient Lands tiles. Which room
+// applies is decided at the table, so it isn't tracked here.
+const ANCIENT_LANDS_QUESTS = [
+  "The Pyramid of Xanthu",
+  "Tomb of the Hierophant",
+  "Temple of Despair",
+  "Hall of Amenhotep",
+  "Crypt of Khaba",
+];
+
 // Random Quests pool (p241) — roll 1d6, reroll on a 6.
 const RANDOM_QUESTS_TABLE = [
   { roll: 1, name: "The Lava River" },
@@ -2590,6 +2601,15 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.36.1",
+    date: "2026-08-14",
+    sections: {
+      "Added": [
+        "Quests into the Ancient Lands: all 5 quests now listed on the Quest tab checklist (The Pyramid of Xanthu, Tomb of the Hierophant, Temple of Despair, Hall of Amenhotep, Crypt of Khaba)",
+      ],
+    },
+  },
   {
     version: "1.36.0",
     date: "2026-08-14",
@@ -11429,9 +11449,6 @@ function QuestRollerPanel({ party, setParty, addLog }) {
 
       <Panel>
         <SectionTitle icon={ScrollText}>Campaign Quests</SectionTitle>
-        <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-          "Quests into the Ancient Lands" isn't listed here yet — its 5 quest names aren't confirmed from the rulebook.
-        </p>
         {CAMPAIGN_QUESTS.map((q) => (
           <QuestChecklistRow
             key={q.name}
@@ -11439,6 +11456,21 @@ function QuestRollerPanel({ party, setParty, addLog }) {
             sub={q.note}
             checked={quests.completed[`campaign:${q.name}`]}
             onToggle={() => toggleCompleted(`campaign:${q.name}`, q.name)}
+          />
+        ))}
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={ScrollText}>Quests into the Ancient Lands</SectionTitle>
+        <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+          Each has 2 possible objective rooms depending on Ancient Lands tile access — check the right one at the table. Requires League of Dungeoneers membership (complete the first campaign) to reach via the Outpost.
+        </p>
+        {ANCIENT_LANDS_QUESTS.map((name) => (
+          <QuestChecklistRow
+            key={name}
+            label={name}
+            checked={quests.completed[`ancient:${name}`]}
+            onToggle={() => toggleCompleted(`ancient:${name}`, name)}
           />
         ))}
       </Panel>

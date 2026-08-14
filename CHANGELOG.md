@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.36.1] — 2026-08-14
+
+### Added
+- Quests into the Ancient Lands: all 5 quests now listed on the Quest tab checklist (The Pyramid of Xanthu, Tomb of the Hierophant, Temple of Despair, Hall of Amenhotep, Crypt of Khaba)
+
 ## [1.36.0] — 2026-08-14
 
 ### Added

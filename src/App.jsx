@@ -2362,6 +2362,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.34.2",
+    date: "2026-08-14",
+    sections: {
+      "Fixed": [
+        "The level-up points badge on a hero's tab button was getting clipped instead of sitting proud of the corner",
+      ],
+    },
+  },
+  {
     version: "1.34.1",
     date: "2026-08-14",
     sections: {
@@ -11612,17 +11621,20 @@ function HeroesTab({ heroes, updateHero, removeHero, addHero, addLog, pushToast,
             <button
               key={h.id}
               onClick={() => setSelectedId(h.id)}
-              className="relative shrink-0 px-3 py-2 rounded-lg text-sm font-bold whitespace-nowrap"
+              className="relative shrink-0 px-3 py-2 rounded-lg text-sm font-bold"
               style={{
                 background: selectedId === h.id ? palette.crimson : "#00000010",
                 color: selectedId === h.id ? palette.parchment : palette.ink,
                 fontFamily: "Cinzel, serif",
                 maxWidth: 140,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
               }}
             >
-              {h.name || "New Hero"}
+              <span
+                className="block whitespace-nowrap overflow-hidden"
+                style={{ textOverflow: "ellipsis" }}
+              >
+                {h.name || "New Hero"}
+              </span>
               {h.improvementPoints > 0 && (
                 <span
                   className="absolute -top-1 -right-1 rounded-full flex items-center justify-center font-bold"

@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.34.2] — 2026-08-14
+
+### Fixed
+- The level-up points badge on a hero's tab button was getting clipped instead of sitting proud of the corner
+
 ## [1.34.1] — 2026-08-14
 
 ### Fixed

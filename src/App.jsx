@@ -708,18 +708,18 @@ const BOOK2_BACKER_QUESTS = [
 // Quest Book II — Mini Quests chapter. Short standalone encounters, no roll table to
 // pick one — worked through one by one or chosen freely.
 const BOOK2_MINI_QUESTS = [
-  { name: "Spiders in the Forest", note: "p97" },
-  { name: "The Kidnapped Kid", note: "p97" },
-  { name: "Old Forgotten Tomb", note: "p97" },
-  { name: "The Old Lady", note: "p97" },
-  { name: "Old Temple", note: "p97" },
-  { name: "Old Ruin", note: "p97" },
-  { name: "Clear Out the Bandits", note: "p98" },
-  { name: "The Moonstone", note: "p99" },
-  { name: "Kill the Beast", note: "p100" },
-  { name: "Save the Farm", note: "p101 — requires the Companions Expansion" },
-  { name: "The Curse", note: "p102" },
-  { name: "Escort", note: "p103" },
+  { name: "Spiders in the Forest" },
+  { name: "The Kidnapped Kid" },
+  { name: "Old Forgotten Tomb" },
+  { name: "The Old Lady" },
+  { name: "Old Temple" },
+  { name: "Old Ruin" },
+  { name: "Clear Out the Bandits" },
+  { name: "The Moonstone" },
+  { name: "Kill the Beast" },
+  { name: "Save the Farm", note: "Requires the Companions Expansion" },
+  { name: "The Curse" },
+  { name: "Escort" },
 ];
 
 // Random Quests pool (p241) — roll 1d6, reroll on a 6.

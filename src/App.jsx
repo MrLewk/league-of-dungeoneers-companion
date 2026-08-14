@@ -2362,6 +2362,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.34.1",
+    date: "2026-08-14",
+    sections: {
+      "Fixed": [
+        "Search Furniture now has a confirmed AP cost (1 AP out of combat, 2 AP with enemies in LOS) and a hero picker to spend it from, instead of being treated as a free action",
+      ],
+    },
+  },
+  {
     version: "1.34.0",
     date: "2026-08-14",
     sections: {
@@ -10125,6 +10134,10 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   const [searchResult, setSearchResult] = useState(null);
   const [furnitureType, setFurnitureType] = useState("");
   const [furnitureResult, setFurnitureResult] = useState(null);
+  const [furnitureHeroId, setFurnitureHeroId] = useState("");
+  const [furnitureInCombat, setFurnitureInCombat] = useState(false);
+  const [furnitureFeedback, setFurnitureFeedback] = useState(null);
+  const activeFurnitureHero = heroes.find((h) => h.id === furnitureHeroId) || heroes[0];
   const [searchFeedback, setSearchFeedback] = useState(null);
   const activeSearchHero = heroes.find((h) => h.id === searchHeroId) || heroes[0];
 
@@ -10149,12 +10162,14 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   };
 
   const searchFurniture = () => {
-    if (!furnitureType) return;
+    if (!furnitureType || !activeFurnitureHero) return;
+    if (!trySpendAP(activeFurnitureHero, furnitureInCombat ? 2 : 1, setFurnitureFeedback)) return;
     const roll = rollDie(10);
     const entry = furnitureSearchResult(furnitureType, roll);
     const annotated = annotateDiceInText(entry.text);
     setFurnitureResult({ roll, text: annotated });
-    addLog(`Searches the ${furnitureType}: rolled ${roll} — ${annotated}`);
+    setFurnitureFeedback(null);
+    addLog(`${activeFurnitureHero.name} searches the ${furnitureType} (${furnitureInCombat ? 2 : 1} AP): rolled ${roll} — ${annotated}`);
   };
 
   // Every model has a flat 2 AP per the QRS. Spends from the acting hero's pool
@@ -10765,8 +10780,21 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
       <Panel>
         <SectionTitle icon={ClipboardList}>Search Furniture</SectionTitle>
         <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
-          Pick the furniture type, then roll 1d10 (Appendix V). AP cost/skill check for this specific action isn't confirmed yet — apply your own AP cost until that page's available.
+          1 AP out of combat, 2 AP if there are enemies in LOS. No search roll needed, just roll 1d10 on the Furniture Table (Appendix V). Can only be done once per piece of furniture, and only while no enemy is adjacent to it.
         </p>
+        <select
+          value={furnitureHeroId}
+          onChange={(e) => setFurnitureHeroId(e.target.value)}
+          className="w-full text-xs rounded px-2 py-1.5 mb-2"
+          style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+        >
+          <option value="">Choose a hero…</option>
+          {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+        </select>
+        <label className="flex items-center gap-2 text-xs mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+          <input type="checkbox" checked={furnitureInCombat} onChange={(e) => setFurnitureInCombat(e.target.checked)} />
+          Enemies in LOS (2 AP instead of 1)
+        </label>
         <select
           value={furnitureType}
           onChange={(e) => { setFurnitureType(e.target.value); setFurnitureResult(null); }}
@@ -10778,12 +10806,15 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
         </select>
         <button
           onClick={searchFurniture}
-          disabled={!furnitureType}
+          disabled={!furnitureType || !activeFurnitureHero}
           className="w-full mb-2 px-3 py-2 rounded font-bold text-sm active:scale-95 transition-transform"
-          style={{ background: furnitureType ? palette.crimsonDark : "#00000020", color: palette.parchment, fontFamily: "Cinzel, serif", opacity: furnitureType ? 1 : 0.5 }}
+          style={{ background: (furnitureType && activeFurnitureHero) ? palette.crimsonDark : "#00000020", color: palette.parchment, fontFamily: "Cinzel, serif", opacity: (furnitureType && activeFurnitureHero) ? 1 : 0.5 }}
         >
-          Search
+          Search ({furnitureInCombat ? 2 : 1} AP)
         </button>
+        {furnitureFeedback && (
+          <p className="text-xs mb-2 font-semibold" style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif" }}>{furnitureFeedback.text}</p>
+        )}
         {furnitureResult && (
           <div className="rounded p-3" style={{ background: "#00000010" }}>
             <p className="text-xs mb-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>Roll: <b>{furnitureResult.roll}</b></p>

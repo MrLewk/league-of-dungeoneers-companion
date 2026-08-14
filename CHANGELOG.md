@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.34.1] — 2026-08-14
+
+### Fixed
+- Search Furniture now has a confirmed AP cost (1 AP out of combat, 2 AP with enemies in LOS) and a hero picker to spend it from, instead of being treated as a free action
+
 ## [1.34.0] — 2026-08-14
 
 ### Added

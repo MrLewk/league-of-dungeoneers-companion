@@ -64,6 +64,7 @@ const defaultHero = () => ({
   creationPointsSpent: { STR: 0, CON: 0, DEX: 0, WIS: 0, RES: 0 },
   freeSkill: "",
   hp: { cur: 10, max: 10 },
+  bleedingOutRolled: false, // has the one-time 1d4 permanent loss for this knockout been rolled?
   energy: { cur: 1, max: 1 },
   sanity: { cur: 8, max: 8 },
   mana: { cur: 0, max: 0 },
@@ -476,6 +477,11 @@ const defaultParty = () => ({
     crusade: null, // Inner Sanctum — { against, killed } rolled this cycle
     taxidermistAttempts: {}, // Rangers' Guild — settlementName -> true, one sale attempt per settlement per cycle
   },
+  quests: {
+    completed: {}, // questKey ("campaign:First Blood", "random:The Lava River", "side:Mushrooms") -> true
+    randomActive: null, // currently-rolled Random Quest name, or null
+    sideActive: null, // currently-rolled Side Quest name, or null
+  },
 });
 
 // Fills in any fields missing from a party saved before this update.
@@ -487,6 +493,8 @@ function normalizeParty(p) {
   merged.transport = { ...defaultParty().transport, ...(p?.transport || {}) };
   merged.storage = { ...defaultParty().storage, ...(p?.storage || {}) };
   merged.magicWorkshop = { ...defaultParty().magicWorkshop, ...(p?.magicWorkshop || {}) };
+  merged.quests = { ...defaultParty().quests, ...(p?.quests || {}) };
+  merged.quests.completed = { ...(p?.quests?.completed || {}) };
   return merged;
 }
 
@@ -625,6 +633,32 @@ const SETTLEMENTS = [
 // `resolve` marks events with a spelled-out follow-up roll the app can auto-apply.
 // Side Quests (1d6) — just the names; roll tells you which one, look up the details
 // in the Quest Book.
+// Campaign quests (Quest Book I) — known named quests. "Quests into the Ancient Lands"
+// has 5 quests but their names aren't confirmed from the rulebook yet, so it's left off
+// this list rather than guessed at.
+const CAMPAIGN_QUESTS = [
+  { name: "First Blood", note: "Introductory quest, p221" },
+  { name: "The Dead Rising", note: "p222" },
+  { name: "Lair of the Spider Queen", note: "p234" },
+];
+
+// Random Quests pool (p241) — roll 1d6, reroll on a 6.
+const RANDOM_QUESTS_TABLE = [
+  { roll: 1, name: "The Lava River" },
+  { roll: 2, name: "The Bandits' Hideout" },
+  { roll: 3, name: "The Fountain Room" },
+  { roll: 4, name: "The Great Crypt" },
+  { roll: 5, name: "The Chamber of Reverence" },
+];
+
+function rollRandomQuest() {
+  let r = rollDie(6);
+  let rerolled = false;
+  while (r === 6) { r = rollDie(6); rerolled = true; }
+  const entry = RANDOM_QUESTS_TABLE.find((e) => e.roll === r);
+  return { ...entry, rerolled };
+}
+
 const SIDE_QUESTS = ["The Missing Brother", "Slay the Beast", "The Mapmaker", "Go Fetch!", "Manhunt", "Mushrooms"];
 
 // Pray at Temple (p144-145) — 50c, 1d6 roll, 1-3 succeeds. Effects last "until you leave
@@ -1397,7 +1431,7 @@ const CC_ATTACK_MODS = [
   { label: "Enemy lying down (also loses its to-hit)", value: 30 },
   { label: "Attacking from behind", value: 20 },
   { label: "Height advantage", value: 10 },
-  { label: "Enemy has a rapier", value: -5 },
+  { label: "Enemy weapon has the Fast Rule", value: -5 },
   { label: "Enemy weapon has slow rule", value: 5 },
   { label: "Enemy weapon has BFO rule", value: 5 },
   { label: "Enemy has a staff", value: -5 },
@@ -1412,6 +1446,12 @@ const RANGED_ATTACK_MODS = [
   { label: "Shooter has aimed at the target", value: 10 },
   { label: "Enemy has a shield (no power attack last turn)", value: -5 },
   { label: "Enemy has taken a parry stance", value: -10 },
+];
+
+const THROW_POTION_MODS = [
+  { label: "Target is Large or X-Large (easier to hit)", value: 10 },
+  { label: "Lobbing over an obstacle or model (not adjacent to it)", value: -10 },
+  { label: "Throwing through a doorway opening (not standing in one of the 2 squares in front of it)", value: -10 },
 ];
 
 const AP_ACTIONS = {
@@ -1458,10 +1498,10 @@ const THREAT_TABLE_IN_COMBAT = [
 ];
 
 const DAMAGE_TYPES = [
-  { type: "Fire", effect: "Ignores NA & Armour. 50% chance of auto-damage next turn (roll again, half — round down)." },
+  { type: "Fire", effect: "Ignores NA & Armour. After resolving, roll 1d6: 1–3 extinguished, 4–6 continues next turn at half damage (round down, min 1), then extinguished." },
   { type: "Frost", effect: "50% chance of stun (lose 1 AP next turn)." },
-  { type: "Acid", effect: "Ignores NA. 50% chance of auto-damage next turn (roll again, half — round down)." },
-  { type: "Poison", effect: "CON test: fail = CON test each turn for 1d10 turns or lose 1 HP until cured. A 01–05 removes the poison." },
+  { type: "Acid", effect: "Ignores NA. After resolving, roll 1d6: 1–3 negated, 4–6 continues next turn at half damage (round down, min 1), then negated." },
+  { type: "Poison", effect: "On a hit that deals damage, CON test: fail = poisoned. Another CON test at the start of the next turn, and again 1d10 turns after that; each failure costs 1 HP. Cure Poison potion or Chapel of Metheia cures it; a natural 01–05 on any of these CON tests also cures it outright. During a rest, roll all remaining ticks at once — reaching 0 HP during a rest kills the hero. Can't be poisoned again until cured." },
   { type: "Disease", effect: "CON test: fail = STR & CON halved (round down) after the battle, Energy = 0 until cured. Roll CON each rest — cured on 01–05." },
 ];
 
@@ -2550,6 +2590,25 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.36.0",
+    date: "2026-08-14",
+    sections: {
+      "Added": [
+        "Bleeding Out: a hero at 0 HP now shows a dedicated panel — rolls the mandatory 1d4 permanent stat or HP loss, then offers Revive (set HP from a heal roll) or Hero Dies (permanently removes them from the party)",
+        "Throwing Potions: new Combat tab mode with its own RS test, bonuses/penalties for Large enemies, throwing over obstacles, and throwing through doorways",
+        "Hit Location roll (Combat tab, Damage calculator): 1d6 against Head/Arms/Torso/Legs when a hero is struck — Head applies −1 Sanity automatically, Torso rolls against the hero's actual Quick Slot items for durability damage",
+        "Reference tab: Who Can Fight, Zone of Control, and End of Battle",
+        "Quest tab overhaul: Campaign Quests checklist (First Blood, The Dead Rising, Lair of the Spider Queen), a Random Quests roller with its own checklist, and a Side Quests roller with its own checklist — completions log to the party log and persist with the campaign. Also includes a short rules box covering how to read quests, Wandering Monster triggers, and Ancient Lands travel requirements",
+        "Nav bar can now be scrolled by clicking and dragging on desktop, not just on touch devices",
+      ],
+      "Fixed": [
+        "The Close Combat modifier \"Enemy has a rapier\" was named after one example weapon rather than the actual rule — renamed to \"Enemy weapon has the Fast Rule\"",
+        "Poison's damage-type reference text described a rolling duration; corrected to the rulebook's actual two-checkpoint timing (next turn, then again 1d10 turns later)",
+        "Fire and Acid follow-up damage now note the minimum-1 floor when it continues into the next turn",
+      ],
+    },
+  },
   {
     version: "1.35.0",
     date: "2026-08-14",
@@ -4823,6 +4882,72 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
       <div className="mt-3">
           <StatBar label="HP" icon={Heart} cur={hero.hp.cur} max={hero.hp.max} color={palette.crimson}
             onChange={(v) => set({ hp: { ...hero.hp, cur: v } })} onMaxChange={(v) => set({ hp: { ...hero.hp, max: v } })} />
+
+          {hero.hp.cur <= 0 && (
+            <div className="mt-1 mb-3 p-3 rounded" style={{ background: palette.crimsonDark, border: `1px solid ${palette.crimson}` }}>
+              <p className="text-sm font-bold mb-1" style={{ color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+                {hero.name} is Bleeding Out
+              </p>
+              {!hero.bleedingOutRolled ? (
+                <>
+                  <p className="text-xs mb-2" style={{ color: "#F0D8D8", fontFamily: "Crimson Pro, serif" }}>
+                    Reaching 0 HP always costs a permanent stat or HP reduction (1d4, randomised).
+                  </p>
+                  <button
+                    onClick={() => {
+                      const pool = [...STAT_KEYS, "hp"];
+                      const stat = pool[rollDie(pool.length) - 1];
+                      const amount = rollDie(4);
+                      let patch = { bleedingOutRolled: true };
+                      if (stat === "hp") {
+                        patch.hp = { cur: hero.hp.cur, max: Math.max(1, hero.hp.max - amount) };
+                      } else {
+                        patch.stats = { ...hero.stats, [stat]: Math.max(0, hero.stats[stat] - amount) };
+                      }
+                      update({ ...hero, ...patch });
+                      addLog && addLog(`${hero.name} reaches 0 HP and permanently loses ${amount} ${stat === "hp" ? "max HP" : stat}.`);
+                    }}
+                    className="px-3 py-1.5 rounded text-xs font-bold"
+                    style={{ background: palette.crimson, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+                  >
+                    Roll Permanent Loss (1d4)
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs mb-2" style={{ color: "#F0D8D8", fontFamily: "Crimson Pro, serif" }}>
+                    To recover mid-battle: a Healing Spell, or a Healing Potion in a ready slot (own or an adjacent companion's). After battle, a standing companion may bandage them instead.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => {
+                        const v = prompt("HP to set on revival (from the heal roll):", "1");
+                        const hp = Math.max(1, Math.min(hero.hp.max, Number(v) || 1));
+                        update({ ...hero, bleedingOutRolled: false, hp: { ...hero.hp, cur: hp } });
+                        addLog && addLog(`${hero.name} is revived with ${hp} HP.`);
+                      }}
+                      className="px-3 py-1.5 rounded text-xs font-bold"
+                      style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+                    >
+                      Revive
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!confirm(`${hero.name} dies and is permanently removed from the party. This can't be undone. Continue?`)) return;
+                        addLog && addLog(`${hero.name} could not be saved and has died. A new level 1 hero may be added at the next settlement.`);
+                        remove();
+                      }}
+                      className="px-3 py-1.5 rounded text-xs font-bold"
+                      style={{ background: palette.charcoal, color: palette.parchment, fontFamily: "Cinzel, serif", border: `1px solid ${palette.crimson}` }}
+                    >
+                      Hero Dies
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           <StatBar label="Energy" icon={Zap} cur={hero.energy.cur} max={hero.energy.max} color={palette.gold}
             onChange={(v) => set({ energy: { ...hero.energy, cur: v } })} onMaxChange={(v) => set({ energy: { ...hero.energy, max: v } })} />
           <StatBar label="Sanity" icon={Brain} cur={hero.sanity.cur} max={hero.sanity.max} color={palette.forest}
@@ -9663,6 +9788,28 @@ function CombatCalc({ heroes, updateHero, addLog }) {
   const [result, setResult] = useState(null);
   const [heroPick, setHeroPick] = useState("");
 
+  const [throwBase, setThrowBase] = useState(30);
+  const [throwChecked, setThrowChecked] = useState({});
+  const [throwResult, setThrowResult] = useState(null);
+  const [throwHeroPick, setThrowHeroPick] = useState("");
+  const throwSumChecked = THROW_POTION_MODS.reduce((s, m) => (throwChecked[m.label] ? s + m.value : s), 0);
+  const throwEffective = clamp(throwBase + throwSumChecked, 0, 100);
+  const applyThrowHeroSkill = (heroId) => {
+    setThrowHeroPick(heroId);
+    const h = heroes.find((x) => x.id === heroId);
+    if (!h) return;
+    const penalty = encumbranceOver(h) ? -10 : 0;
+    setThrowBase(h.skills.rs + penalty);
+  };
+  const rollThrow = () => {
+    const r = rollPercent();
+    let outcome, note;
+    if (r <= 5) { outcome = "PERFECT"; note = "Hits the intended target — and rolls low enough it's an especially clean throw."; }
+    else if (r <= throwEffective) { outcome = "HIT"; note = "The potion lands on the intended square."; }
+    else { outcome = "MISS"; note = "Scatters to a random square adjacent to the target (or, if not adjacent to the target and the throw was through a doorway, one of the 2 squares in front of the door instead)."; }
+    setThrowResult({ r, outcome, note });
+  };
+
   const mods = mode === "cc" ? CC_ATTACK_MODS : RANGED_ATTACK_MODS;
   const sumChecked = mods.reduce((s, m) => (checked[m.label] ? s + m.value : s), 0);
   const halfHeightPenalty = mode === "ranged" ? -10 * Number(halfHeight || 0) : 0;
@@ -9691,6 +9838,20 @@ function CombatCalc({ heroes, updateHero, addLog }) {
   const [na, setNa] = useState(0);
   const [armour, setArmour] = useState(0);
   const dmgTotal = Math.max(0, Number(weaponDmg || 0) + Number(db || 0) - Number(na || 0) - Number(armour || 0));
+
+  const [hitLocHero, setHitLocHero] = useState("");
+  const [hitLocResult, setHitLocResult] = useState(null);
+  const HIT_LOCATIONS = [
+    { min: 1, max: 1, loc: "Head", note: "Costs 1 Sanity." },
+    { min: 2, max: 2, loc: "Arms", note: "No automatic effect tracked here." },
+    { min: 3, max: 5, loc: "Torso", note: "Check gear — roll 1d10 against Quick Slots." },
+    { min: 6, max: 6, loc: "Legs", note: "No automatic effect tracked here." },
+  ];
+  const rollHitLocation = () => {
+    const r = rollDie(6);
+    const entry = HIT_LOCATIONS.find((e) => r >= e.min && r <= e.max);
+    setHitLocResult({ roll: r, loc: entry.loc, note: entry.note });
+  };
 
   // Quick stat/skill check
   const [checkValue, setCheckValue] = useState(40);
@@ -9788,7 +9949,7 @@ function CombatCalc({ heroes, updateHero, addLog }) {
   return (
     <div>
       <div className="flex gap-1.5 mb-4 flex-wrap">
-        {[["cc", "Close Combat", Swords], ["ranged", "Ranged", Dice5], ["damage", "Damage", Shield], ["check", "Stat/Skill Check", Brain], ["spells", "Spells", Sparkles], ["prayers", "Prayers", Heart]].map(([key, label, Icon]) => (
+        {[["cc", "Close Combat", Swords], ["ranged", "Ranged", Dice5], ["throw", "Throw Potion", FlaskConical], ["damage", "Damage", Shield], ["check", "Stat/Skill Check", Brain], ["spells", "Spells", Sparkles], ["prayers", "Prayers", Heart]].map(([key, label, Icon]) => (
           <button
             key={key}
             onClick={() => { setMode(key); setResult(null); }}
@@ -9924,6 +10085,66 @@ function CombatCalc({ heroes, updateHero, addLog }) {
         </Panel>
       )}
 
+      {mode === "throw" && (
+        <Panel className="mb-4">
+          <SectionTitle icon={FlaskConical}>Throwing Potions</SectionTitle>
+          <p className="text-xs mb-3 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            For potions marked (Tr) — a successful RS test hits the target square; you can throw over friends, foes and obstacles to hit something further away.
+          </p>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {heroes.map((h) => (
+              <button
+                key={h.id}
+                onClick={() => applyThrowHeroSkill(h.id)}
+                className="text-xs px-2 py-1 rounded-full"
+                style={{ background: throwHeroPick === h.id ? palette.crimson : "#00000010", color: throwHeroPick === h.id ? palette.parchment : palette.ink }}
+              >
+                {h.name} (RS {h.skills.rs}{encumbranceOver(h) ? ", −10 enc" : ""})
+              </button>
+            ))}
+          </div>
+          <label className="block text-xs mb-1 uppercase" style={{ color: palette.inkSoft, fontFamily: "Cinzel, serif" }}>Thrower's RS</label>
+          <input
+            type="number"
+            value={throwBase}
+            onChange={(e) => setThrowBase(Number(e.target.value) || 0)}
+            className="w-full rounded px-2 py-1.5 mb-3 font-bold"
+            style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+          />
+          <div className="space-y-1.5 mb-3">
+            {THROW_POTION_MODS.map((m) => (
+              <label key={m.label} className="flex items-center gap-2 text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+                <input type="checkbox" checked={!!throwChecked[m.label]} onChange={(e) => setThrowChecked({ ...throwChecked, [m.label]: e.target.checked })} />
+                {m.label} ({m.value > 0 ? "+" : ""}{m.value})
+              </label>
+            ))}
+          </div>
+          <div className="flex items-center justify-between mb-3 p-2 rounded" style={{ background: "#00000008" }}>
+            <span className="text-xs uppercase" style={{ color: palette.goldSoft, fontFamily: "Cinzel, serif" }}>Effective RS</span>
+            <span className="text-xl font-bold" style={{ color: palette.crimson, fontFamily: "JetBrains Mono, monospace" }}>{throwEffective}</span>
+          </div>
+          <button
+            onClick={rollThrow}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded font-bold"
+            style={{ background: palette.crimson, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+          >
+            <Dice5 size={16} /> Roll d100
+          </button>
+          {throwResult && (
+            <div
+              className="mt-3 text-center rounded p-2 font-bold"
+              style={{ background: throwResult.outcome === "MISS" ? palette.crimsonDark : throwResult.outcome === "PERFECT" ? palette.gold : palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+            >
+              <div>Rolled {throwResult.r} — {throwResult.outcome}</div>
+              <div className="text-xs font-normal mt-1" style={{ fontFamily: "Crimson Pro, serif" }}>{throwResult.note}</div>
+            </div>
+          )}
+          <p className="text-xs mt-3" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            AoE potions: full damage to the hit square; a Large/X-Large enemy covering extra squares takes +1 DMG per additional square it covers. Other enemies in the remaining squares take normal damage.
+          </p>
+        </Panel>
+      )}
+
       {mode === "damage" && (
         <Panel className="mb-4">
           <SectionTitle icon={Shield}>Damage Taken</SectionTitle>
@@ -9968,6 +10189,79 @@ function CombatCalc({ heroes, updateHero, addLog }) {
             <div className="text-xs uppercase" style={{ color: palette.goldSoft, fontFamily: "Cinzel, serif" }}>HP Lost</div>
             <div className="text-3xl font-bold" style={{ color: palette.parchment, fontFamily: "JetBrains Mono, monospace" }}>{dmgTotal}</div>
           </div>
+
+          {heroes && heroes.length > 0 && (
+            <div className="mt-4 pt-3" style={{ borderTop: `1px solid ${palette.line}` }}>
+              <SectionTitle icon={Skull}>Hit Location (when a hero is struck)</SectionTitle>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {heroes.map((h) => (
+                  <button
+                    key={h.id}
+                    onClick={() => setHitLocHero(h.id)}
+                    className="text-xs px-2 py-1 rounded-full"
+                    style={{ background: hitLocHero === h.id ? palette.crimson : "#00000010", color: hitLocHero === h.id ? palette.parchment : palette.ink }}
+                  >
+                    {h.name}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={rollHitLocation}
+                disabled={!hitLocHero}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded font-bold text-sm mb-2"
+                style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif", opacity: hitLocHero ? 1 : 0.5 }}
+              >
+                <Dice5 size={14} /> Roll 1d6 Hit Location
+              </button>
+              {hitLocResult && (
+                <div className="text-xs rounded p-2" style={{ background: "#00000008", color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
+                  <b>{hitLocResult.loc}</b> ({hitLocResult.roll}) — {hitLocResult.note}
+                  {hitLocResult.loc === "Head" && (
+                    <button
+                      onClick={() => {
+                        const h = heroes.find((x) => x.id === hitLocHero);
+                        if (!h) return;
+                        updateHero({ ...h, sanity: { ...h.sanity, cur: Math.max(0, h.sanity.cur - 1) } });
+                        addLog && addLog(`${h.name} is struck in the head: −1 Sanity.`);
+                        setHitLocResult(null);
+                      }}
+                      className="block mt-2 px-2 py-1 rounded text-xs font-bold"
+                      style={{ background: palette.crimson, color: palette.parchment }}
+                    >
+                      Apply −1 Sanity
+                    </button>
+                  )}
+                  {hitLocResult.loc === "Torso" && (() => {
+                    const h = heroes.find((x) => x.id === hitLocHero);
+                    const quickItems = h ? h.backpack.filter((it) => it.slot === "quickslot") : [];
+                    return (
+                      <button
+                        onClick={() => {
+                          const slotRoll = rollDie(10);
+                          if (slotRoll > quickItems.length) {
+                            addLog && addLog(`${h.name}: torso hit, Quick Slot roll ${slotRoll} — no item in that slot, no effect.`);
+                            setHitLocResult(null);
+                            return;
+                          }
+                          const item = quickItems[slotRoll - 1];
+                          const curDur = Number(String(item.dur || "").split("/")[0]) || 0;
+                          const newDur = Math.max(0, curDur - 1);
+                          const maxPart = String(item.dur || "").split("/")[1] || "";
+                          updateHero({ ...h, backpack: h.backpack.map((it) => it.id === item.id ? { ...it, dur: maxPart ? `${newDur}/${maxPart}` : String(newDur) } : it) });
+                          addLog && addLog(`${h.name}: torso hit, Quick Slot roll ${slotRoll} — ${item.name} takes 1 Durability damage.`);
+                          setHitLocResult(null);
+                        }}
+                        className="block mt-2 px-2 py-1 rounded text-xs font-bold"
+                        style={{ background: palette.crimson, color: palette.parchment }}
+                      >
+                        Roll 1d10 vs Quick Slots ({quickItems.length} used)
+                      </button>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          )}
         </Panel>
       )}
 
@@ -11043,8 +11337,21 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   );
 }
 
-function QuestRollerPanel() {
+function QuestChecklistRow({ label, sub, checked, onToggle }) {
+  return (
+    <label className="flex items-start gap-2 py-1.5 text-sm" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+      <input type="checkbox" checked={!!checked} onChange={onToggle} className="mt-0.5" />
+      <span className={checked ? "line-through opacity-60" : ""}>
+        {label}
+        {sub && <span className="block text-xs" style={{ color: palette.inkSoft }}>{sub}</span>}
+      </span>
+    </label>
+  );
+}
+
+function QuestRollerPanel({ party, setParty, addLog }) {
   const [result, setResult] = useState(null);
+  const quests = party.quests || { completed: {}, randomActive: null, sideActive: null };
 
   const roll = (origin) => {
     let r;
@@ -11056,39 +11363,140 @@ function QuestRollerPanel() {
 
   const originLabel = { silverCity: "Silver City", outpost: "The Outpost", village: "Village" };
 
+  const toggleCompleted = (key, label) => {
+    const isDone = !!quests.completed[key];
+    const nextCompleted = { ...quests.completed, [key]: !isDone };
+    setParty({ ...party, quests: { ...quests, completed: nextCompleted } });
+    if (!isDone) addLog && addLog(`Quest complete: ${label}.`);
+  };
+
+  const rollRandom = () => {
+    const r = rollRandomQuest();
+    setParty({ ...party, quests: { ...quests, randomActive: r.name } });
+    addLog && addLog(`Random Quest rolled: ${r.name}${r.rerolled ? " (after a reroll)" : ""}.`);
+  };
+
+  const rollSide = () => {
+    const r = rollDie(6);
+    const name = SIDE_QUESTS[r - 1];
+    setParty({ ...party, quests: { ...quests, sideActive: name } });
+    addLog && addLog(`Side Quest rolled: ${name}.`);
+  };
+
   return (
-    <Panel>
-      <SectionTitle icon={ScrollText}>Quest Generator</SectionTitle>
-      <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
-        You must be in the quest's location to start it — random-location quests may be started anywhere, including Silver City. If a village name appears in brackets, your party must be in that village; re-roll if not.
-      </p>
-      <div className="flex flex-wrap gap-2 mb-3">
-        <button onClick={() => roll("silverCity")} className="px-3 py-2 rounded font-bold text-sm" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
-          In Silver City
-        </button>
-        <button onClick={() => roll("village")} className="px-3 py-2 rounded font-bold text-sm" style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
-          In a Village
-        </button>
-        <button onClick={() => roll("outpost")} className="px-3 py-2 rounded font-bold text-sm" style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}>
-          At The Outpost
-        </button>
-      </div>
-      {result && (
-        <div className="rounded p-3" style={{ background: palette.charcoal }}>
-          <p className="text-xs mb-1" style={{ color: "#B8A78A", fontFamily: "JetBrains Mono, monospace" }}>
-            {originLabel[result.origin]} · {result.steps.join(" · ")}
-          </p>
-          {result.entry ? (
-            <>
-              <p className="text-lg font-bold" style={{ color: palette.parchment, fontFamily: "Cinzel, serif" }}>{result.entry.name}</p>
-              <p className="text-sm" style={{ color: palette.goldSoft, fontFamily: "JetBrains Mono, monospace" }}>Book {result.entry.book}, page {result.entry.page}</p>
-            </>
-          ) : (
-            <p className="text-sm" style={{ color: palette.parchment }}>No matching quest found.</p>
+    <div className="space-y-4">
+      <Panel>
+        <SectionTitle icon={BookOpen}>Reading the Quests</SectionTitle>
+        <div className="text-xs space-y-1.5" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+          <p>Each quest in the book is divided by border lines into stages — don't read past the first line until you begin, or the second until you reach the Quest Room, to avoid spoilers. Anything found in the "aftermath" can be looted off-table freely, with no traps or locks.</p>
+          <p><b>Wandering Monsters:</b> when a quest says one appears at Threat Level "XX", it triggers every time the Threat Level is <i>increased</i> to XX — not when it's decreased back down to XX after having gone higher.</p>
+          <p><b>Ancient Lands access:</b> travelling there via the Outpost requires League of Dungeoneers membership (earned by completing the first campaign). Each hex costs 2 Movement Points and 2 rations/day per hero; a camel reduces travel time. A Travel Event roll of 10–12 triggers a Desert Event Card.</p>
+        </div>
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={ScrollText}>Quest Generator</SectionTitle>
+        <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
+          You must be in the quest's location to start it — random-location quests may be started anywhere, including Silver City. If a village name appears in brackets, your party must be in that village; re-roll if not.
+        </p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          <button onClick={() => roll("silverCity")} className="px-3 py-2 rounded font-bold text-sm" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+            In Silver City
+          </button>
+          <button onClick={() => roll("village")} className="px-3 py-2 rounded font-bold text-sm" style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+            In a Village
+          </button>
+          <button onClick={() => roll("outpost")} className="px-3 py-2 rounded font-bold text-sm" style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}>
+            At The Outpost
+          </button>
+        </div>
+        {result && (
+          <div className="rounded p-3" style={{ background: palette.charcoal }}>
+            <p className="text-xs mb-1" style={{ color: "#B8A78A", fontFamily: "JetBrains Mono, monospace" }}>
+              {originLabel[result.origin]} · {result.steps.join(" · ")}
+            </p>
+            {result.entry ? (
+              <>
+                <p className="text-lg font-bold" style={{ color: palette.parchment, fontFamily: "Cinzel, serif" }}>{result.entry.name}</p>
+                <p className="text-sm" style={{ color: palette.goldSoft, fontFamily: "JetBrains Mono, monospace" }}>Book {result.entry.book}, page {result.entry.page}</p>
+              </>
+            ) : (
+              <p className="text-sm" style={{ color: palette.parchment }}>No matching quest found.</p>
           )}
         </div>
       )}
-    </Panel>
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={ScrollText}>Campaign Quests</SectionTitle>
+        <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+          "Quests into the Ancient Lands" isn't listed here yet — its 5 quest names aren't confirmed from the rulebook.
+        </p>
+        {CAMPAIGN_QUESTS.map((q) => (
+          <QuestChecklistRow
+            key={q.name}
+            label={q.name}
+            sub={q.note}
+            checked={quests.completed[`campaign:${q.name}`]}
+            onToggle={() => toggleCompleted(`campaign:${q.name}`, q.name)}
+          />
+        ))}
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={Dice5}>Random Quests</SectionTitle>
+        <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+          Roll 1d6 to pick an objective room (reroll on a 6). These can be replayed — layout shifts and difficulty scales with hero level.
+        </p>
+        <button
+          onClick={rollRandom}
+          className="w-full flex items-center justify-center gap-2 py-2 rounded font-bold text-sm mb-2"
+          style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+        >
+          <Dice5 size={14} /> Roll a Random Quest
+        </button>
+        {quests.randomActive && (
+          <div className="rounded p-2 mb-2" style={{ background: "#00000008" }}>
+            <span className="text-sm font-bold" style={{ color: palette.crimson, fontFamily: "Cinzel, serif" }}>Active: {quests.randomActive}</span>
+          </div>
+        )}
+        {RANDOM_QUESTS_TABLE.map((q) => (
+          <QuestChecklistRow
+            key={q.name}
+            label={q.name}
+            checked={quests.completed[`random:${q.name}`]}
+            onToggle={() => toggleCompleted(`random:${q.name}`, q.name)}
+          />
+        ))}
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={Dice5}>Side Quests</SectionTitle>
+        <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+          A little extra spice added to any other quest — accepted during the city stay, doesn't add to the Day Count. Roll 1d6, or work through them one by one.
+        </p>
+        <button
+          onClick={rollSide}
+          className="w-full flex items-center justify-center gap-2 py-2 rounded font-bold text-sm mb-2"
+          style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+        >
+          <Dice5 size={14} /> Roll a Side Quest
+        </button>
+        {quests.sideActive && (
+          <div className="rounded p-2 mb-2" style={{ background: "#00000008" }}>
+            <span className="text-sm font-bold" style={{ color: palette.forestDark, fontFamily: "Cinzel, serif" }}>Active: {quests.sideActive}</span>
+          </div>
+        )}
+        {SIDE_QUESTS.map((name) => (
+          <QuestChecklistRow
+            key={name}
+            label={name}
+            checked={quests.completed[`side:${name}`]}
+            onToggle={() => toggleCompleted(`side:${name}`, name)}
+          />
+        ))}
+      </Panel>
+    </div>
   );
 }
 
@@ -11132,6 +11540,15 @@ function Reference() {
             <div className="text-xs" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>{actions.join(" · ")}</div>
           </div>
         ))}
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={Swords}>Who Can Fight? / Zone of Control</SectionTitle>
+        <div className="text-xs space-y-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+          <p><b>Who can fight:</b> Adjacent models may strike each other. A weapon with the Reach rule can strike an enemy 1 square away, even through a friendly (not enemy) model. Missile weapons have a max reach of 10 squares in a dungeon, unlimited outdoors. Long Range weapons can't normally be fired if an enemy is adjacent to the firer.</p>
+          <p><b>Zone of Control (ZOC):</b> a model's ZOC is any square directly to its side, diagonally in front, and in front of it. Moving from one ZOC square to another costs 2 Movement Points per square.</p>
+          <p><b>End of Battle:</b> once all enemies are dead, continue the turn with whatever actions your heroes have remaining.</p>
+        </div>
       </Panel>
 
       <Panel>
@@ -11891,6 +12308,27 @@ export default function App() {
   const [party, setParty] = useState(defaultParty());
   const [log, setLog] = useState([]);
   const [tab, setTab] = useState("party");
+  const navRef = useRef(null);
+  const dragState = useRef({ dragging: false, moved: false, startX: 0, scrollLeft: 0 });
+  const onNavPointerDown = (e) => {
+    const el = navRef.current;
+    if (!el) return;
+    dragState.current = { dragging: true, moved: false, startX: e.pageX - el.offsetLeft, scrollLeft: el.scrollLeft };
+  };
+  const onNavPointerMove = (e) => {
+    const el = navRef.current;
+    if (!el || !dragState.current.dragging) return;
+    e.preventDefault();
+    const x = e.pageX - el.offsetLeft;
+    const walk = x - dragState.current.startX;
+    if (Math.abs(walk) > 4) dragState.current.moved = true;
+    el.scrollLeft = dragState.current.scrollLeft - walk;
+  };
+  const endNavDrag = () => { dragState.current.dragging = false; };
+  const onNavClickCapture = (e) => {
+    if (dragState.current.moved) { e.preventDefault(); e.stopPropagation(); }
+    dragState.current.moved = false;
+  };
   const [compendiumInitialCat, setCompendiumInitialCat] = useState("talents");
   const goToTab = (targetTab, opts) => {
     if (targetTab === "compendium" && opts?.cat) setCompendiumInitialCat(opts.cat);
@@ -12169,8 +12607,14 @@ export default function App() {
       </header>
 
       <nav
+        ref={navRef}
         className="max-w-2xl mx-auto flex gap-2 px-4 pt-3 pb-2 overflow-x-auto scroll-hide"
-        style={{ scrollSnapType: "x proximity" }}
+        style={{ scrollSnapType: "x proximity", cursor: "grab" }}
+        onMouseDown={onNavPointerDown}
+        onMouseMove={onNavPointerMove}
+        onMouseUp={endNavDrag}
+        onMouseLeave={endNavDrag}
+        onClickCapture={onNavClickCapture}
       >
         {tabs.map(([key, label, Icon]) => (
           <button
@@ -12216,7 +12660,7 @@ export default function App() {
         {tab === "alchemy" && <AlchemyTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
         {tab === "actions" && <ActionsTray party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />}
         {tab === "dice" && <DiceTray party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />}
-        {tab === "quest" && <QuestRollerPanel />}
+        {tab === "quest" && <QuestRollerPanel party={party} setParty={setParty} addLog={addLog} />}
         {tab === "compendium" && <CompendiumTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} initialCat={compendiumInitialCat} />}
         {tab === "lore" && <LoreTab goToTab={goToTab} />}
         {tab === "campaigns" && (

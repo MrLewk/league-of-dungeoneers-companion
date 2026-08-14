@@ -3,6 +3,21 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.36.0] — 2026-08-14
+
+### Added
+- Bleeding Out: a hero at 0 HP now shows a dedicated panel — rolls the mandatory 1d4 permanent stat or HP loss, then offers Revive (set HP from a heal roll) or Hero Dies (permanently removes them from the party)
+- Throwing Potions: new Combat tab mode with its own RS test, bonuses/penalties for Large enemies, throwing over obstacles, and throwing through doorways
+- Hit Location roll (Combat tab, Damage calculator): 1d6 against Head/Arms/Torso/Legs when a hero is struck — Head applies −1 Sanity automatically, Torso rolls against the hero's actual Quick Slot items for durability damage
+- Reference tab: Who Can Fight, Zone of Control, and End of Battle
+- Quest tab overhaul: Campaign Quests checklist (First Blood, The Dead Rising, Lair of the Spider Queen), a Random Quests roller with its own checklist, and a Side Quests roller with its own checklist — completions log to the party log and persist with the campaign. Also includes a short rules box covering how to read quests, Wandering Monster triggers, and Ancient Lands travel requirements
+- Nav bar can now be scrolled by clicking and dragging on desktop, not just on touch devices
+
+### Fixed
+- The Close Combat modifier "Enemy has a rapier" was named after one example weapon rather than the actual rule — renamed to "Enemy weapon has the Fast Rule"
+- Poison's damage-type reference text described a rolling duration; corrected to the rulebook's actual two-checkpoint timing (next turn, then again 1d10 turns later)
+- Fire and Acid follow-up damage now note the minimum-1 floor when it continues into the next turn
+
 ## [1.35.0] — 2026-08-14
 
 ### Added

@@ -3,6 +3,12 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.35.0] — 2026-08-14
+
+### Added
+- Lore tab: 45 world-building snippets pulled from the rulebook, covering the World, Races, Factions, History, Deities, and every one of the 31 Legendary Items — search and category filters, tap a card to expand it
+- Legendary Item lore entries link straight through to their Compendium entry for the mechanics
+
 ## [1.34.3] — 2026-08-14
 
 ### Fixed

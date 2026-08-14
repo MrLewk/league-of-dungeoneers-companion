@@ -3,7 +3,7 @@ import {
   Plus, Minus, Trash2, Flame, Heart, Zap, Brain, Sparkles, Dice5,
   Swords, Shield, BookOpen, Users, Skull,
   RotateCcw, Coins, Wheat, ScrollText, Pencil, Check, X, FolderOpen, Loader2, Map, Download, Upload,
-  Landmark, Bed, ClipboardList, Timer, Flashlight, FlaskConical
+  Landmark, Bed, ClipboardList, Timer, Flashlight, FlaskConical, Library
 } from "lucide-react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
@@ -1953,6 +1953,69 @@ function legendaryItemEffectPatch(hero, itemName, sign) {
   return applyEffectDelta(hero, LEGENDARY_ITEM_EFFECTS[itemName], sign);
 }
 
+// Lore tab content — paraphrased from the rulebook's flavor text (not reproduced verbatim,
+// out of respect for von Braus Publishing's copyright on the original prose). Mechanics for
+// Legendary Items stay in LEGENDARY_ITEMS/LEGENDARY_ITEM_EFFECTS above; these entries are the
+// story side only, with a link back to the Compendium for anything with mechanics.
+const LORE_ENTRIES = [
+  // World
+  { title: "Magic in the Kingdom", category: "World", text: "Elves and Dwarfs practiced magic long before the first human settlements existed. Humans and Halflings learned the arcane arts from Elven wizards in turn, and the best human wizards are now on par with their elven teachers, though magic remains rarer among Halflings and Dwarfs — who tend to prefer imbuing it into weapons, armour, and crafted items instead. Today, the most skilled human wizards serve as royal counsellors alongside the High Priests, but among common folk, magic is still met with suspicion, and trading in magic items is generally frowned upon." },
+  { title: "The Silver City", category: "World", text: "The third largest city in the Kingdom, and the one closest to the southern border. Its original name has long been forgotten — it's simply been \"the Silver City\" for as long as anyone remembers, after the silver mines that once surrounded it. Most of those mines closed years ago, and without that income the once-beautiful city has been slowly decaying; its old miners' quarters are turning into shantytowns, crime is on the rise, and the ruling Jarl answers with increasingly harsh punishment — it's not unusual to see condemned criminals hanging from the palace walls." },
+  { title: "The Ancient Lands", category: "World", text: "South of the Kingdom lies a mix of desert and lush green wilderness, littered with the tombs and ruins of a civilization far older than anything else known. Little is understood about who lived there, though the treasures recovered suggest it was once prosperous, and effigies found among the ruins hint that its people worshipped gods not unlike the Kingdom's own Dark Gods. The land is largely empty now save for animals — and a handful of human tribes of unknown origin, whose territory no expedition has ever managed to approach and return from safely." },
+  { title: "The Frontiers", category: "World", text: "North of the Kingdom lies the harsh Milwood Tundra — named for the halfling botanist who vanished there while cataloguing its plant life — beyond which lies the Frozen Sea; a handful of Dwarven keeps still hold out there against Orcs and Frost Giants. To the east rise the Old Mountains, long since tunnelled and mined by the Dwarfs, who have little interest in the unmapped \"flatlands\" said to lie beyond them. Meanwhile, the first ships built for exploring the western ocean have only just begun their maiden voyages along the coast — none have yet ventured far, and none who sailed further out have returned." },
+
+  // Races
+  { title: "Elves", category: "Races", text: "Elves live a secluded life on the outskirts of the Kingdom. Though their forests technically fall within its borders, Elves answer to their own Queen rather than the High King, and largely stay out of human politics. Relations between the two peoples have always been good, however, and in times of real strife, Elves and Humans support one another." },
+  { title: "Halflings", category: "Races", text: "Halflings have lived alongside Humans for as long as anyone can remember, sharing full citizenship and holding official positions throughout the Kingdom. What they lack in stature, they typically make up for in sheer determination — one halfling general is even remembered from the Undead Wars — though these days Halflings are more commonly found in theoretical or sneaky professions than on the front line." },
+  { title: "Dwarfs", category: "Races", text: "Dwarven civilization existed for centuries before Human tribes had even settled into anything resembling a kingdom. Most of Dwarven society is built into vast complexes carved from the eastern mountains, though some settlements sit above ground too. Dwarven stone- and metalworking is unrivalled — their smiths are the only ones who know how to work Mithril — and relations with Humans have always been strong, with several joint military campaigns fought together against Orcs and Beastmen over the years." },
+
+  // Factions
+  { title: "The Brotherhood of Ohlnir", category: "Factions", text: "Formed from war veterans and the Warrior Priests of Ohlnir after the Undead War, the Brotherhood spent years hunting down the remaining enclaves of Undead. Their political influence grew so strong that High Kings who ignored their counsel learned to regret it — but as the horrors of the war faded into little more than bedtime stories, the Brotherhood's numbers and influence dwindled. With the current High King's renewed ambitions in the south, many expect their power to rise once more." },
+  { title: "The League of Dungeoneers", category: "Factions", text: "Installed by Royal Decree not long after the first adventurers returned from the Ancient Lands laden with gold, the League let the Crown claim its share of the profits while also certifying and improving the odds of survival for those willing to cross into the desert. At its height it kept its own headquarters in the Silver City, and membership carried real privileges — but the Undead War saw the League shut down entirely, its members cast out. It has only recently been re-established, and is far from its former glory; the benefits once enjoyed by its members have yet to return." },
+
+  // History
+  { title: "The Kingdom — Lorainia", category: "History", text: "For millennia, the tribes of Men fought amongst themselves for power, until Rannulf Mournoak rose up, declared himself High King, and — unlike anyone before him — actually managed to keep the throne, uniting the tribes into a single, expanding Kingdom. Explorers who ventured further south than anyone had gone before found the ruins of an ancient, long-vanished civilization full of riches; the veterans of those expeditions became known as Dungeoneers. Eventually the ruins' former inhabitants rose again as Undead and struck back, nearly overrunning a third of the Kingdom before the darkness vanished as suddenly as it came. Rituals and witch-hunting orders were established to keep the dead from returning, and no real effort was made to reclaim the southern lands — until the current High King, Logan III, declared that expeditions south should begin again." },
+  { title: "Life in the Kingdom", category: "History", text: "The Undead War didn't just cost the Kingdom lives — it cut off the flow of southern gold and coincided with a run of worsening harvests and increasingly brutal winters. Poverty spread as the economy strained, and Orc, Goblin, and beast attacks on villages grew bolder and more frequent. With hunger and cold pressing in, crime has risen sharply across the Kingdom, and many quietly see the High King's decision to reopen the south as more a sign of desperation than ambition." },
+
+  // Deities
+  { title: "Kredelia, the Goddess of Travellers", category: "Deities", text: "Protector of those on the road, Kredelia is traditionally offered a small gift before setting out on any long journey, in the hope of warding off bandits and other misfortune. Travellers she favours are said to receive a boon that makes their journey a little easier." },
+  { title: "The Dark Gods", category: "Deities", text: "Several gods are collectively — and only ever — referred to as \"the Dark Gods,\" out of superstition and fear of what invoking their true names might bring. Worshipping them is forbidden throughout the Kingdom, though secret followers persist regardless. The most widely followed among them is Kheros, the God of Death, to whom necromancers turn for power." },
+  { title: "Metheia, the God of Life", category: "Deities", text: "As God of Life, Metheia commands more devotion than almost any other deity in the Kingdom — most citizens offer her a short prayer each morning, simply in thanks for waking to see another day. Every major city keeps a chapel in her honour, and her priests are typically the ones tending the sick and wounded in the temple wards nearby." },
+
+  // Legendary Items — paraphrased flavor text only; mechanics live in the Compendium.
+  { title: "Horn of Alfheim", category: "Legendary Items", text: "Said to have been forged by the Old Gods themselves and given to Men to help drive back the hordes of Orcs and Goblins that once harried the early tribes.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Bow of Divine Twilight", category: "Legendary Items", text: "A shortbow said to hold a literal strand of Death's own cloak, forged into the wood by Elven mages — tapping, however faintly, into the fabric of life itself.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Legendary Elixir", category: "Legendary Items", text: "Only two alchemists in history are said to have perfected the craft needed to brew a potion whose effects last a lifetime: Akh-Zum, and Cebarin the Mad, whose obsession with expanding his own mind eventually consumed his sanity — he spent his final years muttering in an unknown tongue before dying an elderly hermit.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Dagger of Vrunior", category: "Legendary Items", text: "Belonged to the assassin Vrunior, who topped the Kingdom's Most Wanted list for years without ever failing a contract before finally being tracked down and brought to justice. His dagger went missing — until now.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "The Summoner's Staff", category: "Legendary Items", text: "A gnarled black staff, unnaturally heavy and cold to the touch, said by some to have been first wielded by the High Mage Ibeus Aldor during the Undead Wars, and by others to have belonged to a tribal shaman generations earlier. No one has ever claimed to have made it.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "The Headsman's Axe", category: "Legendary Items", text: "Heirloom of the Cragward family, who served as the Kingdom's royal executioners for generations, handing the axe from parent to child along with the family trade. After centuries of grim use, the axe itself seems to have changed — as if tainted by the blood of everyone it's claimed.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Sword of Lightning", category: "Legendary Items", text: "Forged in a freak accident: the wizard Olius Hellbrand was struck by lightning at the exact moment he completed the blade's enchantment, and died instantly — but the lightning itself seems to have stayed trapped in the steel ever since. Many have tried to recreate the effect; none have succeeded.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Ohlnir's Hammer", category: "Legendary Items", text: "Said to have been handed down by the god Ohlnir himself, though scholars find it hard to believe he'd have gifted his first known wielder — the brutish orc chieftain Braugh Skullcracker, who used it to devastating effect until his reign abruptly ended and the hammer vanished from the histories.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "The Breastplate of Rannulf", category: "Legendary Items", text: "Worn by Rannulf Mournoak, the first High King, as he united the tribes of Men into the Kingdom. Forged from meteoric iron mined deep in the Dwarven mountains, it's said to have once turned aside a minotaur's axe blow that should have killed him outright. Rannulf wore it every day of his life and was ultimately buried in it — how it later left his tomb remains a mystery.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "The Golden Khopesh", category: "Legendary Items", text: "Wielded by a nameless mummified prince during the darkest days of the Undead War, cutting through armour and warriors alike until he was finally killed — not by skill, but by sheer chance, crushed under a stone hurled from a human trebuchet. The blade passed to a human artillery captain, later found dead in his bed, withered and wild-eyed; the khopesh itself was never recovered.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Vial of Never Ending", category: "Legendary Items", text: "Crafted by the renowned alchemist Akh-Zum, famed for his life-restoring elixirs — any healing potion mixed directly in this vial is strengthened enough to restore the drinker to full health.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Ring of the Hierophant", category: "Legendary Items", text: "Made by the now-extinct Hierophant Order, formed after the Undead War specifically to hunt down the Undead that lingered on afterward. It gives off a faint light, invisible to human eyes but deeply unpleasant to anything Undead.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Amulet of Haamile", category: "Legendary Items", text: "Made by Haamile, steward of the great magical college of Martslock and the greatest sorcerer of his age, who crafted the amulet in his final years to preserve his once-brilliant mind as it began to fade. It was kept safe at the college for centuries after his death before eventually being forgotten and lost.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Boots of Stability", category: "Legendary Items", text: "Once worn by the notoriously drunk Lord Fouquet, who — however deep into his cups — never once stumbled or fell at the many parties he caused scenes at. The boots disappeared after his death; their maker was never identified.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Stone of Valheir", category: "Legendary Items", text: "One of three mesmerizing, colour-shifting stones discovered by the Dwarven King Valheir over a thousand years ago. Legend says he spent his remaining years simply staring into them and eventually went mad — the stones themselves were then lost for ages, until now.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Gauntlets of Hraefnir", category: "Legendary Items", text: "Once worn by Hraefnir the Fierce, an undefeated gladiator-turned-berserker who spent his freedom roaming the Kingdom's frontiers in search of tougher opponents. He finally met his match against the ogre Gorag Halfhand — the gauntlets he wore into that final battle passed into legend, and to many Berserkers, Hraefnir himself is now spoken of as a half-god.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Belt of Copperbane", category: "Legendary Items", text: "Belonged to Thane Copperbane, a dwarf famed for shrugging off wound after wound the goblins threw at him. He died when a mining tunnel collapsed on him — dwarves insist it must have been a goblin scheme rather than a natural cave-in, though no proof has ever surfaced.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Ring of Regeneration", category: "Legendary Items", text: "Crafted from the femur of a troll by the necromancer Semias Blackwood in a bid to extend his own unnaturally long life. Necromancers are hunted and shunned throughout the Kingdom, and rumours of Semias's existence persisted for over a century before he was finally run to ground in the eastern mountains — leaving the ring behind him, its role in his long survival never confirmed.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Crown of Resolve", category: "Legendary Items", text: "Worn by generations of Dwarf Thanes ruling the once-great mining city of Morndihr — until, soon after the Kingdom's founding, the city was overrun by goblins and trolls, with not a single Dwarf escaping the tragedy. What other treasures still lie in Morndihr's ruins remains unknown, since almost no one who has entered has lived to tell of it.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Boots of Energy", category: "Legendary Items", text: "Worn by Phineas Belmont, a message-runner during the Undead War famed for carrying an urgent warning almost the length of the eastern border to the Silver City without pause — a feat he modestly credited entirely to having a good pair of boots.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Ring of Awareness", category: "Legendary Items", text: "A plain golden ring set with a dull purple stone that begins to pulse with light as danger draws near. Long popular among nobles and warlords wary of assassins, no one has ever managed to reproduce its craft, and its original maker remains unknown.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Cloak of Elsewhyr", category: "Legendary Items", text: "Woven personally by the Elven Queen Elsewhyr before the Kingdom's founding, for the scouts guarding her forest's borders. That one has survived intact — and ended up outside Elven hands entirely — is considered remarkable; its shifting, almost hypnotic motion makes its wearer maddeningly hard to hit.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Priestly Dice", category: "Legendary Items", text: "A pair of golden dice said to have been given to Men by the demi-god Rick at the Kingdom's founding, said to bring tremendous luck to whoever carries them.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "The Vampire's Brooch", category: "Legendary Items", text: "Belonged to Esmeralda Rosepike, the most infamous vampire in human history, who thrived among the capital's nobility for years, hosting decadent parties — until the young men courting her began vanishing at an alarming rate and her true nature was uncovered. She was finally cornered by royal guards and killed, though not before a hundred of them died first.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "The Helmet of Golgorosh the Ram", category: "Legendary Items", text: "Belonged to Golgorosh, a tribal warrior so fearsome in battle he'd lose all sense and charge headfirst into enemies, knocking them senseless with brutal headbutts. Worried the constant blows would eventually break his mind, his tribe's shaman crafted this ram-horned helmet and enchanted it to soothe him — though the singing fairy voices it conjures are known to calm anyone wearing it, not just Golgorosh.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "The Goblin Scimitar", category: "Legendary Items", text: "Once belonged to the Goblin King Teezmeald, wielded in his last stand against the elf princess Aelynthi Bihorn. Considering it beneath her to touch goblin-forged steel, she left the blade where he fell — and whoever, or whatever, later claimed it still craves blood to this day.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "The Halfling Backpack", category: "Legendary Items", text: "Belonged to Elyas Dustmouse, an unlikely but famous dungeoneer standing barely four feet tall, who called in favours from the Wizards' Guild to have a special, weightless bag made for hauling loot home. Dustmouse vanished on his final expedition along with the backpack, and no one has ever managed to replicate its craft.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Trap-sensing Ring", category: "Legendary Items", text: "Designed to look like a nest of twisting snakes, this ring squeezes the wearer's finger whenever a trap is near. Found in the Ancient Lands by the dungeoneer Alad Bostan and cleared as safe by the High Wizards of the Golden College, it was returned to him — only for Alad to disappear on his very next expedition, taking the ring with him once more.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Necklace of Flight", category: "Legendary Items", text: "Once belonged to the elven princess Aelynthi Bihorn, later gifted to the dwarf Thane Lorheas Oarcloak to aid his war against the goblin tribes. It vanished along with him when he was lost to the goblin hordes.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Armour of the Father", category: "Legendary Items", text: "Worn in the Royal Army by the wearing hero's own father, who never rose above the rank of Centurion despite the armour's fine craftsmanship. Battle-worn but lovingly fitted, it's passed down to serve its next wearer just as well as it once served him.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Necklace of Deflection", category: "Legendary Items", text: "An object of unknown origin that wraps its wearer in a faint, invisible field — not strong enough to stop a blow outright, but just enough to nudge an incoming arrow, dart, or sling stone off its original mark.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+];
+
 const TALENTS = [
   { name: "Assassin", type: "Sneaky", effect: "Automatically hits any target from behind with a class 1 or 2 weapon." },
   { name: "Axeman", type: "Combat", effect: "Bloodlust triggers on 1-10 (instead of 1-5) with all axes." },
@@ -2257,8 +2320,8 @@ function CompendiumList({ items, showLevel, showType, onAdd, addedNames }) {
   );
 }
 
-function CompendiumTab({ heroes, updateHero, addLog }) {
-  const [cat, setCat] = useState("talents");
+function CompendiumTab({ heroes, updateHero, addLog, initialCat }) {
+  const [cat, setCat] = useState(initialCat || "talents");
   const [heroPick, setHeroPick] = useState("");
   const cats = [
     ["talents", "Talents", TALENTS, true, false, "talents"],
@@ -2342,6 +2405,132 @@ function CompendiumTab({ heroes, updateHero, addLog }) {
   );
 }
 
+// ---------- Lore ----------
+const LORE_CATEGORY_COLORS = {
+  World: palette.forestDark,
+  Races: "#5B6FA8",
+  Factions: palette.gold,
+  History: palette.crimson,
+  Deities: "#6B4FA0",
+  "Legendary Items": palette.ember,
+};
+
+function LoreEntryCard({ entry, open, onToggle, goToTab }) {
+  const badgeColor = LORE_CATEGORY_COLORS[entry.category] || palette.inkSoft;
+  const badgeTextColor = entry.category === "Factions" ? palette.charcoal : palette.parchment;
+  return (
+    <div className="rounded-lg mb-2 overflow-hidden" style={{ background: palette.panel, border: `1px solid ${palette.line}` }}>
+      <button onClick={onToggle} className="w-full flex items-center justify-between px-3 py-2.5 text-left">
+        <div className="flex flex-col gap-1 min-w-0">
+          <span className="font-bold text-sm" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>{entry.title}</span>
+          <span
+            className="text-[10px] font-bold px-1.5 py-0.5 rounded-full self-start"
+            style={{ background: badgeColor, color: badgeTextColor, fontFamily: "JetBrains Mono, monospace" }}
+          >
+            {entry.category}
+          </span>
+        </div>
+        <span style={{ color: palette.inkSoft, flexShrink: 0, marginLeft: 8 }}>{open ? "▲" : "▼"}</span>
+      </button>
+      {open ? (
+        <div className="px-3 pb-3" style={{ borderTop: `1px solid ${palette.line}66` }}>
+          <p className="text-sm mt-2.5 leading-relaxed" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>{entry.text}</p>
+          {entry.relatedTab && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              <button
+                onClick={() => goToTab(entry.relatedTab, { cat: entry.relatedCat })}
+                className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
+                style={{ background: "rgba(122,31,43,0.08)", color: palette.crimson, border: `1px solid ${palette.crimson}40`, fontFamily: "JetBrains Mono, monospace" }}
+              >
+                → {entry.relatedLabel}
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <p className="text-xs px-3 pb-2.5" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+          {entry.text.length > 90 ? entry.text.slice(0, 90) + "…" : entry.text}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function LoreTab({ goToTab }) {
+  const [query, setQuery] = useState("");
+  const [cat, setCat] = useState("all");
+  const [openTitle, setOpenTitle] = useState(null);
+
+  const categories = ["World", "Races", "Factions", "History", "Deities", "Legendary Items"];
+  const counts = { all: LORE_ENTRIES.length };
+  categories.forEach((c) => { counts[c] = LORE_ENTRIES.filter((e) => e.category === c).length; });
+
+  const q = query.trim().toLowerCase();
+  const filtered = LORE_ENTRIES.filter((e) => {
+    const matchesCat = cat === "all" || e.category === cat;
+    const matchesQuery = !q || e.title.toLowerCase().includes(q) || e.text.toLowerCase().includes(q);
+    return matchesCat && matchesQuery;
+  });
+
+  return (
+    <div>
+      <Panel className="mb-4">
+        <h2 style={{ fontFamily: "Cinzel, serif", color: palette.crimson }} className="text-lg font-bold mb-0.5">Lore</h2>
+        <p className="text-xs italic mb-3" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+          The world of Lorainia, as recorded in the rulebook.
+        </p>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search lore…"
+          className="w-full text-sm rounded px-3 py-2 mb-1"
+          style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+        />
+        <p className="text-xs mb-3" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+          {filtered.length} {filtered.length === 1 ? "entry" : "entries"}{q ? ` matching "${query.trim()}"` : ""}
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            onClick={() => setCat("all")}
+            className="text-xs px-3 py-1.5 rounded-full font-semibold"
+            style={{ background: cat === "all" ? palette.crimson : "#00000010", color: cat === "all" ? palette.parchment : palette.ink, fontFamily: "Crimson Pro, serif" }}
+          >
+            All <span style={{ opacity: 0.75, fontFamily: "JetBrains Mono, monospace" }}>{counts.all}</span>
+          </button>
+          {categories.map((c) => (
+            <button
+              key={c}
+              onClick={() => setCat(c)}
+              className="text-xs px-3 py-1.5 rounded-full font-semibold"
+              style={{ background: cat === c ? palette.crimson : "#00000010", color: cat === c ? palette.parchment : palette.ink, fontFamily: "Crimson Pro, serif" }}
+            >
+              {c} <span style={{ opacity: 0.75, fontFamily: "JetBrains Mono, monospace" }}>{counts[c]}</span>
+            </button>
+          ))}
+        </div>
+      </Panel>
+
+      {filtered.length === 0 ? (
+        <Panel>
+          <p className="text-xs italic text-center" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            No lore entries match your search.
+          </p>
+        </Panel>
+      ) : (
+        filtered.map((entry) => (
+          <LoreEntryCard
+            key={entry.title}
+            entry={entry}
+            open={openTitle === entry.title}
+            onToggle={() => setOpenTitle(openTitle === entry.title ? null : entry.title)}
+            goToTab={goToTab}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
 // ---------- Footer ----------
 function BuyMeACoffeeButton() {
   // BMC's JS widget (button.prod.min.js) calls document.write() internally, which
@@ -2361,6 +2550,16 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.35.0",
+    date: "2026-08-14",
+    sections: {
+      "Added": [
+        "Lore tab: 45 world-building snippets pulled from the rulebook, covering the World, Races, Factions, History, Deities, and every one of the 31 Legendary Items — search and category filters, tap a card to expand it",
+        "Legendary Item lore entries link straight through to their Compendium entry for the mechanics",
+      ],
+    },
+  },
   {
     version: "1.34.3",
     date: "2026-08-14",
@@ -11692,6 +11891,11 @@ export default function App() {
   const [party, setParty] = useState(defaultParty());
   const [log, setLog] = useState([]);
   const [tab, setTab] = useState("party");
+  const [compendiumInitialCat, setCompendiumInitialCat] = useState("talents");
+  const goToTab = (targetTab, opts) => {
+    if (targetTab === "compendium" && opts?.cat) setCompendiumInitialCat(opts.cat);
+    setTab(targetTab);
+  };
   const [loaded, setLoaded] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [switchingLabel, setSwitchingLabel] = useState("Loading campaign…");
@@ -11928,6 +12132,7 @@ export default function App() {
     ["dice", "Dice", Dice5],
     ["quest", "Quest", Map],
     ["compendium", "Compendium", ScrollText],
+    ["lore", "Lore", Library],
     ["campaigns", "Campaigns", FolderOpen],
     ["reference", "Reference", BookOpen],
   ];
@@ -12012,7 +12217,8 @@ export default function App() {
         {tab === "actions" && <ActionsTray party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />}
         {tab === "dice" && <DiceTray party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />}
         {tab === "quest" && <QuestRollerPanel />}
-        {tab === "compendium" && <CompendiumTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
+        {tab === "compendium" && <CompendiumTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} initialCat={compendiumInitialCat} />}
+        {tab === "lore" && <LoreTab goToTab={goToTab} />}
         {tab === "campaigns" && (
           <CampaignsTab
             campaigns={campaigns}

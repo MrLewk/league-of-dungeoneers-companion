@@ -2362,6 +2362,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.34.3",
+    date: "2026-08-14",
+    sections: {
+      "Fixed": [
+        "The level-up points badge was still being clipped along the top edge of the hero tab button after the previous fix",
+      ],
+    },
+  },
+  {
     version: "1.34.2",
     date: "2026-08-14",
     sections: {
@@ -11616,7 +11625,7 @@ function HeroesTab({ heroes, updateHero, removeHero, addHero, addLog, pushToast,
         >
           <Plus size={16} />
         </button>
-        <div className="flex-1 flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: "thin" }}>
+        <div className="flex-1 flex gap-1.5 overflow-x-auto pt-1.5 -mt-1.5" style={{ scrollbarWidth: "thin" }}>
           {heroes.map((h) => (
             <button
               key={h.id}

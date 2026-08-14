@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.34.3] — 2026-08-14
+
+### Fixed
+- The level-up points badge was still being clipped along the top edge of the hero tab button after the previous fix
+
 ## [1.34.2] — 2026-08-14
 
 ### Fixed

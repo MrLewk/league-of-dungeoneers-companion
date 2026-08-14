@@ -470,12 +470,19 @@ const defaultParty = () => ({
   grievingMother: "none", // "none" | "triggered" | "succeeded" | "failed"
   pendingGhostlyEvent: null, // forces the next Ghostly Events roll straight to a specific entry (e.g. 8, after failing the Grieving Mother)
   magicWorkshop: { enchantUsed: false, scrollAttempts: 0 }, // reset each dungeon cycle — "only one object OR two scroll attempts between quests"
+  guilds: {
+    training: {}, // `${heroId}:${skillKey}` -> true, one Skill Training session per skill between dungeons, reset each cycle
+    bountyHunt: { rolled: [], claimed: [] }, // Fighters' Guild — 5 rolled kinds this cycle, and which have been claimed
+    crusade: null, // Inner Sanctum — { against, killed } rolled this cycle
+    taxidermistAttempts: {}, // Rangers' Guild — settlementName -> true, one sale attempt per settlement per cycle
+  },
 });
 
 // Fills in any fields missing from a party saved before this update.
 function normalizeParty(p) {
   const merged = { ...defaultParty(), ...(p || {}) };
   merged.estate = { ...defaultParty().estate, ...(p?.estate || {}) };
+  merged.guilds = { ...defaultParty().guilds, ...(p?.guilds || {}) };
   merged.estate.heroTraining = { ...(p?.estate?.heroTraining || {}) };
   merged.transport = { ...defaultParty().transport, ...(p?.transport || {}) };
   merged.storage = { ...defaultParty().storage, ...(p?.storage || {}) };
@@ -924,7 +931,167 @@ const ARMOUR_AND_SHIELDS = [
   { name: "Buckler", tier: 0, def: 4, enc: 4, covers: ["shield"], special: "Class 1", cost: 20, avail: 4 },
   { name: "Heater Shield", tier: 0, def: 6, enc: 10, covers: ["shield"], special: "Class 3", cost: 100, avail: 3 },
   { name: "Tower Shield", tier: 0, def: 8, enc: 15, covers: ["shield"], special: "Class 5, Huge", cost: 200, avail: 2 },
+  // Nightstalker Armour (p146, The Dark Guild). Tier 2 (leather) for restrictions/other rules.
+  // High Quality gives DUR 8 instead of 6. Dark as the Night: -5 CS/RS to hit the wearer
+  // (-10 if all 4 pieces — Cap, Vest/Jacket, Pants, Bracers — are worn); not cumulative per-piece.
+  { name: "Nightstalker Cap", tier: 2, def: 4, enc: 1, covers: ["head"], special: "High Quality (DUR 8)", cost: 230, avail: 3, dur: 8 },
+  { name: "Nightstalker Vest", tier: 2, def: 4, enc: 3, covers: ["torso"], special: "Dark as the Night (-5 to be hit, -10 if all 4 Nightstalker pieces worn), High Quality (DUR 8)", cost: 650, avail: 3, dur: 8 },
+  { name: "Nightstalker Jacket", tier: 2, def: 4, enc: 4, covers: ["arms", "torso"], special: "Dark as the Night (-5 to be hit, -10 if all 4 Nightstalker pieces worn), High Quality (DUR 8)", cost: 1000, avail: 3, dur: 8 },
+  { name: "Nightstalker Pants", tier: 2, def: 4, enc: 3, covers: ["legs"], special: "Dark as the Night (-5 to be hit, -10 if all 4 Nightstalker pieces worn), High Quality (DUR 8)", cost: 900, avail: 3, dur: 8 },
+  { name: "Nightstalker Bracers", tier: 2, def: 4, enc: 3, covers: ["arms"], special: "High Quality (DUR 8)", cost: 150, avail: 3, dur: 8 },
 ];
+const NIGHTSTALKER_ARMOUR_NAMES = ["Nightstalker Cap", "Nightstalker Vest", "Nightstalker Jacket", "Nightstalker Pants", "Nightstalker Bracers"];
+
+// ---------- Guilds (p146-157) ----------
+// All six guilds only exist in Silver City. Fighters', Rangers', Alchemists', and The Dark
+// Guild are gated by the settlement's "Guilds" service tag; Wizards' Guild the same; The
+// Inner Sanctum is gated separately by its own "Inner Sanctum" service tag.
+
+// Fighters' Guild — Bounty Hunt (p149). Roll 1d00 (1-100, "00"=100) five times per
+// settlement visit to build the hunt list. 250c per unique kind claimed once killed.
+const BOUNTY_HUNT_TABLE = [
+  { min: 1, max: 3, name: "Bandit" }, { min: 4, max: 5, name: "Bandit Leader" }, { min: 6, max: 6, name: "Banshee" },
+  { min: 7, max: 7, name: "Beastman" }, { min: 8, max: 8, name: "Beastman Guard" }, { min: 9, max: 9, name: "Berserker" },
+  { min: 10, max: 10, name: "Bloated Demon" }, { min: 11, max: 11, name: "Blood Demon" }, { min: 12, max: 12, name: "Cave Bear" },
+  { min: 13, max: 13, name: "Cave Goblin" }, { min: 14, max: 14, name: "Centaur" }, { min: 15, max: 15, name: "Cockatrice" },
+  { min: 16, max: 16, name: "Common Troll" }, { min: 17, max: 17, name: "Dark Elf" }, { min: 18, max: 18, name: "Dark Elf Assassin" },
+  { min: 19, max: 19, name: "Dark Elf Captain" }, { min: 20, max: 20, name: "Dark Elf Sniper" }, { min: 21, max: 21, name: "Dark Elf Warlock" },
+  { min: 22, max: 22, name: "Dire Wolf" }, { min: 23, max: 23, name: "Drider" }, { min: 24, max: 24, name: "Earth Elemental" },
+  { min: 25, max: 25, name: "Ettin" }, { min: 26, max: 26, name: "Fallen Knight" }, { min: 27, max: 27, name: "Fire Elemental" },
+  { min: 28, max: 28, name: "Frogling" }, { min: 29, max: 29, name: "Gargoyle" }, { min: 30, max: 30, name: "Gecko" },
+  { min: 31, max: 31, name: "Gecko Assassin" }, { min: 32, max: 32, name: "Ghost" }, { min: 33, max: 33, name: "Ghoul" },
+  { min: 34, max: 34, name: "Giant" }, { min: 35, max: 35, name: "Bat Swarm" }, { min: 36, max: 36, name: "Giant Centipede" },
+  { min: 37, max: 37, name: "Giant Leach" }, { min: 38, max: 38, name: "Giant Pox Rat" }, { min: 39, max: 39, name: "Giant Rat" },
+  { min: 40, max: 40, name: "Giant Scorpion" }, { min: 41, max: 41, name: "Giant Snake" }, { min: 42, max: 42, name: "Giant Spider" },
+  { min: 43, max: 43, name: "Giant Toad" }, { min: 44, max: 44, name: "Giant Wolf" }, { min: 45, max: 45, name: "Gigantic Snake" },
+  { min: 46, max: 46, name: "Gigantic Spider" }, { min: 47, max: 47, name: "Gnoll" }, { min: 48, max: 48, name: "Gnoll Sergeant" },
+  { min: 49, max: 49, name: "Gnoll Shaman" }, { min: 50, max: 50, name: "Goblin" }, { min: 51, max: 51, name: "Goblin Shaman" },
+  { min: 52, max: 52, name: "Greater Demon" }, { min: 53, max: 53, name: "Griffon" }, { min: 54, max: 54, name: "Harpy" },
+  { min: 55, max: 55, name: "Hydra" }, { min: 56, max: 56, name: "Lesser Plague Demon" }, { min: 57, max: 57, name: "Lurker" },
+  { min: 58, max: 58, name: "Medusa" }, { min: 59, max: 59, name: "Mimic" }, { min: 60, max: 60, name: "Minotaur" },
+  { min: 61, max: 61, name: "Minotaur Skeleton" }, { min: 62, max: 62, name: "Mummy" }, { min: 63, max: 63, name: "Mummy Priest" },
+  { min: 64, max: 64, name: "Mummy Queen" }, { min: 65, max: 65, name: "Naga" }, { min: 66, max: 66, name: "Necromancer" },
+  { min: 67, max: 67, name: "Ogre" }, { min: 68, max: 68, name: "Ogre Berserker" }, { min: 69, max: 69, name: "Ogre Chieftain" },
+  { min: 70, max: 70, name: "Orc" }, { min: 71, max: 71, name: "Orc Brute" }, { min: 72, max: 72, name: "Orc Chieftain" },
+  { min: 73, max: 73, name: "Orc Shaman" }, { min: 74, max: 74, name: "Plague Demon" }, { min: 75, max: 75, name: "Raptor" },
+  { min: 76, max: 76, name: "River Troll" }, { min: 77, max: 77, name: "Salamander" }, { min: 78, max: 78, name: "Satyr" },
+  { min: 79, max: 79, name: "Saurian" }, { min: 80, max: 80, name: "Saurian Elite" }, { min: 81, max: 81, name: "Saurian Priest" },
+  { min: 82, max: 82, name: "Saurian Warchief" }, { min: 83, max: 83, name: "Shambler" }, { min: 84, max: 84, name: "Skeleton" },
+  { min: 85, max: 85, name: "Slime" }, { min: 86, max: 86, name: "Sphinx" }, { min: 87, max: 87, name: "Stone Golem" },
+  { min: 88, max: 88, name: "Stone Troll" }, { min: 89, max: 89, name: "Tomb Guardian" }, { min: 90, max: 90, name: "Vampire" },
+  { min: 91, max: 91, name: "Vampire Fledgling" }, { min: 92, max: 92, name: "Warlock" }, { min: 93, max: 93, name: "Water Elemental" },
+  { min: 94, max: 94, name: "Werewolf" }, { min: 95, max: 95, name: "Wight" }, { min: 96, max: 96, name: "Wind Elemental" },
+  { min: 97, max: 97, name: "Wraiths" }, { min: 98, max: 98, name: "Wyvern" }, { min: 99, max: 99, name: "Zombie" },
+  { min: 100, max: 100, name: "Zombie Ogre" },
+];
+function rollBountyHunt() {
+  const roll = rollDie(100); // rollDie(100) already returns 1-100, doubling as "00"=100
+  const entry = BOUNTY_HUNT_TABLE.find((e) => roll >= e.min && roll <= e.max);
+  return { roll, name: entry ? entry.name : "Bandit" };
+}
+
+// Fighters' Guild — Buying Special Equipment (p150). All sold only at the Fighters' Guild.
+const FIGHTERS_GUILD_EQUIPMENT = [
+  { name: "Gauntlets", enc: 1, dur: null, special: "Increases arm armour +1. Only one set worn at a time.", cost: 50, avail: 5 },
+  { name: "Gorget", enc: 1, dur: null, special: "Increases head armour +1. Only one set worn at a time.", cost: 50, avail: 4 },
+  { name: "Pain Killer", enc: 0, dur: 1, special: "Snort it (1 AP): remove any wound status marker and regain lost AP, lasting the whole battle. Wound status returns after the battle if still applicable.", cost: 50, avail: 3 },
+  { name: "Poleyns (metal knee pads)", enc: 1, dur: null, special: "Increases leg armour +1. Only one set worn at a time.", cost: 15, avail: 5 },
+  { name: "Shield Padding", enc: 1, dur: null, special: "Increases a shield's Durability by +1 (Durability 7; 9 for a magic shield).", cost: 50, avail: 4 },
+  { name: "Shoulder Pads", enc: 1, dur: null, special: "Increases torso armour +1. Only one set worn at a time.", cost: 50, avail: 5 },
+  { name: "Slayer Weapon Treatment", enc: null, dur: null, special: "+1 DMG on an edged weapon at full Durability, cumulative with other modifiers, lasts until the weapon breaks.", cost: 100, avail: 6 },
+];
+
+// Rangers' Guild — Buying Special Equipment (p155)
+const RANGERS_GUILD_EQUIPMENT = [
+  { name: "Aim Attachment", enc: 0, dur: null, special: "Added to a shortbow, bow, or crossbow. Aim Action gives +15 instead of +10.", cost: 200, avail: 3 },
+  { name: "Barbed Arrows (5)", enc: 1, dur: null, special: "+1 DMG.", cost: 25, avail: 4 },
+  { name: "Barbed Bolts (5)", enc: 1, dur: null, special: "+1 DMG.", cost: 25, avail: 4 },
+  { name: "Compass", enc: 0, dur: 1, special: "Reroll one Travel Event per travel. Must be carried in a Quick Slot.", cost: 300, avail: 3 },
+  { name: "Elven Skinning Knife", enc: 1, dur: null, special: "+10 Foraging only while skinning. Can be kept in the backpack.", cost: 250, avail: 3 },
+  { name: "Skinning Knife", enc: 1, dur: null, special: "Lets a Ranger skin animals. Can be kept in the backpack.", cost: 100, avail: 5 },
+  { name: "Taxidermist tools", enc: 3, dur: null, special: "+10 Foraging only while rolling for a Trophy.", cost: 150, avail: 3 },
+  { name: "Wild game traps", enc: 3, dur: null, special: "+10 Foraging when catching animals. Can be kept in the backpack.", cost: 150, avail: 5 },
+];
+
+// Rangers' Guild — Taxidermist sell table (p154): roll 1d20, add result to the creature's
+// XP to get the sale price. 0 or negative means no buyer in that settlement this attempt.
+const TAXIDERMIST_SELL_TABLE = [
+  { min: 1, max: 1, village: -500, silverCity: -300 },
+  { min: 2, max: 3, village: -400, silverCity: -200 },
+  { min: 4, max: 5, village: -300, silverCity: -100 },
+  { min: 6, max: 8, village: -150, silverCity: -50 },
+  { min: 9, max: 14, village: 0, silverCity: 0 },
+  { min: 15, max: 17, village: 50, silverCity: 100 },
+  { min: 18, max: 19, village: 100, silverCity: 200 },
+  { min: 20, max: 20, village: 200, silverCity: 300 },
+];
+
+// Wizards' Guild — Buying Wizard's Staffs (p151). Staffs double as close-combat weapons
+// (same stats as a normal staff, DUR 8) and have 3 charges unless noted; recharging costs
+// half the purchase price.
+const WIZARDS_GUILD_STAFFS = [
+  { name: "Arcane Staff", effect: "+5 modifier to Arcane Arts. When leaving a dungeon, roll 1d10 — on 9-10 the magic has dissipated and it's a normal staff until recharged.", cost: 400, avail: 4 },
+  { name: "Fire Staff", effect: "Contains the Magic Flare spell.", cost: 400, avail: 3 },
+  { name: "Major Mana Staff", effect: "Stores 30 points of Mana between quests. Storing takes no time, done while resting at the inn.", cost: 800, avail: 2 },
+  { name: "Mana Staff", effect: "Stores 20 points of Mana between quests. Storing takes no time, done while resting at the inn.", cost: 500, avail: 3 },
+  { name: "Minor Mana Staff", effect: "Stores 10 points of Mana between quests. Storing takes no time, done while resting at the inn.", cost: 300, avail: 4 },
+  { name: "Staff of Illumination", effect: "Works like a lantern. On a miscast the flame goes out (not for any other reason) — spend 1 Action to rekindle it.", cost: 300, avail: 4 },
+  { name: "Staff of Slow", effect: "Contains the spell: Slow.", cost: 400, avail: 3 },
+  { name: "Staff of the Bolt", effect: "Contains the spell: Magic Bolt.", cost: 500, avail: 3 },
+  { name: "Staff of the Heart", effect: "+3 HP while carried. Between quests, roll 1d10 — on a 10 the magic has dissipated and it's a normal staff until recharged.", cost: 350, avail: 4 },
+];
+
+// The Inner Sanctum — Buying Special Equipment (p156), only available to Warrior Priests
+const INNER_SANCTUM_EQUIPMENT = [
+  { name: "Religious Relic (Necklace)", enc: 0, dur: 1, special: "See the Treasures chapter (Legendary Items) for variants.", cost: 500, avail: 4 },
+  { name: "Religious Relic (Ring)", enc: 0, dur: 1, special: "See the Treasures chapter (Legendary Items) for variants.", cost: 500, avail: 4 },
+  { name: "Incense", enc: 0, dur: 1, special: "+5 Prayer skill. Enough for 1 skirmish or 1 dungeon. May be lit in a Quick Slot during skirmish setup or before entering a dungeon.", cost: 40, avail: 4 },
+];
+
+// The Inner Sanctum — Crusades (p157)
+const CRUSADE_TABLE = ["Undead", "Bandits", "Orcs and Goblins", "Beasts", "Dark Elves", "Reptiles"];
+
+// Alchemists' Guild — Purchasing Ingredients & Parts (p152). A part or ingredient costs
+// 15c once the Availability Roll succeeds. Reuses MONSTER_PARTS_TABLE / INGREDIENTS_TABLE
+// names already used by Gather & Harvest.
+const ALCHEMY_PART_AVAILABILITY = {
+  "Amphibian skin": 4, "Bat wings": 5, "Beast heart": 3, "Bonemeal": 5, "Brain tissue": 4,
+  "Chitin": 3, "Cyclops eye": 2, "Dragon blood": 1, "Ectoplasm": 3, "Elf hair": 4,
+  "Feathers": 5, "Fur": 5, "Ghoul blood": 4, "Goblin Eye": 5, "Human blood": 5,
+  "Medusas eye": 2, "Mummy dust": 3, "Nails": 4, "Ogre teeth": 3, "Rat tail": 5,
+  "Scales": 4, "Shapeshifter blood": 3, "Slime": 4, "Spider fang": 4, "Spirit wood": 3,
+  "Spores": 3, "Tongue": 4, "Troll blood": 3, "Vampire blood": 2, "Zombie skin": 4,
+};
+const ALCHEMY_INGREDIENT_AVAILABILITY = {
+  "Lunarberry": 5, "Arching Pokeroot": 4, "Ashen Ginger": 5, "Barbed Wormwood": 1, "Bitterweed": 4,
+  "Blue Coneflower": 5, "Bright Gallberry": 3, "Dragon Stalk": 4, "Ember Bark": 5, "Giant Raspberry": 5,
+  "Monk's Laurel": 1, "Mountain Barberry": 3, "Nightshade": 5, "Salty Wyrmwood": 2, "Snakeberry": 3,
+  "Spicy Windroot": 5, "Sweet Ivy": 3, "Toxic Hogweed": 3, "Weeping Clover": 4, "Wintercress": 4,
+};
+
+// Alchemists' Guild — potion catalogue merged from the Weak/Standard/Supreme tables used
+// elsewhere for random potion rolls, so the guild shop can sell a *named* potion at a
+// chosen strength. Weak potions are always in stock (no roll needed); Standard is
+// Availability 5; Supreme is Availability 4.
+function buildPotionCatalog() {
+  const byName = {};
+  WEAK_SUPREME_POTIONS_TABLE.forEach((e) => {
+    byName[e.potion] = { ...(byName[e.potion] || {}), weak: e.weak, supreme: e.supreme };
+  });
+  Object.values(STANDARD_POTIONS_SUBTABLES).forEach((sub) => {
+    sub.forEach((e) => {
+      if (!e.potion) return;
+      byName[e.potion] = { ...(byName[e.potion] || {}), standard: e.cost };
+    });
+  });
+  return Object.entries(byName)
+    .map(([name, costs]) => ({ name, ...costs }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+const ALCHEMISTS_GUILD_POTIONS = buildPotionCatalog();
+
+// The Dark Guild — Skill Training list (p146): CS, RS, Pick Locks, Perception.
+const DARK_GUILD_SKILLS = ["cs", "rs", "pickLocks", "perception"];
 
 // ---------- Alchemy (p71-79) ----------
 
@@ -2191,6 +2358,28 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.34.0",
+    date: "2026-08-14",
+    sections: {
+      "Added": [
+        "Guilds tab: a new tab covering all six guilds (Fighters', Rangers', Wizards', Alchemists', The Dark Guild, The Inner Sanctum), picked by settlement, each as its own expandable card",
+        "Skill Training at every guild — +3 to the relevant skills for 300c, one session per skill between dungeons, tracked automatically",
+        "Buying Special Equipment at every guild now rolls the Availability check for you (1d6 at or under the listed Availability = in stock), deducts the cost, and drops the item straight into the chosen hero's backpack — covers the Fighters' Guild (Gauntlets, Gorget, Pain Killer, Poleyns, Shield Padding, Shoulder Pads, Slayer Weapon Treatment), Rangers' Guild (Aim Attachment, Barbed Arrows/Bolts, Compass, Skinning Knives, Taxidermist tools, Wild game traps), Wizards' Guild staffs, Dark Guild's Nightstalker Armour, and the Inner Sanctum's Religious Relics and Incense",
+        "Nightstalker Armour (Dark Guild) added to the hero armour picker with its Dark as the Night and High Quality (DUR 8) rules",
+        "Fighters' Guild Bounty Hunt: rolls 5 targets from the full enemy table, tracks which have been claimed for 250c each",
+        "Rangers' Guild Taxidermist: sells a Trophy for 1d20 + the settlement's buyer modifier, one attempt per settlement per cycle",
+        "Alchemists' Guild: buy a Part or Ingredient for 15c (Availability Roll first), or buy a named potion at Weak/Standard/Supreme strength",
+        "Inner Sanctum Crusades: rolls the target enemy type, tracks trophies turned in for 25c each",
+        "Inner Sanctum Blessing: bless a piece of armour (+1 Durability, 25c) or a weapon (+2 DMG vs Undead/Demons, 75c)",
+        "Settlements tab now shows a single tappable \"Guilds available here\" card pointing to the new tab, instead of listing guild content inline",
+      ],
+      "Changed": [
+        "Wizards' Guild (Learn a Spell, Charge a Magic Item, Identify a Magic Item) and the Inner Sanctum (Learn a Prayer) moved from the Settlements tab into the new Guilds tab, alongside the other four guilds",
+        "\"Between Quests\" on the Settlements tab now also resets Guild Skill Training, Bounty Hunt, Crusade, and Taxidermist once-per-cycle limits",
+      ],
+    },
+  },
   {
     version: "1.33.0",
     date: "2026-08-13",
@@ -3784,7 +3973,8 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
   const pickArmour = (loc, name) => {
     const a = ARMOUR_AND_SHIELDS.find((x) => x.name === name);
     if (!a) return;
-    setArmourPiece(loc, { name: a.name, def: a.def, enc: a.enc, dur: { cur: 6, max: 6 } });
+    const maxDur = a.dur || 6;
+    setArmourPiece(loc, { name: a.name, def: a.def, enc: a.enc, dur: { cur: maxDur, max: maxDur } });
   };
 
   // Clearing an equipped weapon/armour piece doesn't destroy it — the hero still has the
@@ -5287,7 +5477,7 @@ function MapViewer({ map, onClose }) {
   );
 }
 
-function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
+function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds }) {
   const [eventResult, setEventResult] = useState(null);
   const [eventResolution, setEventResolution] = useState(null);
   const [questResult, setQuestResult] = useState(null);
@@ -5349,13 +5539,6 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const [resolverConditionId, setResolverConditionId] = useState("");
   const [resolverBankAmount, setResolverBankAmount] = useState(100);
   const [resolverResult, setResolverResult] = useState(null);
-  const [learnSpellHero, setLearnSpellHero] = useState("");
-  const [learnSpellName, setLearnSpellName] = useState("");
-  const [learnSpellGrimoire, setLearnSpellGrimoire] = useState(false);
-  const [learnSpellResult, setLearnSpellResult] = useState(null);
-  const [learnPrayerHero, setLearnPrayerHero] = useState("");
-  const [learnPrayerName, setLearnPrayerName] = useState("");
-  const [learnPrayerResult, setLearnPrayerResult] = useState(null);
   const [estateMsg, setEstateMsg] = useState(null);
   const [returnResult, setReturnResult] = useState(null);
   const [trainHero, setTrainHero] = useState("");
@@ -5377,12 +5560,6 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
   const [scrollHero, setScrollHero] = useState("");
   const [scrollSpell, setScrollSpell] = useState("");
   const [scrollResult, setScrollResult] = useState(null);
-  const [chargeHero, setChargeHero] = useState("");
-  const [chargeTarget, setChargeTarget] = useState("");
-  const [chargeResult, setChargeResult] = useState(null);
-  const [identifyHero, setIdentifyHero] = useState("");
-  const [identifyTarget, setIdentifyTarget] = useState("");
-  const [identifyResult, setIdentifyResult] = useState(null);
   // Tracks opted-OUT heroes rather than opted-in, so heroes added later still default to selected.
   const [restExcluded, setRestExcluded] = useState(() => new Set());
 
@@ -6016,41 +6193,6 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
     addLog(line);
   };
 
-  const learnCost = (lvl) => 200 + 100 * (lvl - 1);
-
-  const confirmLearnSpell = () => {
-    const hero = heroes.find((h) => h.id === learnSpellHero);
-    const spell = SPELLS.find((s) => s.name === learnSpellName);
-    if (!hero || !spell) { setLearnSpellResult({ ok: false, line: "Pick a hero and a spell first." }); return; }
-    if ((hero.spells || []).includes(spell.name)) { setLearnSpellResult({ ok: false, line: `${hero.name} already knows ${spell.name}.` }); return; }
-    const cost = learnSpellGrimoire ? 0 : learnCost(spell.lvl);
-    if (cost > 0 && party.coins < cost) { setLearnSpellResult({ ok: false, line: `Can't afford it: ${cost}c needed, party only has ${party.coins}c.` }); return; }
-    if (cost > 0) setParty((prev) => ({ ...prev, coins: prev.coins - cost }));
-    updateHero({ ...hero, spells: [...(hero.spells || []), spell.name] });
-    logSettlementAP(hero.id, "Learn a Spell", 3);
-    const line = `${hero.name} learns ${spell.name} (Level ${spell.lvl}) at the Wizards' Guild${cost > 0 ? ` for ${cost}c` : " for free (found via Grimoire)"}. Takes 3 days.`;
-    setLearnSpellResult({ ok: true, line });
-    addLog(line);
-    setLearnSpellName("");
-    setLearnSpellGrimoire(false);
-  };
-
-  const confirmLearnPrayer = () => {
-    const hero = heroes.find((h) => h.id === learnPrayerHero);
-    const prayer = PRAYERS.find((p) => p.name === learnPrayerName);
-    if (!hero || !prayer) { setLearnPrayerResult({ ok: false, line: "Pick a hero and a prayer first." }); return; }
-    if ((hero.prayers || []).includes(prayer.name)) { setLearnPrayerResult({ ok: false, line: `${hero.name} already knows ${prayer.name}.` }); return; }
-    const cost = learnCost(prayer.lvl);
-    if (party.coins < cost) { setLearnPrayerResult({ ok: false, line: `Can't afford it: ${cost}c needed, party only has ${party.coins}c.` }); return; }
-    setParty((prev) => ({ ...prev, coins: prev.coins - cost }));
-    updateHero({ ...hero, prayers: [...(hero.prayers || []), prayer.name] });
-    logSettlementAP(hero.id, "Learn a Prayer", 1);
-    const line = `${hero.name} learns ${prayer.name} (Level ${prayer.lvl}) at the Inner Sanctum for ${cost}c. Takes 1 day.`;
-    setLearnPrayerResult({ ok: true, line });
-    addLog(line);
-    setLearnPrayerName("");
-  };
-
   // ---------- Estate: Furnishing the Manor resolvers ----------
   const buyRoom = (room) => {
     if (party.estate.pendingRoom) { setEstateMsg({ ok: false, line: "Only one thing may be commissioned between quests — activate the pending room first (once you've returned from your next dungeon trip)." }); return; }
@@ -6072,10 +6214,11 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         gardenUsed: false,
       },
       magicWorkshop: { enchantUsed: false, scrollAttempts: 0 },
+      guilds: { training: {}, bountyHunt: { rolled: [], claimed: [] }, crusade: null, taxidermistAttempts: {} },
     }));
     const lines = [];
     if (pending) lines.push(`${pending.name} is now ready to use.`);
-    lines.push("Archery Range/Training Grounds, Alchemist Lab, Garden, Enchant Objects, and Create a Scroll uses are reset for this new visit.");
+    lines.push("Archery Range/Training Grounds, Alchemist Lab, Garden, Enchant Objects, Create a Scroll, Guild Skill Training, Bounty Hunt, Crusade, and Taxidermist uses are reset for this new visit.");
     setEstateMsg({ ok: true, line: lines.join(" ") });
     setReturnResult(lines.join(" "));
     addLog(`Returned from a dungeon trip — room and downtime uses reset.${pending ? ` The ${pending.name} is now furnished and ready.` : ""}`);
@@ -6326,30 +6469,6 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
     }
   };
 
-  const confirmCharge = () => {
-    const hero = heroes.find((h) => h.id === chargeHero);
-    if (!hero) { setChargeResult({ ok: false, line: "Pick a hero first." }); return; }
-    const eligible = heroEquippedItems(hero).filter((i) => i.piece.wasEverEnchanted && !i.piece.enchanted && i.piece.dur && i.piece.dur.cur > 0);
-    const item = eligible.find((i) => i.key === chargeTarget);
-    if (!item) { setChargeResult({ ok: false, line: "Pick a dissipated (but not broken) magic item to recharge." }); return; }
-    updateHero(applyItemPatch(hero, item.key, { enchanted: true, dur: { ...item.piece.dur, max: 8 } }));
-    const line = `${item.piece.name} recharged at the Wizards' Guild — magic restored, Durability max back to 8.`;
-    setChargeResult({ ok: true, line });
-    addLog(`${hero.name}: ${line}`);
-  };
-
-  const confirmIdentify = () => {
-    const hero = heroes.find((h) => h.id === identifyHero);
-    if (!hero) { setIdentifyResult({ ok: false, line: "Pick a hero first." }); return; }
-    const item = heroAllItems(hero).find((i) => i.key === identifyTarget);
-    if (!item) { setIdentifyResult({ ok: false, line: "Pick an item to identify." }); return; }
-    const aa = Number(hero.skills.arcaneArts) || 0;
-    const roll = rollPercent();
-    const success = roll <= aa;
-    const line = success ? `Rolled ${roll} vs Arcane Arts ${aa} — Success! ${item.piece.name} is identified.` : `Rolled ${roll} vs Arcane Arts ${aa} — Failed. Only one attempt per party/object — try again in a different settlement.`;
-    setIdentifyResult({ ok: success, line });
-    addLog(`${hero.name} attempts to identify ${item.piece.name}: ${line}`);
-  };
 
   return (
     <div>
@@ -6525,177 +6644,23 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
         </Panel>
       )}
 
-      {settlement && settlement.services.includes("Guilds") && (
-        <Panel className="mb-4">
-          <SectionTitle icon={BookOpen}>Wizards' Guild</SectionTitle>
-          <p className="text-xs font-semibold mb-2" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Learn a Spell</p>
-          <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-            200c + 100c per spell level above 1. Only available to Wizards and Druids, at the Wizards' Guild in Silver City. Takes 3 days.
-          </p>
-          <select
-            value={learnSpellHero}
-            onChange={(e) => { setLearnSpellHero(e.target.value); setLearnSpellName(""); setLearnSpellResult(null); }}
-            className="w-full text-sm rounded px-2 py-1.5 mb-2"
-            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-          >
-            <option value="">Choose a hero…</option>
-            {heroes.filter((h) => CASTER_SKILL[h.profession]).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
-          </select>
-          {learnSpellHero && (() => {
-            const hero = heroes.find((h) => h.id === learnSpellHero);
-            const available = SPELLS.filter((s) => s.lvl <= hero.level && !(hero.spells || []).includes(s.name));
-            return (
-              <>
-                <select
-                  value={learnSpellName}
-                  onChange={(e) => setLearnSpellName(e.target.value)}
-                  className="w-full text-sm rounded px-2 py-1.5 mb-2"
-                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-                >
-                  <option value="">Choose a spell (Level ≤ {hero.level})…</option>
-                  {available.map((s) => <option key={s.name} value={s.name}>{s.name} (Level {s.lvl})</option>)}
-                </select>
-                {available.length === 0 && (
-                  <p className="text-xs mb-2" style={{ color: palette.inkSoft }}>No learnable spells left at {hero.name}'s level, or all known already.</p>
-                )}
-                {learnSpellName && (
-                  <>
-                    <label className="flex items-center gap-2 text-xs mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
-                      <input type="checkbox" checked={learnSpellGrimoire} onChange={(e) => setLearnSpellGrimoire(e.target.checked)} />
-                      Found via Grimoire (free)
-                    </label>
-                    <p className="text-xs mb-2 font-semibold" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
-                      Cost: {learnSpellGrimoire ? "Free" : `${learnCost(SPELLS.find((s) => s.name === learnSpellName).lvl)}c`}
-                    </p>
-                  </>
-                )}
-                <button
-                  onClick={confirmLearnSpell}
-                  disabled={!learnSpellName}
-                  className="w-full text-xs px-2 py-2 rounded font-semibold"
-                  style={{ background: learnSpellName ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: learnSpellName ? 1 : 0.5 }}
-                >
-                  Learn Spell
-                </button>
-              </>
-            );
-          })()}
-          {learnSpellResult && (
-            <div className="mt-2 rounded p-2 text-xs" style={{ background: "#fff", border: `1px solid ${learnSpellResult.ok ? palette.line : palette.crimson}`, fontFamily: "Crimson Pro, serif", color: learnSpellResult.ok ? palette.forestDark : palette.crimson, fontWeight: 600 }}>
-              {learnSpellResult.line}
+      {settlement && (settlement.services.includes("Guilds") || settlement.services.includes("Inner Sanctum")) && (
+        <button
+          onClick={goToGuilds}
+          className="w-full flex items-center justify-between mb-4 rounded-lg p-3.5 text-left"
+          style={{ background: palette.panel, border: `1px solid ${palette.goldSoft}` }}
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="rounded flex items-center justify-center" style={{ width: 32, height: 32, background: palette.crimson, color: palette.parchment }}>
+              <Shield size={16} />
             </div>
-          )}
-
-          <div className="h-px my-3" style={{ background: palette.line }} />
-          <p className="text-xs font-semibold mb-2" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Charge a Magic Item</p>
-          <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-            Recharges a magic item whose power has dissipated (00 rolled in combat), as long as it isn't broken. No roll needed.
-          </p>
-          <select value={chargeHero} onChange={(e) => { setChargeHero(e.target.value); setChargeTarget(""); setChargeResult(null); }} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
-            <option value="">Choose a hero…</option>
-            {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
-          </select>
-          {chargeHero && (() => {
-            const hero = heroes.find((h) => h.id === chargeHero);
-            const eligible = heroEquippedItems(hero).filter((i) => i.piece.wasEverEnchanted && !i.piece.enchanted && i.piece.dur && i.piece.dur.cur > 0);
-            return (
-              <>
-                <select value={chargeTarget} onChange={(e) => setChargeTarget(e.target.value)} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
-                  <option value="">Choose a dissipated item…</option>
-                  {eligible.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
-                </select>
-                {eligible.length === 0 && <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft }}>No dissipated items to recharge (item must have been enchanted before, currently isn't, and isn't broken).</p>}
-                <button onClick={confirmCharge} disabled={!chargeTarget} className="w-full text-[10px] px-2 py-1.5 rounded font-semibold" style={{ background: chargeTarget ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: chargeTarget ? 1 : 0.5 }}>
-                  Recharge
-                </button>
-              </>
-            );
-          })()}
-          {chargeResult && <p className="text-[10px] mt-1.5 font-semibold" style={{ color: chargeResult.ok ? palette.forestDark : palette.crimson }}>{chargeResult.line}</p>}
-
-          <div className="h-px my-3" style={{ background: palette.line }} />
-          <p className="text-xs font-semibold mb-2" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Identify a Magic Item</p>
-          <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-            Also available at a Scryer. Only one attempt per party/object.
-          </p>
-          <select value={identifyHero} onChange={(e) => { setIdentifyHero(e.target.value); setIdentifyTarget(""); setIdentifyResult(null); }} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
-            <option value="">Choose a hero…</option>
-            {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
-          </select>
-          {identifyHero && (() => {
-            const hero = heroes.find((h) => h.id === identifyHero);
-            const items = heroAllItems(hero);
-            return (
-              <>
-                <select value={identifyTarget} onChange={(e) => setIdentifyTarget(e.target.value)} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
-                  <option value="">Choose an item…</option>
-                  {items.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
-                </select>
-                {items.length === 0 && <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft }}>{hero.name} isn't carrying anything yet.</p>}
-              </>
-            );
-          })()}
-          <button onClick={confirmIdentify} disabled={!identifyHero || !identifyTarget} className="w-full text-[10px] px-2 py-1.5 rounded font-semibold" style={{ background: identifyHero && identifyTarget ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: identifyHero && identifyTarget ? 1 : 0.5 }}>
-            Attempt to Identify
-          </button>
-          {identifyResult && <p className="text-[10px] mt-1.5 font-semibold" style={{ color: identifyResult.ok ? palette.forestDark : palette.crimson }}>{identifyResult.line}</p>}
-        </Panel>
-      )}
-
-      {settlement && settlement.services.includes("Inner Sanctum") && (
-        <Panel className="mb-4">
-          <SectionTitle icon={Sparkles}>Inner Sanctum — Learn a Prayer</SectionTitle>
-          <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-            200c + 100c per prayer level above 1. Only available to Warrior Priests, at the Inner Sanctum in Silver City. Takes 1 day.
-          </p>
-          <select
-            value={learnPrayerHero}
-            onChange={(e) => { setLearnPrayerHero(e.target.value); setLearnPrayerName(""); setLearnPrayerResult(null); }}
-            className="w-full text-sm rounded px-2 py-1.5 mb-2"
-            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-          >
-            <option value="">Choose a hero…</option>
-            {heroes.filter((h) => PRAYER_SKILL[h.profession]).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
-          </select>
-          {learnPrayerHero && (() => {
-            const hero = heroes.find((h) => h.id === learnPrayerHero);
-            const available = PRAYERS.filter((p) => p.lvl <= hero.level && !(hero.prayers || []).includes(p.name));
-            return (
-              <>
-                <select
-                  value={learnPrayerName}
-                  onChange={(e) => setLearnPrayerName(e.target.value)}
-                  className="w-full text-sm rounded px-2 py-1.5 mb-2"
-                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-                >
-                  <option value="">Choose a prayer (Level ≤ {hero.level})…</option>
-                  {available.map((p) => <option key={p.name} value={p.name}>{p.name} (Level {p.lvl})</option>)}
-                </select>
-                {available.length === 0 && (
-                  <p className="text-xs mb-2" style={{ color: palette.inkSoft }}>No learnable prayers left at {hero.name}'s level, or all known already.</p>
-                )}
-                {learnPrayerName && (
-                  <p className="text-xs mb-2 font-semibold" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
-                    Cost: {learnCost(PRAYERS.find((p) => p.name === learnPrayerName).lvl)}c
-                  </p>
-                )}
-                <button
-                  onClick={confirmLearnPrayer}
-                  disabled={!learnPrayerName}
-                  className="w-full text-xs px-2 py-2 rounded font-semibold"
-                  style={{ background: learnPrayerName ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: learnPrayerName ? 1 : 0.5 }}
-                >
-                  Learn Prayer
-                </button>
-              </>
-            );
-          })()}
-          {learnPrayerResult && (
-            <div className="mt-2 rounded p-2 text-xs" style={{ background: "#fff", border: `1px solid ${learnPrayerResult.ok ? palette.line : palette.crimson}`, fontFamily: "Crimson Pro, serif", color: learnPrayerResult.ok ? palette.forestDark : palette.crimson, fontWeight: 600 }}>
-              {learnPrayerResult.line}
+            <div>
+              <p className="text-xs font-bold" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Guilds available here</p>
+              <p className="text-[10px]" style={{ color: palette.inkSoft }}>Training, shopping, bounty hunts &amp; more — Fighters', Rangers', Wizards', Alchemists', The Dark Guild, The Inner Sanctum</p>
             </div>
-          )}
-        </Panel>
+          </div>
+          <span style={{ color: palette.gold, fontSize: 18 }}>›</span>
+        </button>
       )}
 
       {isSilverCity && (
@@ -7367,6 +7332,755 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog }) {
 
 // Spell type from its `special` codes — T = Touch, I = Incantation, otherwise Ranged
 // (Magic Missile-style: needs LOS, no separate to-hit roll, no obstacle modifiers).
+// ---------- Guilds Tab (p146-157) ----------
+
+function GuildRow({ label, sub, right, onClick, disabled }) {
+  return (
+    <div className="rounded p-2 mb-1.5 flex items-center justify-between" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+      <div className="pr-2">
+        <p className="text-xs font-semibold" style={{ color: palette.ink }}>{label}</p>
+        {sub && <p className="text-[10px] mt-0.5" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>{sub}</p>}
+      </div>
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        className="text-[10px] px-2.5 py-1.5 rounded font-semibold flex-shrink-0"
+        style={{ background: disabled ? "#00000020" : palette.forestDark, color: palette.parchment, opacity: disabled ? 0.5 : 1 }}
+      >
+        {right}
+      </button>
+    </div>
+  );
+}
+
+function GuildResultBox({ result }) {
+  if (!result) return null;
+  return (
+    <div className="rounded p-2 mt-1 text-[11px] font-semibold" style={{ background: "#fff", border: `1px solid ${result.ok ? palette.forest : palette.crimson}`, color: result.ok ? palette.forestDark : palette.crimson }}>
+      {result.line}
+    </div>
+  );
+}
+
+// Shared Skill Training box — 300c, +3 modifier, once per skill between dungeons.
+function SkillTrainingBox({ guildKey, skillKeys, heroes, party, setParty, updateHero, addLog }) {
+  const [hero, setHero] = useState(heroes[0]?.id || "");
+  const [skill, setSkill] = useState(skillKeys[0]);
+  const [result, setResult] = useState(null);
+  const trainKey = `${hero}:${skill}`;
+  const alreadyTrained = !!(party.guilds.training || {})[trainKey];
+
+  const train = () => {
+    const h = heroes.find((x) => x.id === hero);
+    if (!h) { setResult({ ok: false, line: "Pick a hero first." }); return; }
+    if (alreadyTrained) { setResult({ ok: false, line: `${h.name} already trained ${SKILL_LABELS[skill]} this cycle — reset via "Between Quests" on the Settlements tab.` }); return; }
+    if (party.coins < 300) { setResult({ ok: false, line: `Can't afford it: 300c needed, party only has ${party.coins}c.` }); return; }
+    setParty((prev) => ({ ...prev, coins: prev.coins - 300, guilds: { ...prev.guilds, training: { ...prev.guilds.training, [trainKey]: true } } }));
+    const cur = Number(h.skills[skill]) || 0;
+    updateHero({ ...h, skills: { ...h.skills, [skill]: cur + 3 } });
+    const line = `${h.name} trains ${SKILL_LABELS[skill]}: ${cur} → ${cur + 3} for 300c (1 day).`;
+    setResult({ ok: true, line });
+    addLog(`${h.name} trains ${SKILL_LABELS[skill]} at the ${guildKey} (${line})`);
+  };
+
+  return (
+    <div className="subsection mb-4">
+      <p className="text-[11px] font-bold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Skill Training</p>
+      <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>+3 to a skill for 300c. Only one training session per skill can be taken between dungeons.</p>
+      <select value={hero} onChange={(e) => { setHero(e.target.value); setResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+        <option value="">Choose a hero…</option>
+        {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+      </select>
+      <select value={skill} onChange={(e) => { setSkill(e.target.value); setResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+        {skillKeys.map((k) => <option key={k} value={k}>{SKILL_LABELS[k]}</option>)}
+      </select>
+      <button onClick={train} disabled={!hero || alreadyTrained} className="w-full text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: (!hero || alreadyTrained) ? "#00000020" : palette.crimsonDark, color: palette.parchment, opacity: (!hero || alreadyTrained) ? 0.5 : 1 }}>
+        {alreadyTrained ? "Already trained this cycle" : "Train (300c, 1 day)"}
+      </button>
+      <GuildResultBox result={result} />
+    </div>
+  );
+}
+
+// Shared shop list — rolls 1d6 vs Availability, deducts coins, adds the item to the
+// chosen hero's backpack on success. Used by every guild's "Buying Special Equipment".
+function GuildShopList({ title, desc, items, heroes, party, setParty, updateHero, addLog, sourceLabel }) {
+  const [hero, setHero] = useState(heroes[0]?.id || "");
+  const [result, setResult] = useState(null);
+
+  const buy = (item) => {
+    const h = heroes.find((x) => x.id === hero);
+    if (!h) { setResult({ ok: false, line: "Pick a hero first." }); return; }
+    const roll = rollDie(6);
+    if (roll > item.avail) {
+      const line = `Rolled ${roll} vs Availability ${item.avail} — ${item.name} isn't in stock this visit.`;
+      setResult({ ok: false, line });
+      addLog(`${h.name} checks for ${item.name} at the ${sourceLabel} — ${line}`);
+      return;
+    }
+    if (party.coins < item.cost) {
+      const line = `Rolled ${roll} vs Availability ${item.avail} — in stock, but the party can't afford ${item.cost}c (has ${party.coins}c).`;
+      setResult({ ok: false, line });
+      return;
+    }
+    setParty((prev) => ({ ...prev, coins: prev.coins - item.cost }));
+    updateHero({
+      ...h,
+      backpack: [...h.backpack, { id: uid(), name: item.name, value: item.cost, enc: item.enc ?? "", dur: item.dur ? `${item.dur}/${item.dur}` : "", slot: "backpack" }],
+    });
+    const line = `Rolled ${roll} vs Availability ${item.avail} — in stock! Bought ${item.name} for ${item.cost}c (party now has ${party.coins - item.cost}c).`;
+    setResult({ ok: true, line });
+    addLog(`${h.name} buys ${item.name} at the ${sourceLabel} for ${item.cost}c.`);
+  };
+
+  return (
+    <div className="subsection mb-4">
+      <p className="text-[11px] font-bold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>{title}</p>
+      {desc && <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>{desc}</p>}
+      <select value={hero} onChange={(e) => { setHero(e.target.value); setResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-2" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+        <option value="">Choose a hero…</option>
+        {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+      </select>
+      {items.map((item) => (
+        <GuildRow
+          key={item.name}
+          label={item.name}
+          sub={`Avail ${item.avail} · ${item.cost}c${item.special ? ` · ${item.special}` : ""}`}
+          right="Roll & Buy"
+          disabled={!hero}
+          onClick={() => buy(item)}
+        />
+      ))}
+      <GuildResultBox result={result} />
+    </div>
+  );
+}
+
+function GuildsTab({ party, setParty, heroes, updateHero, addLog }) {
+  const guildSettlements = SETTLEMENTS.filter((s) => s.services.includes("Guilds") || s.services.includes("Inner Sanctum"));
+  const [settlementName, setSettlementName] = useState(
+    guildSettlements.some((s) => s.name === party.settlementName) ? party.settlementName : (guildSettlements[0]?.name || "")
+  );
+  const settlement = SETTLEMENTS.find((s) => s.name === settlementName);
+  const hasGuilds = settlement?.services.includes("Guilds");
+  const hasInnerSanctum = settlement?.services.includes("Inner Sanctum");
+  const [openGuild, setOpenGuild] = useState(null);
+  const toggle = (key) => setOpenGuild(openGuild === key ? null : key);
+
+  // ---------- Moved from Settlements tab: Wizards' Guild (Learn a Spell, Charge, Identify)
+  // and Inner Sanctum (Learn a Prayer) — same logic, now living here for consistency. ----------
+  const logSettlementAP = (heroId, name, ap) => {
+    if (!heroId) return;
+    setParty((prev) => {
+      const cur = prev.settlementAP?.[heroId] || { spent: 0, log: [] };
+      return { ...prev, settlementAP: { ...(prev.settlementAP || {}), [heroId]: { spent: cur.spent + ap, log: [...cur.log, { name, ap }] } } };
+    });
+  };
+  const learnCost = (lvl) => 200 + 100 * (lvl - 1);
+
+  const [learnSpellHero, setLearnSpellHero] = useState("");
+  const [learnSpellName, setLearnSpellName] = useState("");
+  const [learnSpellGrimoire, setLearnSpellGrimoire] = useState(false);
+  const [learnSpellResult, setLearnSpellResult] = useState(null);
+  const confirmLearnSpell = () => {
+    const hero = heroes.find((h) => h.id === learnSpellHero);
+    const spell = SPELLS.find((s) => s.name === learnSpellName);
+    if (!hero || !spell) { setLearnSpellResult({ ok: false, line: "Pick a hero and a spell first." }); return; }
+    if ((hero.spells || []).includes(spell.name)) { setLearnSpellResult({ ok: false, line: `${hero.name} already knows ${spell.name}.` }); return; }
+    const cost = learnSpellGrimoire ? 0 : learnCost(spell.lvl);
+    if (cost > 0 && party.coins < cost) { setLearnSpellResult({ ok: false, line: `Can't afford it: ${cost}c needed, party only has ${party.coins}c.` }); return; }
+    if (cost > 0) setParty((prev) => ({ ...prev, coins: prev.coins - cost }));
+    updateHero({ ...hero, spells: [...(hero.spells || []), spell.name] });
+    logSettlementAP(hero.id, "Learn a Spell", 3);
+    const line = `${hero.name} learns ${spell.name} (Level ${spell.lvl}) at the Wizards' Guild${cost > 0 ? ` for ${cost}c` : " for free (found via Grimoire)"}. Takes 3 days.`;
+    setLearnSpellResult({ ok: true, line });
+    addLog(line);
+    setLearnSpellName("");
+    setLearnSpellGrimoire(false);
+  };
+
+  const [chargeHero, setChargeHero] = useState("");
+  const [chargeTarget, setChargeTarget] = useState("");
+  const [chargeResult, setChargeResult] = useState(null);
+  const confirmCharge = () => {
+    const hero = heroes.find((h) => h.id === chargeHero);
+    if (!hero) { setChargeResult({ ok: false, line: "Pick a hero first." }); return; }
+    const eligible = heroEquippedItems(hero).filter((i) => i.piece.wasEverEnchanted && !i.piece.enchanted && i.piece.dur && i.piece.dur.cur > 0);
+    const item = eligible.find((i) => i.key === chargeTarget);
+    if (!item) { setChargeResult({ ok: false, line: "Pick a dissipated (but not broken) magic item to recharge." }); return; }
+    updateHero(applyItemPatch(hero, item.key, { enchanted: true, dur: { ...item.piece.dur, max: 8 } }));
+    const line = `${item.piece.name} recharged at the Wizards' Guild — magic restored, Durability max back to 8.`;
+    setChargeResult({ ok: true, line });
+    addLog(`${hero.name}: ${line}`);
+  };
+
+  const [identifyHero, setIdentifyHero] = useState("");
+  const [identifyTarget, setIdentifyTarget] = useState("");
+  const [identifyResult, setIdentifyResult] = useState(null);
+  const confirmIdentify = () => {
+    const hero = heroes.find((h) => h.id === identifyHero);
+    if (!hero) { setIdentifyResult({ ok: false, line: "Pick a hero first." }); return; }
+    const item = heroAllItems(hero).find((i) => i.key === identifyTarget);
+    if (!item) { setIdentifyResult({ ok: false, line: "Pick an item to identify." }); return; }
+    const aa = Number(hero.skills.arcaneArts) || 0;
+    const roll = rollPercent();
+    const success = roll <= aa;
+    const line = success ? `Rolled ${roll} vs Arcane Arts ${aa} — Success! ${item.piece.name} is identified.` : `Rolled ${roll} vs Arcane Arts ${aa} — Failed. Only one attempt per party/object — try again in a different settlement.`;
+    setIdentifyResult({ ok: success, line });
+    addLog(`${hero.name} attempts to identify ${item.piece.name}: ${line}`);
+  };
+
+  const [learnPrayerHero, setLearnPrayerHero] = useState("");
+  const [learnPrayerName, setLearnPrayerName] = useState("");
+  const [learnPrayerResult, setLearnPrayerResult] = useState(null);
+  const confirmLearnPrayer = () => {
+    const hero = heroes.find((h) => h.id === learnPrayerHero);
+    const prayer = PRAYERS.find((p) => p.name === learnPrayerName);
+    if (!hero || !prayer) { setLearnPrayerResult({ ok: false, line: "Pick a hero and a prayer first." }); return; }
+    if ((hero.prayers || []).includes(prayer.name)) { setLearnPrayerResult({ ok: false, line: `${hero.name} already knows ${prayer.name}.` }); return; }
+    const cost = learnCost(prayer.lvl);
+    if (party.coins < cost) { setLearnPrayerResult({ ok: false, line: `Can't afford it: ${cost}c needed, party only has ${party.coins}c.` }); return; }
+    setParty((prev) => ({ ...prev, coins: prev.coins - cost }));
+    updateHero({ ...hero, prayers: [...(hero.prayers || []), prayer.name] });
+    logSettlementAP(hero.id, "Learn a Prayer", 1);
+    const line = `${hero.name} learns ${prayer.name} (Level ${prayer.lvl}) at the Inner Sanctum for ${cost}c. Takes 1 day.`;
+    setLearnPrayerResult({ ok: true, line });
+    addLog(line);
+    setLearnPrayerName("");
+  };
+
+  // ---------- Fighters' Guild: Bounty Hunt ----------
+  const [bountyResult, setBountyResult] = useState(null);
+  const bounty = party.guilds.bountyHunt || { rolled: [], claimed: [] };
+  const rollBounties = () => {
+    const rolled = Array.from({ length: 5 }, () => rollBountyHunt());
+    setParty((prev) => ({ ...prev, guilds: { ...prev.guilds, bountyHunt: { rolled, claimed: [] } } }));
+    addLog(`Rolled 5 Bounty Hunt targets at the Fighters' Guild: ${rolled.map((r) => r.name).join(", ")}.`);
+    setBountyResult(null);
+  };
+  const claimBounty = (name) => {
+    if (party.guilds.bountyHunt.claimed.includes(name)) return;
+    setParty((prev) => ({
+      ...prev,
+      coins: prev.coins + 250,
+      guilds: { ...prev.guilds, bountyHunt: { ...prev.guilds.bountyHunt, claimed: [...prev.guilds.bountyHunt.claimed, name] } },
+    }));
+    addLog(`Claimed the Bounty Hunt reward for ${name} — +250c.`);
+    setBountyResult({ ok: true, line: `Claimed 250c for ${name} (party now has ${party.coins + 250}c).` });
+  };
+
+  // ---------- Rangers' Guild: Taxidermist trophy sale ----------
+  const [taxHero, setTaxHero] = useState(heroes[0]?.id || "");
+  const [taxXP, setTaxXP] = useState("");
+  const [taxResult, setTaxResult] = useState(null);
+  const taxAttempted = !!(party.guilds.taxidermistAttempts || {})[settlementName];
+  const sellTrophy = () => {
+    const h = heroes.find((x) => x.id === taxHero);
+    if (!h) { setTaxResult({ ok: false, line: "Pick a Ranger first." }); return; }
+    if (taxAttempted) { setTaxResult({ ok: false, line: "Already attempted a sale in this settlement this cycle." }); return; }
+    const xp = Number(taxXP) || 0;
+    const roll = rollDie(20);
+    const row = TAXIDERMIST_SELL_TABLE.find((r) => roll >= r.min && roll <= r.max);
+    const isSilverCity = settlementName === "Silver City";
+    const mod = isSilverCity ? row.silverCity : row.village;
+    const value = xp + mod;
+    setParty((prev) => ({
+      ...prev,
+      coins: value > 0 ? prev.coins + value : prev.coins,
+      guilds: { ...prev.guilds, taxidermistAttempts: { ...prev.guilds.taxidermistAttempts, [settlementName]: true } },
+    }));
+    if (value > 0) {
+      const line = `Rolled ${roll} (${mod >= 0 ? "+" : ""}${mod} in ${settlementName}) — sold for ${value}c (party now has ${party.coins + value}c).`;
+      setTaxResult({ ok: true, line });
+      addLog(`${h.name} sells a Trophy at the Taxidermist: ${line}`);
+    } else {
+      const line = `Rolled ${roll} (${mod >= 0 ? "+" : ""}${mod} in ${settlementName}) — no buyer here this visit.`;
+      setTaxResult({ ok: false, line });
+      addLog(`${h.name} finds no buyer for a Trophy at the Taxidermist (rolled ${roll}).`);
+    }
+  };
+
+  // ---------- Inner Sanctum: Crusades ----------
+  const crusade = party.guilds.crusade;
+  const rollCrusade = () => {
+    const against = CRUSADE_TABLE[rollDie(6) - 1];
+    setParty((prev) => ({ ...prev, guilds: { ...prev.guilds, crusade: { against, killed: 0 } } }));
+    addLog(`The High Priests declare a Crusade against ${against}.`);
+  };
+  const recordCrusadeKill = () => {
+    if (!crusade) return;
+    setParty((prev) => ({ ...prev, coins: prev.coins + 25, guilds: { ...prev.guilds, crusade: { ...prev.guilds.crusade, killed: prev.guilds.crusade.killed + 1 } } }));
+    addLog(`A Crusade trophy against ${crusade.against} is turned in — +25c. (Paid immediately for simplicity; the book pays out next Sanctum visit.)`);
+  };
+
+  // ---------- Inner Sanctum: Blessing armour/weapons ----------
+  const [blessHero, setBlessHero] = useState(heroes[0]?.id || "");
+  const [blessResult, setBlessResult] = useState(null);
+  const blessArmour = (loc) => {
+    const h = heroes.find((x) => x.id === blessHero);
+    if (!h) return;
+    const piece = h.armour[loc];
+    if (!piece?.name) { setBlessResult({ ok: false, line: "That armour slot is empty." }); return; }
+    if (party.coins < 25) { setBlessResult({ ok: false, line: "Can't afford the 25c fee." }); return; }
+    setParty((prev) => ({ ...prev, coins: prev.coins - 25 }));
+    updateHero({ ...h, armour: { ...h.armour, [loc]: { ...piece, dur: { cur: piece.dur.cur + 1, max: piece.dur.max + 1 }, blessed: true } } });
+    const line = `${piece.name} blessed for 25c — +1 Durability, lasts until the heroes leave the next dungeon.`;
+    setBlessResult({ ok: true, line });
+    addLog(`${h.name}'s ${piece.name} is blessed by the High Priests: ${line}`);
+  };
+  const blessWeapon = () => {
+    const h = heroes.find((x) => x.id === blessHero);
+    if (!h || !h.weapon?.name) { setBlessResult({ ok: false, line: "That hero has no weapon equipped." }); return; }
+    if (party.coins < 75) { setBlessResult({ ok: false, line: "Can't afford the 75c fee." }); return; }
+    setParty((prev) => ({ ...prev, coins: prev.coins - 75 }));
+    updateHero({ ...h, weapon: { ...h.weapon, blessed: true } });
+    const line = `${h.weapon.name} blessed for 75c — +2 DMG vs Undead/Demons, lasts until the heroes leave the next dungeon.`;
+    setBlessResult({ ok: true, line });
+    addLog(`${h.name}'s ${h.weapon.name} is blessed by the High Priests: ${line}`);
+  };
+
+  // ---------- Alchemists' Guild: parts, ingredients, potions ----------
+  const [partHero, setPartHero] = useState(heroes[0]?.id || "");
+  const [partName, setPartName] = useState(ALCHEMY_PART_NAMES[0] || "");
+  const [partResult, setPartResult] = useState(null);
+  const buyPart = () => {
+    const h = heroes.find((x) => x.id === partHero);
+    if (!h) { setPartResult({ ok: false, line: "Pick a hero first." }); return; }
+    const avail = ALCHEMY_PART_AVAILABILITY[partName] || 0;
+    const roll = rollDie(6);
+    if (roll > avail) { setPartResult({ ok: false, line: `Rolled ${roll} vs Availability ${avail} — not in stock this visit.` }); return; }
+    if (party.coins < 15) { setPartResult({ ok: false, line: "Can't afford the 15c fee." }); return; }
+    setParty((prev) => ({ ...prev, coins: prev.coins - 15 }));
+    updateHero({ ...h, alchemyComponents: addAlchemyComponent(h, partName, "Part", 1, false) });
+    const line = `Rolled ${roll} vs Availability ${avail} — bought 1 ${partName} for 15c.`;
+    setPartResult({ ok: true, line });
+    addLog(`${h.name} buys a ${partName} at the Alchemists' Guild: ${line}`);
+  };
+  const [ingHero, setIngHero] = useState(heroes[0]?.id || "");
+  const [ingName, setIngName] = useState(ALCHEMY_INGREDIENT_NAMES[0] || "");
+  const [ingResult, setIngResult] = useState(null);
+  const buyIngredient = () => {
+    const h = heroes.find((x) => x.id === ingHero);
+    if (!h) { setIngResult({ ok: false, line: "Pick a hero first." }); return; }
+    const avail = ALCHEMY_INGREDIENT_AVAILABILITY[ingName] || 0;
+    const roll = rollDie(6);
+    if (roll > avail) { setIngResult({ ok: false, line: `Rolled ${roll} vs Availability ${avail} — not in stock this visit.` }); return; }
+    if (party.coins < 15) { setIngResult({ ok: false, line: "Can't afford the 15c fee." }); return; }
+    setParty((prev) => ({ ...prev, coins: prev.coins - 15 }));
+    updateHero({ ...h, alchemyComponents: addAlchemyComponent(h, ingName, "Ingredient", 1, false) });
+    const line = `Rolled ${roll} vs Availability ${avail} — bought 1 ${ingName} for 15c.`;
+    setIngResult({ ok: true, line });
+    addLog(`${h.name} buys ${ingName} at the Alchemists' Guild: ${line}`);
+  };
+  const [potHero, setPotHero] = useState(heroes[0]?.id || "");
+  const [potName, setPotName] = useState(ALCHEMISTS_GUILD_POTIONS[0]?.name || "");
+  const [potStrength, setPotStrength] = useState("Standard");
+  const [potResult, setPotResult] = useState(null);
+  const potEntry = ALCHEMISTS_GUILD_POTIONS.find((p) => p.name === potName);
+  const potStrengthOptions = potEntry ? ["Weak", "Standard", "Supreme"].filter((s) => potEntry[s.toLowerCase()] != null) : [];
+  const buyPotion = () => {
+    const h = heroes.find((x) => x.id === potHero);
+    if (!h || !potEntry) { setPotResult({ ok: false, line: "Pick a hero and a potion first." }); return; }
+    const cost = potEntry[potStrength.toLowerCase()];
+    if (cost == null) { setPotResult({ ok: false, line: `No ${potStrength} version of ${potName} exists.` }); return; }
+    const avail = potStrength === "Weak" ? null : potStrength === "Standard" ? 5 : 4;
+    let roll = null;
+    if (avail != null) {
+      roll = rollDie(6);
+      if (roll > avail) { setPotResult({ ok: false, line: `Rolled ${roll} vs Availability ${avail} — not in stock this visit.` }); return; }
+    }
+    if (party.coins < cost) { setPotResult({ ok: false, line: `Can't afford it: ${cost}c needed, party only has ${party.coins}c.` }); return; }
+    setParty((prev) => ({ ...prev, coins: prev.coins - cost }));
+    updateHero({ ...h, backpack: [...h.backpack, { id: uid(), name: `${potName} (${potStrength})`, value: cost, enc: 1, dur: "1/1", slot: "backpack" }] });
+    const line = `${roll != null ? `Rolled ${roll} vs Availability ${avail} — ` : "Weak potions are always in stock — "}bought ${potName} (${potStrength}) for ${cost}c.`;
+    setPotResult({ ok: true, line });
+    addLog(`${h.name} buys a ${potName} (${potStrength}) at the Alchemists' Guild for ${cost}c.`);
+  };
+
+  // ---------- Dark Guild: Nightstalker armour shop items (from ARMOUR_AND_SHIELDS) ----------
+  const nightstalkerItems = NIGHTSTALKER_ARMOUR_NAMES.map((name) => {
+    const a = ARMOUR_AND_SHIELDS.find((x) => x.name === name);
+    return { name: a.name, cost: a.cost, avail: a.avail, enc: a.enc, dur: a.dur, special: `DEF ${a.def}, covers ${a.covers.join("/")}` };
+  });
+
+  const guildDefs = [
+    { key: "fighters", name: "Fighters' Guild", show: hasGuilds },
+    { key: "rangers", name: "Rangers' Guild", show: hasGuilds },
+    { key: "wizards", name: "Wizards' Guild", show: hasGuilds },
+    { key: "alchemists", name: "Alchemists' Guild", show: hasGuilds },
+    { key: "dark", name: "The Dark Guild", show: hasGuilds },
+    { key: "sanctum", name: "The Inner Sanctum", show: hasInnerSanctum },
+  ].filter((g) => g.show);
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      <div className="flex gap-1.5 overflow-x-auto pb-1 mb-4" style={{ scrollSnapType: "x proximity" }}>
+        {guildSettlements.map((s) => (
+          <button
+            key={s.name}
+            onClick={() => { setSettlementName(s.name); setOpenGuild(null); }}
+            className="flex-shrink-0 text-[10px] px-3 py-1.5 rounded-full font-semibold"
+            style={{
+              fontFamily: "JetBrains Mono, monospace",
+              background: settlementName === s.name ? palette.crimson : palette.panel,
+              color: settlementName === s.name ? palette.parchment : palette.inkSoft,
+              border: `1px solid ${settlementName === s.name ? palette.crimson : palette.line}`,
+            }}
+          >
+            {s.name}
+          </button>
+        ))}
+      </div>
+
+      {guildDefs.length === 0 && (
+        <Panel><p className="text-xs italic text-center" style={{ color: palette.inkSoft }}>No guilds in {settlementName}.</p></Panel>
+      )}
+
+      {guildDefs.map((g) => (
+        <Panel key={g.key} className="mb-2.5" style={{ padding: 0, overflow: "hidden" }}>
+          <button onClick={() => toggle(g.key)} className="w-full flex items-center justify-between px-4 py-3">
+            <span className="text-xs font-bold" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>{g.name}</span>
+            <span style={{ color: palette.gold, transform: openGuild === g.key ? "rotate(90deg)" : "none", display: "inline-block" }}>›</span>
+          </button>
+
+          {openGuild === g.key && (
+            <div className="px-4 pb-4 pt-1" style={{ borderTop: `1px solid ${palette.line}` }}>
+
+              {g.key === "fighters" && (
+                <>
+                  <SkillTrainingBox guildKey="Fighters' Guild" skillKeys={["cs", "heal", "dodge"]} heroes={heroes} party={party} setParty={setParty} updateHero={updateHero} addLog={addLog} />
+                  <div className="subsection mb-4">
+                    <p className="text-[11px] font-bold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Bounty Hunt</p>
+                    <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>Roll 5 targets to hunt until your next visit. 250c each, claimed once killed &amp; brought back — one reward per kind.</p>
+                    {bounty.rolled.length === 0 ? (
+                      <button onClick={rollBounties} className="w-full text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>Roll 5 Bounties</button>
+                    ) : (
+                      <>
+                        {bounty.rolled.map((r, i) => (
+                          <GuildRow
+                            key={i}
+                            label={r.name}
+                            sub={bounty.claimed.includes(r.name) ? "claimed" : "not yet claimed"}
+                            right={bounty.claimed.includes(r.name) ? "Claimed" : "Claim 250c"}
+                            disabled={bounty.claimed.includes(r.name)}
+                            onClick={() => claimBounty(r.name)}
+                          />
+                        ))}
+                        <button onClick={rollBounties} className="w-full text-[10px] px-2 py-1 rounded font-semibold mt-1" style={{ background: "#00000010", color: palette.inkSoft }}>Reroll list (new visit)</button>
+                      </>
+                    )}
+                    <GuildResultBox result={bountyResult} />
+                  </div>
+                  <GuildShopList title="Buying Special Equipment" desc="Sold only at the Fighters' Guild." items={FIGHTERS_GUILD_EQUIPMENT} heroes={heroes} party={party} setParty={setParty} updateHero={updateHero} addLog={addLog} sourceLabel="Fighters' Guild" />
+                </>
+              )}
+
+              {g.key === "rangers" && (
+                <>
+                  <SkillTrainingBox guildKey="Rangers' Guild" skillKeys={["cs", "rs", "dodge", "heal", "foraging"]} heroes={heroes} party={party} setParty={setParty} updateHero={updateHero} addLog={addLog} />
+                  <div className="subsection mb-4">
+                    <p className="text-[11px] font-bold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Taxidermist — Sell a Trophy</p>
+                    <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>Enter the Trophy creature's XP, roll 1d20, and add the {settlementName === "Silver City" ? "Silver City" : "Village"} modifier. One attempt per settlement per cycle.</p>
+                    <select value={taxHero} onChange={(e) => { setTaxHero(e.target.value); setTaxResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                      <option value="">Choose a hero…</option>
+                      {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                    </select>
+                    <input type="number" value={taxXP} onChange={(e) => setTaxXP(e.target.value)} placeholder="Creature's XP" className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }} />
+                    <button onClick={sellTrophy} disabled={!taxHero || taxAttempted} className="w-full text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: (!taxHero || taxAttempted) ? "#00000020" : palette.crimsonDark, color: palette.parchment, opacity: (!taxHero || taxAttempted) ? 0.5 : 1 }}>
+                      {taxAttempted ? "Already attempted this cycle" : "Roll & Sell"}
+                    </button>
+                    <GuildResultBox result={taxResult} />
+                  </div>
+                  <GuildShopList title="Buying Special Equipment" desc="Sold only in the Rangers' Guild." items={RANGERS_GUILD_EQUIPMENT} heroes={heroes} party={party} setParty={setParty} updateHero={updateHero} addLog={addLog} sourceLabel="Rangers' Guild" />
+                </>
+              )}
+
+              {g.key === "wizards" && (
+                <>
+                  <SkillTrainingBox guildKey="Wizards' Guild" skillKeys={["arcaneArts", "perception", "heal"]} heroes={heroes} party={party} setParty={setParty} updateHero={updateHero} addLog={addLog} />
+
+                  <div className="subsection mb-4">
+                    <p className="text-[11px] font-bold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Learn a Spell</p>
+                    <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>
+                      200c + 100c per spell level above 1. Only available to Wizards and Druids. Takes 3 days.
+                    </p>
+                    <select
+                      value={learnSpellHero}
+                      onChange={(e) => { setLearnSpellHero(e.target.value); setLearnSpellName(""); setLearnSpellResult(null); }}
+                      className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+                      style={{ background: "#fff", border: `1px solid ${palette.line}` }}
+                    >
+                      <option value="">Choose a hero…</option>
+                      {heroes.filter((h) => CASTER_SKILL[h.profession]).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                    </select>
+                    {learnSpellHero && (() => {
+                      const hero = heroes.find((h) => h.id === learnSpellHero);
+                      const available = SPELLS.filter((s) => s.lvl <= hero.level && !(hero.spells || []).includes(s.name));
+                      return (
+                        <>
+                          <select
+                            value={learnSpellName}
+                            onChange={(e) => setLearnSpellName(e.target.value)}
+                            className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+                            style={{ background: "#fff", border: `1px solid ${palette.line}` }}
+                          >
+                            <option value="">Choose a spell (Level ≤ {hero.level})…</option>
+                            {available.map((s) => <option key={s.name} value={s.name}>{s.name} (Level {s.lvl})</option>)}
+                          </select>
+                          {available.length === 0 && (
+                            <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft }}>No learnable spells left at {hero.name}'s level, or all known already.</p>
+                          )}
+                          {learnSpellName && (
+                            <>
+                              <label className="flex items-center gap-2 text-[11px] mb-1.5" style={{ color: palette.ink }}>
+                                <input type="checkbox" checked={learnSpellGrimoire} onChange={(e) => setLearnSpellGrimoire(e.target.checked)} />
+                                Found via Grimoire (free)
+                              </label>
+                              <p className="text-[11px] mb-1.5 font-semibold" style={{ color: palette.ink }}>
+                                Cost: {learnSpellGrimoire ? "Free" : `${learnCost(SPELLS.find((s) => s.name === learnSpellName).lvl)}c`}
+                              </p>
+                            </>
+                          )}
+                          <button
+                            onClick={confirmLearnSpell}
+                            disabled={!learnSpellName}
+                            className="w-full text-[11px] px-2 py-1.5 rounded font-semibold"
+                            style={{ background: learnSpellName ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: learnSpellName ? 1 : 0.5 }}
+                          >
+                            Learn Spell
+                          </button>
+                        </>
+                      );
+                    })()}
+                    <GuildResultBox result={learnSpellResult} />
+                  </div>
+
+                  <div className="subsection mb-4">
+                    <p className="text-[11px] font-bold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Charge a Magic Item</p>
+                    <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>
+                      Recharges a magic item whose power has dissipated (00 rolled in combat), as long as it isn't broken. No roll needed.
+                    </p>
+                    <select value={chargeHero} onChange={(e) => { setChargeHero(e.target.value); setChargeTarget(""); setChargeResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                      <option value="">Choose a hero…</option>
+                      {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                    </select>
+                    {chargeHero && (() => {
+                      const hero = heroes.find((h) => h.id === chargeHero);
+                      const eligible = heroEquippedItems(hero).filter((i) => i.piece.wasEverEnchanted && !i.piece.enchanted && i.piece.dur && i.piece.dur.cur > 0);
+                      return (
+                        <>
+                          <select value={chargeTarget} onChange={(e) => setChargeTarget(e.target.value)} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                            <option value="">Choose a dissipated item…</option>
+                            {eligible.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
+                          </select>
+                          {eligible.length === 0 && <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft }}>No dissipated items to recharge (item must have been enchanted before, currently isn't, and isn't broken).</p>}
+                          <button onClick={confirmCharge} disabled={!chargeTarget} className="w-full text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: chargeTarget ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: chargeTarget ? 1 : 0.5 }}>
+                            Recharge
+                          </button>
+                        </>
+                      );
+                    })()}
+                    <GuildResultBox result={chargeResult} />
+                  </div>
+
+                  <div className="subsection mb-4">
+                    <p className="text-[11px] font-bold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Identify a Magic Item</p>
+                    <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>Also available at a Scryer. Only one attempt per party/object.</p>
+                    <select value={identifyHero} onChange={(e) => { setIdentifyHero(e.target.value); setIdentifyTarget(""); setIdentifyResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                      <option value="">Choose a hero…</option>
+                      {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                    </select>
+                    {identifyHero && (() => {
+                      const hero = heroes.find((h) => h.id === identifyHero);
+                      const items = heroAllItems(hero);
+                      return (
+                        <>
+                          <select value={identifyTarget} onChange={(e) => setIdentifyTarget(e.target.value)} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                            <option value="">Choose an item…</option>
+                            {items.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
+                          </select>
+                          {items.length === 0 && <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft }}>{hero.name} isn't carrying anything yet.</p>}
+                        </>
+                      );
+                    })()}
+                    <button onClick={confirmIdentify} disabled={!identifyHero || !identifyTarget} className="w-full text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: identifyHero && identifyTarget ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: identifyHero && identifyTarget ? 1 : 0.5 }}>
+                      Attempt to Identify
+                    </button>
+                    <GuildResultBox result={identifyResult} />
+                  </div>
+
+                  <GuildShopList title="Buying Wizard's Staffs" desc="Staffs double as close-combat weapons (same stats as a normal staff, DUR 8) and hold 3 charges unless noted. Recharging costs half the purchase price — do that from the Hero tab once it's in a backpack." items={WIZARDS_GUILD_STAFFS.map((s) => ({ name: s.name, cost: s.cost, avail: s.avail, special: s.effect }))} heroes={heroes} party={party} setParty={setParty} updateHero={updateHero} addLog={addLog} sourceLabel="Wizards' Guild" />
+                </>
+              )}
+
+              {g.key === "alchemists" && (
+                <>
+                  <SkillTrainingBox guildKey="Alchemists' Guild" skillKeys={["alchemy", "heal", "perception"]} heroes={heroes} party={party} setParty={setParty} updateHero={updateHero} addLog={addLog} />
+
+                  <div className="subsection mb-4">
+                    <p className="text-[11px] font-bold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Buy a Part</p>
+                    <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>15c once the Availability Roll succeeds. Some human-body parts aren't sold at all (not listed here).</p>
+                    <select value={partHero} onChange={(e) => { setPartHero(e.target.value); setPartResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                      <option value="">Choose a hero…</option>
+                      {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                    </select>
+                    <select value={partName} onChange={(e) => { setPartName(e.target.value); setPartResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                      {ALCHEMY_PART_NAMES.filter((n) => ALCHEMY_PART_AVAILABILITY[n] != null).map((n) => <option key={n} value={n}>{n} (Avail {ALCHEMY_PART_AVAILABILITY[n]})</option>)}
+                    </select>
+                    <button onClick={buyPart} disabled={!partHero} className="w-full text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: !partHero ? "#00000020" : palette.crimsonDark, color: palette.parchment, opacity: !partHero ? 0.5 : 1 }}>Roll &amp; Buy (15c)</button>
+                    <GuildResultBox result={partResult} />
+                  </div>
+
+                  <div className="subsection mb-4">
+                    <p className="text-[11px] font-bold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Buy an Ingredient</p>
+                    <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>15c once the Availability Roll succeeds.</p>
+                    <select value={ingHero} onChange={(e) => { setIngHero(e.target.value); setIngResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                      <option value="">Choose a hero…</option>
+                      {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                    </select>
+                    <select value={ingName} onChange={(e) => { setIngName(e.target.value); setIngResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                      {ALCHEMY_INGREDIENT_NAMES.filter((n) => ALCHEMY_INGREDIENT_AVAILABILITY[n] != null).map((n) => <option key={n} value={n}>{n} (Avail {ALCHEMY_INGREDIENT_AVAILABILITY[n]})</option>)}
+                    </select>
+                    <button onClick={buyIngredient} disabled={!ingHero} className="w-full text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: !ingHero ? "#00000020" : palette.crimsonDark, color: palette.parchment, opacity: !ingHero ? 0.5 : 1 }}>Roll &amp; Buy (15c)</button>
+                    <GuildResultBox result={ingResult} />
+                  </div>
+
+                  <div className="subsection mb-4">
+                    <p className="text-[11px] font-bold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Buy a Potion</p>
+                    <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>Weak is always in stock (no roll needed). Standard needs Availability 5, Supreme needs Availability 4.</p>
+                    <select value={potHero} onChange={(e) => { setPotHero(e.target.value); setPotResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                      <option value="">Choose a hero…</option>
+                      {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                    </select>
+                    <select value={potName} onChange={(e) => { setPotName(e.target.value); setPotResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                      {ALCHEMISTS_GUILD_POTIONS.map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
+                    </select>
+                    {potStrengthOptions.length > 0 && (
+                      <select value={potStrength} onChange={(e) => { setPotStrength(e.target.value); setPotResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                        {potStrengthOptions.map((s) => <option key={s} value={s}>{s} ({potEntry[s.toLowerCase()]}c)</option>)}
+                      </select>
+                    )}
+                    <button onClick={buyPotion} disabled={!potHero || potStrengthOptions.length === 0} className="w-full text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: (!potHero || potStrengthOptions.length === 0) ? "#00000020" : palette.crimsonDark, color: palette.parchment, opacity: (!potHero || potStrengthOptions.length === 0) ? 0.5 : 1 }}>Roll &amp; Buy</button>
+                    <GuildResultBox result={potResult} />
+                  </div>
+                </>
+              )}
+
+              {g.key === "dark" && (
+                <>
+                  <SkillTrainingBox guildKey="The Dark Guild" skillKeys={DARK_GUILD_SKILLS} heroes={heroes} party={party} setParty={setParty} updateHero={updateHero} addLog={addLog} />
+                  <GuildShopList
+                    title="Nightstalker Armour"
+                    desc="Considered Tier 2 (leather) armour. High Quality gives DUR 8. Dark as the Night gives -5 to be hit (-10 if all 4 pieces are worn) — check the Hero tab's armour picker to equip once it's bought."
+                    items={nightstalkerItems}
+                    heroes={heroes} party={party} setParty={setParty} updateHero={updateHero} addLog={addLog}
+                    sourceLabel="Dark Guild"
+                  />
+                </>
+              )}
+
+              {g.key === "sanctum" && (
+                <>
+                  <div className="subsection mb-4">
+                    <p className="text-[11px] font-bold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Learn a Prayer</p>
+                    <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>
+                      200c + 100c per prayer level above 1. Only available to Warrior Priests. Takes 1 day.
+                    </p>
+                    <select
+                      value={learnPrayerHero}
+                      onChange={(e) => { setLearnPrayerHero(e.target.value); setLearnPrayerName(""); setLearnPrayerResult(null); }}
+                      className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+                      style={{ background: "#fff", border: `1px solid ${palette.line}` }}
+                    >
+                      <option value="">Choose a hero…</option>
+                      {heroes.filter((h) => PRAYER_SKILL[h.profession]).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                    </select>
+                    {learnPrayerHero && (() => {
+                      const hero = heroes.find((h) => h.id === learnPrayerHero);
+                      const available = PRAYERS.filter((p) => p.lvl <= hero.level && !(hero.prayers || []).includes(p.name));
+                      return (
+                        <>
+                          <select
+                            value={learnPrayerName}
+                            onChange={(e) => setLearnPrayerName(e.target.value)}
+                            className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+                            style={{ background: "#fff", border: `1px solid ${palette.line}` }}
+                          >
+                            <option value="">Choose a prayer (Level ≤ {hero.level})…</option>
+                            {available.map((p) => <option key={p.name} value={p.name}>{p.name} (Level {p.lvl})</option>)}
+                          </select>
+                          {available.length === 0 && (
+                            <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft }}>No learnable prayers left at {hero.name}'s level, or all known already.</p>
+                          )}
+                          {learnPrayerName && (
+                            <p className="text-[11px] mb-1.5 font-semibold" style={{ color: palette.ink }}>
+                              Cost: {learnCost(PRAYERS.find((p) => p.name === learnPrayerName).lvl)}c
+                            </p>
+                          )}
+                          <button
+                            onClick={confirmLearnPrayer}
+                            disabled={!learnPrayerName}
+                            className="w-full text-[11px] px-2 py-1.5 rounded font-semibold"
+                            style={{ background: learnPrayerName ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: learnPrayerName ? 1 : 0.5 }}
+                          >
+                            Learn Prayer
+                          </button>
+                        </>
+                      );
+                    })()}
+                    <GuildResultBox result={learnPrayerResult} />
+                  </div>
+
+                  <div className="subsection mb-4">
+                    <p className="text-[11px] font-bold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Crusades</p>
+                    <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>25c per trophy from the Crusade's target, no matter who lands the kill. Lasts until the heroes leave the next dungeon.</p>
+                    {!crusade ? (
+                      <button onClick={rollCrusade} className="w-full text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>Roll a Crusade</button>
+                    ) : (
+                      <>
+                        <p className="text-xs font-semibold mb-2" style={{ color: palette.ink }}>Crusade against {crusade.against} — {crusade.killed} trophy{crusade.killed === 1 ? "" : "s"} turned in</p>
+                        <button onClick={recordCrusadeKill} className="w-full text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: palette.forestDark, color: palette.parchment }}>Turn in a trophy (+25c)</button>
+                        <button onClick={rollCrusade} className="w-full text-[10px] px-2 py-1 rounded font-semibold mt-1" style={{ background: "#00000010", color: palette.inkSoft }}>Reroll (new visit)</button>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="subsection mb-4">
+                    <p className="text-[11px] font-bold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Blessing Armour &amp; Weapons</p>
+                    <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>Armour: +1 Durability for 25c/piece. Weapons: +2 DMG vs Undead/Demons for 75c. Both last until the heroes leave the next dungeon.</p>
+                    <select value={blessHero} onChange={(e) => { setBlessHero(e.target.value); setBlessResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                      <option value="">Choose a hero…</option>
+                      {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                    </select>
+                    {blessHero && (() => {
+                      const h = heroes.find((x) => x.id === blessHero);
+                      if (!h) return null;
+                      return (
+                        <>
+                          {["head", "arms", "torso", "legs", "shield"].map((loc) => h.armour[loc]?.name && (
+                            <GuildRow key={loc} label={`${loc[0].toUpperCase()}${loc.slice(1)}: ${h.armour[loc].name}`} sub={h.armour[loc].blessed ? "already blessed" : undefined} right="Bless (25c)" disabled={h.armour[loc].blessed} onClick={() => blessArmour(loc)} />
+                          ))}
+                          {h.weapon?.name && (
+                            <GuildRow label={`Weapon: ${h.weapon.name}`} sub={h.weapon.blessed ? "already blessed" : undefined} right="Bless (75c)" disabled={h.weapon.blessed} onClick={blessWeapon} />
+                          )}
+                        </>
+                      );
+                    })()}
+                    <GuildResultBox result={blessResult} />
+                  </div>
+
+                  <GuildShopList title="Buying Special Equipment" desc="Usually only available to Warrior Priests." items={INNER_SANCTUM_EQUIPMENT} heroes={heroes} party={party} setParty={setParty} updateHero={updateHero} addLog={addLog} sourceLabel="Inner Sanctum" />
+                </>
+              )}
+
+            </div>
+          )}
+        </Panel>
+      ))}
+    </div>
+  );
+}
+
 function spellTypeOf(spell) {
   const codes = (spell.special || "").split(",").map((s) => s.trim());
   if (codes.includes("T")) return "Touch";
@@ -11151,6 +11865,7 @@ export default function App() {
     ["turn", "Turn", Timer],
     ["travel", "Travel", Map],
     ["settlement", "Settlement", Landmark],
+    ["guilds", "Guilds", Shield],
     ["heroes", "Heroes", Users],
     ["combat", "Combat", Swords],
     ["alchemy", "Alchemy", FlaskConical],
@@ -11229,7 +11944,10 @@ export default function App() {
           <TravelTab party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />
         )}
         {tab === "settlement" && (
-          <SettlementTab party={party} setParty={setParty} heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />
+          <SettlementTab party={party} setParty={setParty} heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} goToGuilds={() => setTab("guilds")} />
+        )}
+        {tab === "guilds" && (
+          <GuildsTab party={party} setParty={setParty} heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />
         )}
         {tab === "heroes" && (
           <HeroesTab heroes={heroes} updateHero={updateHero} removeHero={removeHero} addHero={addHero} addLog={addLog} pushToast={pushToast} party={party} setParty={setParty} />

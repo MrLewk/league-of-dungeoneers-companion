@@ -3,6 +3,24 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.34.0] — 2026-08-14
+
+### Added
+- Guilds tab: a new tab covering all six guilds (Fighters', Rangers', Wizards', Alchemists', The Dark Guild, The Inner Sanctum), picked by settlement, each as its own expandable card
+- Skill Training at every guild — +3 to the relevant skills for 300c, one session per skill between dungeons, tracked automatically
+- Buying Special Equipment at every guild now rolls the Availability check for you (1d6 at or under the listed Availability = in stock), deducts the cost, and drops the item straight into the chosen hero's backpack — covers the Fighters' Guild (Gauntlets, Gorget, Pain Killer, Poleyns, Shield Padding, Shoulder Pads, Slayer Weapon Treatment), Rangers' Guild (Aim Attachment, Barbed Arrows/Bolts, Compass, Skinning Knives, Taxidermist tools, Wild game traps), Wizards' Guild staffs, Dark Guild's Nightstalker Armour, and the Inner Sanctum's Religious Relics and Incense
+- Nightstalker Armour (Dark Guild) added to the hero armour picker with its Dark as the Night and High Quality (DUR 8) rules
+- Fighters' Guild Bounty Hunt: rolls 5 targets from the full enemy table, tracks which have been claimed for 250c each
+- Rangers' Guild Taxidermist: sells a Trophy for 1d20 + the settlement's buyer modifier, one attempt per settlement per cycle
+- Alchemists' Guild: buy a Part or Ingredient for 15c (Availability Roll first), or buy a named potion at Weak/Standard/Supreme strength
+- Inner Sanctum Crusades: rolls the target enemy type, tracks trophies turned in for 25c each
+- Inner Sanctum Blessing: bless a piece of armour (+1 Durability, 25c) or a weapon (+2 DMG vs Undead/Demons, 75c)
+- Settlements tab now shows a single tappable "Guilds available here" card pointing to the new tab, instead of listing guild content inline
+
+### Changed
+- Wizards' Guild (Learn a Spell, Charge a Magic Item, Identify a Magic Item) and the Inner Sanctum (Learn a Prayer) moved from the Settlements tab into the new Guilds tab, alongside the other four guilds
+- "Between Quests" on the Settlements tab now also resets Guild Skill Training, Bounty Hunt, Crusade, and Taxidermist once-per-cycle limits
+
 ## [1.33.0] — 2026-08-13
 
 ### Added

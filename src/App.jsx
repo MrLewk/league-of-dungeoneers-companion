@@ -1991,6 +1991,7 @@ const SPECIAL_RULES = [
   { name: "Entangle", type: "Active", effect: "Captures a hero (dodge/parry to avoid). Trapped hero takes 1 HP dmg turn 1, +1 HP each turn after. Break free: 1 AP + STR test (-10/turn); adjacent ally may help at 2 AP, STR+10." },
   { name: "Ethereal", type: "Passive", effect: "Immune to normal weapons — needs magic, holy water. Moves through heroes freely; cannot be shoved." },
   { name: "Extra Damage from Fire/Water/Silver", type: "Passive", effect: "Takes 1d6 extra HP from any wound caused by fire or water." },
+  { name: "Fast", type: "Passive", effect: "Adds 1 extra initiative token to the bag. May activate twice in a turn but only gets 1 AP on its second activation." },
   { name: "Fear Elves", type: "Passive", effect: "Suffers the standard fear modifier vs Elves on a failed RES test." },
   { name: "Ferocious Charge", type: "Passive", effect: "Charge attack causes an extra 1d4 DMG." },
   { name: "Fire Breath", type: "Active", effect: "1d10 fire damage to target (dodgeable, no RS needed); adjacent squares take 1d6 fire dmg. Creature is immune." },
@@ -2000,6 +2001,7 @@ const SPECIAL_RULES = [
   { name: "Frenzy", type: "Passive", effect: "Gains an extra strike whenever it causes damage." },
   { name: "Ghostly Howl", type: "Active", effect: "Ranged Ghostly Touch that hits all heroes at once, no roll needed, can't be dodged/parried." },
   { name: "Ghostly Touch", type: "Passive", effect: "Attacks reach the soul, can't be parried (can be dodged). Armour/NA useless; RES test to avoid 1d8 DMG + 1 Sanity loss." },
+  { name: "Groundbreaker", type: "Active", effect: "Hits the ground — all heroes in adjacent squares suffer 1d10 damage and become stunned (−1 AP)." },
   { name: "Gust", type: "Passive", effect: "All creatures in its room/corridor suffer -15 RS." },
   { name: "Hard as Rock", type: "Passive", effect: "Immune to ranged weapons. Bladed weapons do half damage (RDD) unless magic or mithril." },
   { name: "Hate", type: "Passive", effect: "+5 CS, without the usual dodge penalty." },
@@ -2009,6 +2011,7 @@ const SPECIAL_RULES = [
   { name: "Kick", type: "Passive", effect: "Free attack (no AP) each turn against a hero in any of the 3 squares behind it." },
   { name: "Large / X-Large", type: "Passive", effect: "Rolls damage twice, takes the best. Takes 4 squares (Large) or 2×3 (X-Large). Can't pass single-file squares except bridges." },
   { name: "Leech", type: "Passive", effect: "Sticks to target, who can't move/attack anything else. Drains 1d4 HP/turn; roll for disease each turn attached. Other heroes attacking it deal half damage (avoid hitting companion)." },
+  { name: "Lightning Fast", type: "Passive", effect: "Adds 1 extra initiative token to the bag. May activate twice during a turn, giving it a total of 4 AP." },
   { name: "Magic Being", type: "Passive", effect: "Creation of pure magic — leaves nothing to loot when destroyed." },
   { name: "Magic User", type: "Passive", effect: "Can cast spells listed on the Encounter Table; uses RS to determine success." },
   { name: "Master of the Dead", type: "Active", effect: "One undead regains full health (even from 0); otherwise a Vampire regains 1d6 HP; otherwise makes a standard attack." },
@@ -2021,6 +2024,7 @@ const SPECIAL_RULES = [
   { name: "Poisonous", type: "Passive", effect: "A wounded hero must pass a CON test or suffer poison." },
   { name: "Poisonous Spit", type: "Active", effect: "Ranged version of Poisonous using RS; adjacent or 1 square away. Parry with shield/dodge as normal." },
   { name: "Psychic", type: "Passive", effect: "All heroes' RES -20 as soon as placed on the table; ends when it dies. Not cumulative with a second Psychic creature." },
+  { name: "Pyrophobia", type: "Passive", effect: "Must pass a RES test to attack a hero carrying a torch, or the attack fails and the action is spent. Creatures with Bellow instead use a failed test to Bellow. Once passed, no further tests are needed against that hero. Bat swarms skip the test but only do half damage (RDD) against torch-carriers." },
   { name: "Regeneration", type: "Passive", effect: "Regenerates 1d6 HP at the start of every turn." },
   { name: "Rend", type: "Passive", effect: "If it seizes a target in its jaws and the hero fails a STR test, roll another 1d6 DMG." },
   { name: "Riddle Master", type: "Passive", effect: "Answer 1 riddle (WIS test) to remove it from the table without a fight, 150 XP. Failure angers it into battle." },
@@ -2040,7 +2044,175 @@ const SPECIAL_RULES = [
   { name: "Sweeping Strike", type: "Active", effect: "Pushes all heroes in ZOC back 1 square for half damage (RDD) + a DEX test; dodge only, not parry. Failure = fall prone." },
   { name: "Tongue Attack", type: "Active", effect: "Ranged attack 1 hex away; success pulls the target to the square next to the creature, swapping with any model there." },
   { name: "Wall Crawler", type: "Passive", effect: "Can move on walls to bypass heroes, ignoring ZOC (can't end turn there)." },
-  { name: "Web", type: "Active", effect: "Casts webs as a special attack — works just like the net weapon." },
+];
+
+// Monster Behaviour (Bestiary p16-19) — interactive "what does the enemy do" walker.
+// Monster Table (Bestiary p14-15) — full stat blocks for all 100 monsters.
+const MONSTER_TABLE_FIELDS = ["n", "name", "cs", "rs", "hp", "dmg", "na", "m", "dex", "res", "toHit", "type", "behaviour", "special", "xp", "loot"];
+const MONSTER_TABLE_RAW = [
+[1, "Bandit", 50, 35, 12, "0", 0, 4, 30, 45, -5, "Bandit", "Humanoid", "", 90, "T1"],
+[2, "Bandit Leader", 60, 40, 16, "1", 1, 4, 35, 50, -10, "Bandit", "Humanoid", "", 130, "T2"],
+[3, "Banshee", 40, 0, 18, "0", 0, 6, 45, 60, -10, "Undead", "Humanoid", "Ethereal, Ghostly Howl, Ghostly touch, Terror 5", 650, "Part"],
+[4, "Bat swarm", "*", 0, 10, "1d4", 0, 6, 55, 20, -10, "Beast", "Beast", "Always acts first on the first turn of battle, Auto hit, Flyer, Pyrophobia", 10, "Part"],
+[5, "Beastman", 50, 20, 15, "0", 0, 5, 35, 35, -5, "Beast", "Humanoid", "", 100, "T1"],
+[6, "Beastman Chieftain", 65, 0, 20, "1", 1, 5, 35, 50, -10, "Beast", "Humanoid", "", 150, "T2"],
+[7, "Beastman Guard", 55, 20, 18, "1", 1, 5, 35, 45, -10, "Beast", "Humanoid", "", 110, "T2"],
+[8, "Berserker", 50, 35, 14, "0", 0, 4, 35, 45, -10, "Bandit", "Beast", "Frenzy", 110, "T1"],
+[9, "Bloated Demon", 50, 25, 32, "1d12+2", 2, 3, 25, 80, 0, "Magic", "Beast", "Demon, Disease ridden, Fear 3, Floater, Large", 650, "T4"],
+[10, "Blood Demon", 60, 0, 12, "2", 2, 4, 50, 50, -5, "Magic", "Beast", "Demon, Frenzy", 200, "Part"],
+[11, "Cave Bear", 50, 0, 20, "1d10+2", 1, 4, 30, 30, -5, "Beast", "Beast", "Ferocious charge, Pyrophobia", 130, "Part"],
+[12, "Cave Goblin", 45, 30, 7, "0", 0, 4, 25, 40, -5, "Orcs & Gob", "Beast", "Hate Dwarves, Pyrophobia", 60, "T1"],
+[13, "Centaur", 50, 50, 20, "1", 1, 7, 30, 60, -5, "Beast", "Beast", "Kick", 150, "T2"],
+[14, "Cockatrice", 45, 0, 35, "1d8", 0, 4, 45, 40, -10, "Reptile", "Beast", "Large, Petrify", 325, "Part"],
+[15, "Common Troll", 60, 0, 40, "3", 2, 6, 20, 50, -5, "Beast", "Beast", "Bellow, Fear 5, Large, Pyrophobia, Regenerate, Simple weapons, Stupid", 500, "T2"],
+[16, "Dark Elf", 55, 45, 11, "0", 0, 5, 50, 45, -10, "Dark Elf", "Humanoid", "", 125, "T2"],
+[17, "Dark Elf Assassin", 65, 50, 11, "0", 0, 5, 65, 50, -15, "Dark Elf", "Humanoid", "Sneaky", 135, "T2"],
+[18, "Dark Elf Captain", 65, 55, 13, "0", 0, 5, 50, 55, -10, "Dark Elf", "Humanoid", "", 150, "T3"],
+[19, "Dark Elf Sniper", 50, 65, 11, "0", 0, 5, 50, 50, -10, "Dark Elf", "Humanoid", "", 135, "T2"],
+[20, "Dark Elf Warlock", 50, 60, 11, "0", 0, 5, 50, 55, -5, "Dark Elf", "Magic U", "Magic User", 165, "T4"],
+[21, "Dire Wolf", 50, 0, 12, "1d10+1", 1, 8, 15, 30, 0, "Undead", "Beast", "Fear 3, Ferocious charge", 80, "Part"],
+[22, "Dragon", 75, 0, 200, "1d10+5", 5, 6, 30, 80, -15, "Beast", "Beast", "Fire breath, Multiple attacks 2, Sweeping strike, Terror 10, X-Large", 4500, "Part"],
+[23, "Drider", 65, 45, 28, "0", 2, 6, 50, 65, -5, "Dark Elf", "Humanoid", "Fear 5, Large, Wall crawler", 600, "T3"],
+[24, "Earth Elemental", 50, 0, 20, "1d10+2", 2, 4, 40, 50, -5, "Magic", "Beast", "Magic being", 200, "-"],
+[25, "Ettin", 55, 0, 40, "3", 3, 6, 20, 50, -5, "Beast", "Beast", "Free Bellow, Large, Simple weapons, Stupid, Sweeping strike", 550, "T2"],
+[26, "Fallen Knight", 60, 0, 18, "1", 1, 4, 40, 50, -15, "Bandit", "Humanoid", "", 240, "T3"],
+[27, "Fire Elemental", 55, 0, 15, "1d10", 0, 4, 50, 50, -5, "Magic", "Beast", "Extra damage from Water, Fire damage, Magic being", 250, "-"],
+[28, "Frogling", 45, 40, 8, "0", 0, 5, 45, 35, -10, "Reptile", "Humanoid", "Poisonous spit, Silent", 90, "T1"],
+[29, "Gargoyle", 50, 0, 25, "1d12", 4, 4, 20, 55, -5, "Magic", "Beast", "", 400, "Part"],
+[30, "Gecko", 45, 45, 10, "0", 0, 5, 45, 40, -10, "Reptile", "Humanoid", "", 95, "T2"],
+[31, "Gecko Assassin", 40, 45, 10, "0", 0, 5, 55, 40, -10, "Reptile", "Humanoid", "Camouflage, Sneaky", 100, "T1"],
+[32, "Ghost", 35, 0, 15, "Spec", 0, 6, 40, 50, -5, "Undead", "Humanoid", "Cause fear 5, Ethereal, Ghostly touch", 550, "Part"],
+[33, "Ghoul", 40, 0, 11, "1d10", 1, 4, 35, 40, -10, "Undead", "Humanoid", "Fear 3, Poisonous", 90, "T1"],
+[34, "Giant", 55, 25, 150, "5", 3, 6, 20, 55, 0, "Bandit", "Beast", "Large, Simple weapons, Sweeping strike, Terror 8", 900, "T3"],
+[35, "Giant Centipede", 45, 0, 22, "1d10", 4, 6, 55, 45, -5, "Beast", "Beast", "Fear 5", 300, "Part"],
+[36, "Giant Leech", 40, 0, 12, "Special", 0, 3, 20, 30, 0, "Beast", "Beast", "Disease, Leech, Slow", 90, "Part"],
+[37, "Giant Pox rat", 45, 0, 8, "1d6", 0, 6, 35, 30, 0, "Beast", "Beast", "Disease, Pyrophobia, Scurry", 50, "Part"],
+[38, "Giant Rat", 45, 0, 6, "1d6", 0, 6, 40, 30, -5, "Beast", "Beast", "Perfect hearing, Pyrophobia, Scurry", 40, "Part"],
+[39, "Giant Scorpion", 55, 0, 30, "1d12", 4, 5, 40, 40, 0, "Beast", "Beast", "Fear 4, Poisonous, Wall crawler", 220, "Part"],
+[40, "Giant Snake", 50, 0, 15, "1d8", 0, 6, 60, 45, -20, "Beast", "Beast", "Fear 3, Poisonous", 120, "Part"],
+[41, "Giant Spider", 50, 0, 25, "1d10", 1, 6, 60, 45, -5, "Beast", "Beast", "Fear 5, Poisonous, Wall crawler, Web", 170, "Part"],
+[42, "Giant Toad", 50, 55, 35, "1d10", 1, 4, 30, 40, 0, "Reptile", "Beast", "Large, Swallow, Tongue attack", 400, "Part"],
+[43, "Giant Wolf", 45, 0, 12, "1d10", 0, 9, 35, 45, -5, "Beast", "Beast", "Perfect hearing, Pyrophobia", 80, "Part"],
+[44, "Gigantic Snake", 50, 0, 50, "1d10+3", 3, 6, 60, 60, -10, "Beast", "Beast", "Fear 10, Large, Poisonous, Sweeping strike", 800, "Part"],
+[45, "Gigantic Spider", 50, 0, 60, "1d10+3", 3, 6, 45, 60, -5, "Beast", "Beast", "Large, Poisonous, Terror 10", 900, "Part"],
+[46, "Gnoll", 50, 35, 10, "0", 1, 4, 35, 40, -10, "Beast", "Humanoid", "", 80, "T1"],
+[47, "Gnoll Sergeant", 55, 30, 13, "1", 1, 4, 40, 50, -10, "Beast", "Humanoid", "", 100, "T2"],
+[48, "Gnoll Shaman", 40, 50, 11, "0", 1, 4, 30, 55, -5, "Beast", "Magic U", "Magic User", 150, "T4"],
+[49, "Goblin", 45, 30, 8, "0", 0, 4, 25, 40, -5, "Orcs & Gob", "Humanoid", "Fear elves", 70, "T1"],
+[50, "Goblin Shaman", 40, 40, 8, "0", 0, 4, 25, 50, -5, "Orcs & Gob", "Humanoid", "Magic User", 130, "T2"],
+[51, "Greater Demon", 60, 35, 70, "3", 3, 4, 30, 65, -5, "Magic", "Beast", "Demon, Large, Terror 10", 1200, "T5"],
+[52, "Griffon", 60, 0, 48, "1d10+2", 2, 6, 50, 65, -10, "Beast", "Beast", "Fear 5, Flyer (O), Large", 1500, "Part"],
+[53, "Harpy", 50, 25, 12, "1d10+1", 1, 6, 30, 50, -15, "Beast", "Beast", "Flyer (O), Pyrophobia", 130, "Part"],
+[54, "Hydra", 50, 0, 100, "1d10+1", 3, 6, 30, 55, -5, "Beast", "Beast", "Fear 10, Multiple attacks Hydra, X-Large", 3000, "Part"],
+[55, "Lesser Plague Demon", 45, 0, 5, "1d8", 0, 4, 40, 40, -10, "Magic", "Beast", "Demon, Disease, Flyer", 50, "Part"],
+[56, "Lurker", 60, 70, 30, "1d10+1", 2, 6, 30, 60, -10, "Magic", "Magic U", "Demon, Floater, Magic User", 1200, "Part"],
+[57, "Medusa", 50, 50, 20, "0", 0, 4, 40, 65, -10, "Dark Elf", "Humanoid", "Petrify", 350, "T3"],
+[58, "Mimic", 50, 0, 10, "1d10", 2, 2, 15, 30, -5, "Beast", "Beast", "Leech", 110, "Part"],
+[59, "Minotaur", 55, 0, 36, "3", 2, 6, 40, 55, -10, "Beast", "Beast", "Bellow, Ferocious charge, Fear 3, Large", 450, "T3"],
+[60, "Minotaur Skeleton", 50, 0, 20, "2", 4, 4, 35, 30, -5, "Undead", "L Undead", "Fear 3, Gives bonemeal as part besides T2, Just bones, Large", 350, "T2"],
+[61, "Mummy", 55, 0, 25, "1d10+1", 3, 4, 25, 80, -5, "Undead", "H Undead", "Extra damage from Fire, Fear 5", 300, "T3"],
+[62, "Mummy Priest", 45, 65, 30, "1", 3, 4, 25, 80, 0, "Undead", "Magic U", "Extra damage from fire, Fear 5, Magic User", 600, "T5"],
+[63, "Mummy Queen", 65, 60, 35, "2", 3, 4, 35, 85, -10, "Undead", "Magic U", "Extra damage from fire, Fear 5, Magic User", 800, "T5"],
+[64, "Naga", 50, 0, 25, "0", 1, 4, 35, 65, -5, "Reptile", "Humanoid", "Multiple attacks 3", 650, "T3"],
+[65, "Necromancer", 40, 55, 12, "1", 1, 4, 30, 60, -5, "Undead", "Magic U", "Magic User", 180, "T4"],
+[66, "Ogre", 50, 20, 34, "1", 2, 6, 25, 45, -10, "Bandit", "Humanoid", "Large, Sweeping strike", 400, "T2"],
+[67, "Ogre Berserker", 50, 15, 34, "1", 2, 6, 25, 45, -5, "Bandit", "Beast", "Frenzy, Large, Sweeping strike", 500, "T2"],
+[68, "Ogre Chieftain", 60, 20, 42, "2", 2, 6, 25, 55, -10, "Bandit", "Humanoid", "Large, Sweeping strike", 600, "T3"],
+[69, "Orc", 45, 35, 12, "0", 1, 4, 25, 40, -5, "Orcs & Gob", "Humanoid", "", 95, "T1"],
+[70, "Orc Brute", 45, 35, 16, "1", 1, 4, 25, 40, -5, "Orcs & Gob", "Humanoid", "", 110, "T2"],
+[71, "Orc Chieftain", 50, 30, 18, "1", 1, 4, 25, 50, -10, "Orcs & Gob", "Humanoid", "Frenzy", 130, "T3"],
+[72, "Orc Shaman", 40, 45, 12, "0", 0, 4, 25, 55, -5, "Orcs & Gob", "Magic U", "Magic User", 180, "T4"],
+[73, "Plague Demon", 55, 0, 12, "1", 3, 4, 40, 50, -5, "Magic", "Humanoid", "Demon, Disease ridden", 200, "Part"],
+[74, "Psyker", 50, 70, 16, "0", 0, 4, 35, 65, -5, "Magic", "Magic U", "Magic User, Psychic", 250, "T4"],
+[75, "Raptor", 50, 0, 14, "1d10+1", 0, 6, 40, 45, -5, "Reptile", "Beast", "Ferocious charge, Pyrophobia, Rend", 130, "Part"],
+[76, "River Troll", 55, 15, 40, "3", 2, 6, 20, 50, -5, "Beast", "Beast", "Bellow, Fear 5, Large, Regeneration, Simple weapons, Stench, Stupid", 550, "T2"],
+[77, "Salamander", 45, 50, 30, "1d10+2", 2, 4, 30, 40, 0, "Reptile", "Beast", "Fire Breath, Large, Slow, Stupid", 430, "Part"],
+[78, "Satyr", 40, 35, 10, "0", 0, 5, 40, 40, -10, "Beast", "Humanoid", "Perfect hearing", 80, "T1"],
+[79, "Saurian", 50, 0, 15, "0", 1, 4, 35, 40, -5, "Reptile", "Beast", "", 110, "T2"],
+[80, "Saurian Elite", 55, 0, 18, "1", 1, 4, 40, 45, -10, "Reptile", "Beast", "", 140, "T2"],
+[81, "Saurian Priest", 45, 50, 15, "0", 1, 4, 35, 60, -5, "Reptile", "Magic U", "Magic User", 200, "T4"],
+[82, "Saurian Warchief", 60, 0, 20, "1", 1, 4, 45, 50, -10, "Reptile", "Beast", "", 160, "T3"],
+[83, "Shambler", 55, 55, 30, "1d12", 2, 4, 25, 55, 0, "Beast", "Beast", "Entangle, Large", 450, "Part"],
+[84, "Skeleton", 40, 20, 10, "0", 0, 4, 25, 30, -5, "Undead", "L Undead", "Fear 2, Gives bonemeal as part, Just bones", 80, "T1"],
+[85, "Slime", 40, 0, 12, "1d10", 0, 4, 25, 25, -5, "Beast", "Beast", "Corrosive", 120, "Part"],
+[86, "Sphinx", 65, 0, 38, "1d10+2", 2, 6, 50, 60, -5, "Beast", "Beast", "Flyer (O), Large, Riddle master", 1000, "Part"],
+[87, "Stone Golem", 45, 0, 30, "1d10+3", 4, 4, 25, 30, 0, "Magic", "Beast", "Hard as rock, Fear 3, Groundbreaker, Large", 450, "Part"],
+[88, "Stone Troll", 50, 15, 42, "3", 3, 6, 20, 50, -5, "Beast", "Beast", "Bellow, Fear 5, Large, Regenerate, Simple weapons, Stupid", 550, "T2"],
+[89, "Tomb Guardian", 60, 0, 40, "2", 2, 4, 25, 50, 0, "Undead", "H Undead", "Fear 7, Large", 550, "T3"],
+[90, "Vampire", 75, 45, 30, "3", 3, 6, 70, 70, -15, "Undead", "Humanoid", "Fear 10, Extra DMG from silver, Lightning Fast, Master of the Dead", 2000, "T5"],
+[91, "Vampire Fledgling", 65, 40, 30, "2", 2, 6, 65, 70, -15, "Undead", "Humanoid", "Extra DMG from silver, Fast, Fear 10, Seduction", 1500, "T5"],
+[92, "Warlock", 40, 55, 12, "0", 0, 4, 30, 60, -5, "Bandit", "Magic U", "Magic User", 180, "T4"],
+[93, "Water Elemental", 55, 0, 15, "1d10+1", 1, 4, 40, 50, -5, "Magic", "Beast", "Extra damage from Fire, Magic being", 150, "-"],
+[94, "Werewolf", 55, 0, 25, "1d10+1", 1, 9, 35, 45, -10, "Beast", "Beast", "Ferocious charge, Regeneration", 280, "Part"],
+[95, "Wight", 50, 35, 15, "1", 1, 4, 30, 45, -10, "Undead", "H Undead", "Cursed weapons, Fear 5, Just bones", 180, "T2"],
+[96, "Wind Elemental", 65, 0, 12, "1d10", 1, 6, 40, 50, 15, "Magic", "Beast", "Gust, Magic being", 150, "-"],
+[97, "Wraiths", 50, 0, 20, "1", 2, 6, 30, 65, -10, "Undead", "H Undead", "Cursed weapons, Ethereal, Fear 5", 500, "Part"],
+[98, "Wyvern", 60, 0, 75, "1d10+3", 2, 4, 30, 50, -5, "Beast", "Beast", "Terror 8, X-Large", 1800, "Part"],
+[99, "Zombie", 40, 0, 12, "1d8+1", 0, 4, 10, 25, 0, "Undead", "L Undead", "Fear 2, Slow", 80, "T1"],
+[100, "Zombie Ogre", 50, 0, 40, "2", 2, 4, 15, 25, 0, "Undead", "L Undead", "Fear 7, Large, Simple weapons, Slow", 650, "T1"],
+];
+const MONSTER_TABLE = MONSTER_TABLE_RAW.map((row) => Object.fromEntries(MONSTER_TABLE_FIELDS.map((f, i) => [f, row[i]])));
+
+// Monster Behaviour (Bestiary p16-19) — interactive "what does the enemy do" walker.
+const BEHAVIOUR_CATEGORIES = ["Humanoid (Close Combat)", "Humanoid (Missile Weapon)", "Beast", "Higher Undead", "Lower Undead", "Magic User"];
+
+
+
+function rollD10Table(table) {
+  const r = rollDie(10);
+  const entry = table.find((e) => r >= e.min && r <= e.max);
+  return { r, ...entry };
+}
+
+// Step tables (d10) used when adjacent to a hero, per category.
+const ADJACENT_TABLES = {
+  "Humanoid (Close Combat)": [
+    { min: 1, max: 2, action: "Parry Stance (if it has 2 AP left, make a Standard Attack first)" },
+    { min: 3, max: 5, action: "Standard Attack" },
+    { min: 6, max: 6, action: "Power Attack (Parry Stance if wounded; Standard Attack if not enough AP)" },
+    { min: 7, max: 10, action: "Use Skill/Special Talent (Standard Attack if N/A)" },
+  ],
+  "Humanoid (Missile Weapon)": [
+    { min: 1, max: 3, action: "Parry Stance (if it has 2 AP left, make a Standard Attack first)" },
+    { min: 4, max: 10, action: "Standard Attack" },
+  ],
+  Beast: [
+    { min: 1, max: 4, action: "Power Attack (Standard Attack if not enough AP)" },
+    { min: 5, max: 6, action: "Standard Attack" },
+    { min: 7, max: 10, action: "Use Skill/Special Talent (Standard Attack if N/A)" },
+  ],
+  "Higher Undead": [
+    { min: 1, max: 5, action: "Standard Attack" },
+    { min: 6, max: 7, action: "Power Attack (Standard Attack if not enough AP)" },
+    { min: 8, max: 10, action: "Use Skill/Special Talent (Standard Attack if N/A)" },
+  ],
+  "Lower Undead": [
+    { min: 1, max: 6, action: "Standard Attack" },
+    { min: 7, max: 10, action: "Power Attack" },
+  ],
+};
+
+// Not-adjacent-but-within-M table, Humanoid (Close Combat) only (p16).
+const HUMANOID_CC_WITHIN_M_TABLE = [
+  { min: 1, max: 2, action: "Parry Stance (forfeits 2nd action)" },
+  { min: 3, max: 6, action: "Move into CC — priority: a hero not yet attacked this turn (within M), then a position to attack from behind, then height advantage, then closest hero" },
+  { min: 7, max: 10, action: "Charge Attack the closest hero (move adjacent if unable to charge)" },
+];
+
+const MAGIC_USER_ADJACENT_TABLE = [
+  { min: 1, max: 3, action: "Move M away but stay in LOS (avoid traps not placed by heroes if possible)" },
+  { min: 4, max: 6, action: "Cast a close combat spell" },
+  { min: 7, max: 10, action: "Make a standard attack" },
+];
+const MAGIC_USER_NO_LOS_TABLE = [
+  { min: 1, max: 6, action: "Move up to M spaces to get LOS to the closest hero without ending up adjacent" },
+  { min: 7, max: 10, action: "Cast support magic" },
+];
+const MAGIC_USER_LOS_TABLE = [
+  { min: 1, max: 3, action: "Ranged Magic against the closest hero" },
+  { min: 4, max: 5, action: "Ranged Magic against the hero with the least remaining HP (random if tied)" },
+  { min: 6, max: 7, action: "Ranged Magic against the opposing Magic User (re-roll if there is none)" },
+  { min: 8, max: 10, action: "Cast support magic (use ranged magic if no spell suits; Parry Stance if no target or suitable magic)" },
 ];
 
 // Legendary Items (p201-211). Unique, unsellable, never run out of magic or break, but
@@ -2125,6 +2297,29 @@ const LORE_ENTRIES = [
   { title: "Kredelia, the Goddess of Travellers", category: "Deities", text: "Protector of those on the road, Kredelia is traditionally offered a small gift before setting out on any long journey, in the hope of warding off bandits and other misfortune. Travellers she favours are said to receive a boon that makes their journey a little easier." },
   { title: "The Dark Gods", category: "Deities", text: "Several gods are collectively — and only ever — referred to as \"the Dark Gods,\" out of superstition and fear of what invoking their true names might bring. Worshipping them is forbidden throughout the Kingdom, though secret followers persist regardless. The most widely followed among them is Kheros, the God of Death, to whom necromancers turn for power." },
   { title: "Metheia, the God of Life", category: "Deities", text: "As God of Life, Metheia commands more devotion than almost any other deity in the Kingdom — most citizens offer her a short prayer each morning, simply in thanks for waking to see another day. Every major city keeps a chapel in her honour, and her priests are typically the ones tending the sick and wounded in the temple wards nearby." },
+  { title: "Ohlnir, the God of Strength", category: "Deities", text: "God of war and one of the five most-worshipped deities. His followers admire physical prowess and hold that many of the world's problems could — and should — be solved with might and weapons. It's why Barbarians so often wear his sign, alongside soldiers and Warrior Priests." },
+  { title: "Rhidnir, the Trickster God", category: "Deities", text: "A fickle deity who delights in interference and the most unexpected of outcomes. Said to be the father of both Gnolls and Beastmen. Few travellers dare pass a shrine of his without tossing a coin as an offering, and he's the natural patron of those who walk society's narrower paths — thieves and highwaymen among them." },
+
+  // Bestiary — faction overviews and exotic monster descriptions.
+  { title: "Bandits and Brigands", category: "Bestiary", text: "Lowlife opportunists preying on the weak for money and fortune — mostly human, sometimes with a barely-tamed animal or even an Ogre recruited into the ranks. Most lack formal training and are simple enough to dispatch, but the Fallen Knights among them are another matter: former protectors of the Kingdom who succumbed to the Dark Gods, still carrying some of the best armour the Royal Smith can provide." },
+  { title: "Orcs and Goblins", category: "Bestiary", text: "Orcs and Goblins have coexisted with humans since before the Kingdom's founding, living in tribes much like ancient human ones and quarrelling with each other just as often. Orcs are muscular and larger than a man; Goblins are roughly Halfling-sized. The rise of the Kingdom diminished their threat through disunity — until recent reports of an Orc Warlord unifying the tribes, posing a far greater danger." },
+  { title: "Dark Elves", category: "Bestiary", text: "Elves are generally kind and good-hearted, but a minority stray from those virtues and become Dark Elves — whether outcasts or by their own choice. They band together with creatures of similarly sinister disposition, taking refuge in far-off places and raiding villages and farms. Medusas, Harpies, Demons, and Giant Spiders are all drawn to their company." },
+  { title: "The Undead", category: "Bestiary", text: "The dead not staying dead is a constant threat, worsening the further south one travels in the Kingdom. Some revere the Undead as a path to eternal life and turn to Necromantic magic; the most skilled of these occasionally linger on after death as a Lich, commanding their own host of Undead forever." },
+  { title: "Beasts", category: "Bestiary", text: "Neither animal nor human, Beasts range from the dog-like Gnolls to Satyrs and the ferocious Beastmen, living in tribal societies even less civilised than Orcs and Goblins. Minotaurs and Demons walk among them, and Trolls are drawn to the violence that follows. They generally avoid human settlements, but grow more active — and more willing to raid — near the southern border." },
+  { title: "Reptiles", category: "Bestiary", text: "Giant reptiles walking upright are the stuff of nightmares to some, and very real in this land — though thankfully rare, mostly confined to marshlands along the western coast. The primary reptile is the Saurian, a lizard slightly larger and clearly as intelligent as a man, armed with weapons akin to human ones, supported by the smaller, faster Geckos, Froglings, and fire-breathing Salamanders." },
+  { title: "The Ancient Lands", category: "Bestiary", text: "The Undead are the only creatures known to walk the Ancient Lands, where old ruins hide powerful specimens and the desert itself is filled with dangers like monstrous scorpions and giant centipedes. Only the most prepared and experienced adventurers should consider crossing the border." },
+  { title: "Bloated Demon", category: "Bestiary", text: "A shapeless spawn of the Void that hovers just above the ground, searching for meat to devour. They vary in shape and size, but all share the distinct smell of rot — somewhere on the swollen, balloon-shaped body is a maw filled with razor-sharp teeth." },
+  { title: "Blood Demon", category: "Bestiary", text: "Uncannily smart demons, named for their unquenchable desire for blood, that work themselves into a mad frenzy at the prospect of finally satiating their thirst." },
+  { title: "Lesser Plague Demon", category: "Bestiary", text: "Resembling an overgrown mosquito armed with both pincers and stingers, these demons have more than one way to inflict harm — and their putrefaction makes it likely any wound they cause becomes infected with poison." },
+  { title: "Lurker", category: "Bestiary", text: "A demon resembling a huge floating eye surrounded by tentacles, each crowned with another eye. Though it could easily snap a man in two with its jaws, it primarily strikes with magic — once it fixes its eyes on a target, that person seldom lives to tell the tale." },
+  { title: "Psyker", category: "Bestiary", text: "A demon with a squid-like face and innate magic skill, along with a psychic ability to enter the minds of all who oppose it, filling them with hopelessness and doubt." },
+  { title: "Mimic", category: "Bestiary", text: "The exact nature of Mimics is unknown, since these chameleon-like creatures disguise themselves as everyday objects — closets, chests — and lunge in a surprise attack when an unsuspecting adventurer comes too close." },
+  { title: "Drider", category: "Bestiary", text: "A horror with the upper body of a human and the lower body of a large spider. Unsurprisingly, they share a special bond with spiders — and, like spiders, an affinity for the Dark Elves, who welcome their considerable fighting power." },
+  { title: "Naga", category: "Bestiary", text: "With several arms, a human-like torso, and the lower body of a giant snake, Nagas seem far too chaotic to be natural — most assume they must be demons. They live alongside reptiles such as Saurians and Geckos, though their true origin remains a mystery. Their flurry of extra-armed blows is too much for even the most experienced soldier to parry." },
+  { title: "Shambler", category: "Bestiary", text: "At first glance little more than a tangle of vines, roughly Ogre-sized once undisguised and vaguely humanoid in shape. Many adventurers have passed innocuous-looking plants only to find themselves entangled and slowly choked to death — Shamblers thrive in dark, damp dungeons, preferring to ensnare their prey before squeezing it to death." },
+  { title: "Slime", category: "Bestiary", text: "Whether a Slime is conscious is debatable, but it does seem to retain some basic instincts. They come in many colours, though most are brown or dark green and discoloured by dirt and debris; what they're actually made from remains unclear, but the substance is highly corrosive to most metals." },
+  { title: "Tomb Guardian", category: "Bestiary", text: "Found only in the Ancient Lands, likely the creation of the old masters of that place. Standing almost twice the size of a human with a crocodile-like appearance, their mere presence is often enough to scare off intruders — notoriously hard to kill, since they lack vital organs to strike." },
+  { title: "Plague Demon", category: "Bestiary", text: "The embodiment of a walking disease. Their foul smell can be sensed from far away, and simply standing near one can be enough to contract any of the numerous infections they carry." },
 
   // Legendary Items — paraphrased flavor text only; mechanics live in the Compendium.
   { title: "Horn of Alfheim", category: "Legendary Items", text: "Said to have been forged by the Old Gods themselves and given to Men to help drive back the hordes of Orcs and Goblins that once harried the early tribes.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
@@ -2600,12 +2795,136 @@ function LoreEntryCard({ entry, open, onToggle, goToTab }) {
   );
 }
 
+function BestiaryTab() {
+  const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [openMonster, setOpenMonster] = useState(null);
+  const [section, setSection] = useState("monsters"); // monsters | rules
+
+  const types = Array.from(new Set(MONSTER_TABLE.map((m) => m.type))).sort();
+  const q = query.trim().toLowerCase();
+  const filteredMonsters = MONSTER_TABLE.filter((m) => {
+    const matchesType = typeFilter === "all" || m.type === typeFilter;
+    const matchesQuery = !q || m.name.toLowerCase().includes(q);
+    return matchesType && matchesQuery;
+  });
+  const filteredRules = SPECIAL_RULES.filter((r) => !q || r.name.toLowerCase().includes(q) || r.effect.toLowerCase().includes(q));
+
+  const StatCell = ({ label, val }) => (
+    <div className="text-center">
+      <div className="text-[9px] uppercase" style={{ color: palette.inkSoft, fontFamily: "Cinzel, serif" }}>{label}</div>
+      <div className="text-sm font-bold" style={{ color: palette.ink, fontFamily: "JetBrains Mono, monospace" }}>{val}</div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <Panel>
+        <SectionTitle icon={Skull}>Bestiary</SectionTitle>
+        <div className="flex gap-2 mb-3">
+          <button
+            onClick={() => setSection("monsters")}
+            className="flex-1 text-xs px-2 py-1.5 rounded font-bold"
+            style={{ background: section === "monsters" ? palette.crimson : "#00000010", color: section === "monsters" ? palette.parchment : palette.ink, fontFamily: "Cinzel, serif" }}
+          >
+            Monsters ({MONSTER_TABLE.length})
+          </button>
+          <button
+            onClick={() => setSection("rules")}
+            className="flex-1 text-xs px-2 py-1.5 rounded font-bold"
+            style={{ background: section === "rules" ? palette.crimson : "#00000010", color: section === "rules" ? palette.parchment : palette.ink, fontFamily: "Cinzel, serif" }}
+          >
+            Special Rules ({SPECIAL_RULES.length})
+          </button>
+        </div>
+        <input
+          type="text"
+          placeholder={section === "monsters" ? "Search monsters..." : "Search special rules..."}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="w-full rounded px-3 py-2 mb-2"
+          style={{ border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+        />
+        {section === "monsters" && (
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => setTypeFilter("all")}
+              className="text-xs px-2 py-1 rounded-full"
+              style={{ background: typeFilter === "all" ? palette.forestDark : "#00000010", color: typeFilter === "all" ? palette.parchment : palette.ink }}
+            >
+              All
+            </button>
+            {types.map((t) => (
+              <button
+                key={t}
+                onClick={() => setTypeFilter(t)}
+                className="text-xs px-2 py-1 rounded-full"
+                style={{ background: typeFilter === t ? palette.forestDark : "#00000010", color: typeFilter === t ? palette.parchment : palette.ink }}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      {section === "monsters" && (
+        <Panel>
+          <div className="space-y-1">
+            {filteredMonsters.map((m) => (
+              <div key={m.n} className="rounded" style={{ background: "#00000006" }}>
+                <button
+                  onClick={() => setOpenMonster(openMonster === m.n ? null : m.n)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-left"
+                >
+                  <span className="text-sm font-bold" style={{ color: palette.ink, fontFamily: "Cinzel, serif" }}>{m.name}</span>
+                  <span className="text-xs" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>{m.type} · HP {m.hp} · XP {m.xp}</span>
+                </button>
+                {openMonster === m.n && (
+                  <div className="px-3 pb-3">
+                    <div className="grid grid-cols-4 gap-2 mb-2 p-2 rounded" style={{ background: palette.charcoal }}>
+                      <StatCell label="CS" val={m.cs} /><StatCell label="RS" val={m.rs} /><StatCell label="DMG" val={m.dmg} /><StatCell label="RES" val={m.res} />
+                      <StatCell label="To Hit" val={m.toHit} /><StatCell label="NA" val={m.na} /><StatCell label="M" val={m.m} /><StatCell label="DEX" val={m.dex} />
+                    </div>
+                    <p className="text-xs mb-1" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+                      <b>Behaviour:</b> {m.behaviour} · <b>HP:</b> {m.hp} · <b>XP:</b> {m.xp} · <b>Loot:</b> {m.loot}
+                    </p>
+                    {m.special && (
+                      <p className="text-xs" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
+                        <b>Special:</b> {m.special}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {section === "rules" && (
+        <Panel>
+          <div className="space-y-2">
+            {filteredRules.map((r) => (
+              <div key={r.name} className="text-xs p-2 rounded" style={{ background: "#00000006" }}>
+                <span className="font-bold" style={{ color: palette.crimson, fontFamily: "Cinzel, serif" }}>{r.name}</span>
+                <span className="ml-1" style={{ color: palette.inkSoft }}>({r.type})</span>
+                <p style={{ color: palette.ink, fontFamily: "Crimson Pro, serif", marginTop: 2 }}>{r.effect}</p>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+    </div>
+  );
+}
+
 function LoreTab({ goToTab }) {
   const [query, setQuery] = useState("");
   const [cat, setCat] = useState("all");
   const [openTitle, setOpenTitle] = useState(null);
 
-  const categories = ["World", "Races", "Factions", "History", "Deities", "Legendary Items"];
+  const categories = ["World", "Races", "Factions", "History", "Deities", "Bestiary", "Legendary Items"];
   const counts = { all: LORE_ENTRIES.length };
   categories.forEach((c) => { counts[c] = LORE_ENTRIES.filter((e) => e.category === c).length; });
 
@@ -2694,6 +3013,21 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.38.0",
+    date: "2026-08-14",
+    sections: {
+      "Added": [
+        "Bestiary: full 100-entry Monster Table with complete stat blocks (CS/RS/DMG/NA/M/DEX/RES/To Hit/Type/Behaviour/Special Rules/XP/Loot), searchable and filterable by faction in a new Bestiary tab",
+        "Special Rules glossary browsable in the same tab, alongside the existing rule set already used for hero equipment effects",
+        "\"Roll Enemy Action\" panel in the Turn tab — walks through the Monster Behaviour AI logic for all 6 creature categories and rolls the real d10 tables for a result",
+        "Lore tab: new \"Bestiary\" category covering faction overviews and Exotic Monster entries, plus two new Deities (Ohlnir, Rhidnir)",
+      ],
+      "Fixed": [
+        "Merged newly-sourced Special Rules into the existing glossary rather than duplicating it, and added the 4 genuinely missing entries (Fast, Groundbreaker, Lightning Fast, Pyrophobia)",
+      ],
+    },
+  },
   {
     version: "1.37.0",
     date: "2026-08-14",
@@ -9204,6 +9538,99 @@ function AlchemyTab({ heroes, updateHero, addLog }) {
 }
 
 
+function BehaviourWalker() {
+  const [category, setCategory] = useState(BEHAVIOUR_CATEGORIES[0]);
+  const [situation, setSituation] = useState(null);
+  const [result, setResult] = useState(null);
+
+  const situationOptions = () => {
+    if (category === "Magic User") return ["Adjacent to a hero", "No LOS to any hero", "LOS to a hero, not adjacent"];
+    if (category === "Humanoid (Close Combat)" || category === "Beast" || category === "Higher Undead" || category === "Lower Undead")
+      return ["Adjacent to a hero", "Within M spaces, not adjacent", "More than M spaces away"];
+    if (category === "Humanoid (Missile Weapon)") return ["Adjacent to a hero (CC weapon)", "Within 2 squares, ranged weapon", "Needs to reposition/reload", "Ready to act — roll"];
+    return [];
+  };
+
+  const resolve = () => {
+    if (category === "Magic User") {
+      if (situation === "Adjacent to a hero") { setResult(rollD10Table(MAGIC_USER_ADJACENT_TABLE)); return; }
+      if (situation === "No LOS to any hero") { setResult(rollD10Table(MAGIC_USER_NO_LOS_TABLE)); return; }
+      setResult(rollD10Table(MAGIC_USER_LOS_TABLE));
+      return;
+    }
+    if (category === "Humanoid (Missile Weapon)") {
+      if (situation === "Adjacent to a hero (CC weapon)") { setResult(rollD10Table(ADJACENT_TABLES[category])); return; }
+      if (situation === "Within 2 squares, ranged weapon") { setResult({ r: null, action: "Move up to M squares away but remain in LOS, and reload at the same time. If unable to move away, switch to a close combat weapon." }); return; }
+      if (situation === "Needs to reposition/reload") { setResult({ r: null, action: "Move up to M spaces to a position with better odds to hit (including climbing objects), reloading at the same time. Skip this if it already repositioned this turn — then just reload." }); return; }
+      const missileFinalTable = [
+        { min: 1, max: 2, action: "Aim (no need to define target yet)" },
+        { min: 3, max: 7, action: "Shoot — target priority: a Wizard/Warrior Priest mid-spell or prayer first; otherwise roll 1d10: 1-4 closest hero, 5-7 hero with a ranged weapon, 8-10 magic user (randomise between ties)" },
+        { min: 8, max: 10, action: "Use Skill/Special Talent (Shoot if N/A)" },
+      ];
+      setResult(rollD10Table(missileFinalTable));
+      return;
+    }
+    if (situation === "Adjacent to a hero") { setResult(rollD10Table(ADJACENT_TABLES[category])); return; }
+    if (situation === "Within M spaces, not adjacent") {
+      if (category === "Humanoid (Close Combat)") { setResult(rollD10Table(HUMANOID_CC_WITHIN_M_TABLE)); return; }
+      if (category === "Lower Undead") { setResult({ r: null, action: "Move adjacent to the closest hero, taking the shortest route. Will not avoid traps or pits, and cannot climb out of pits." }); return; }
+      setResult({ r: null, action: "Perform a Charge Attack against the closest hero." });
+      return;
+    }
+    // More than M spaces away
+    if (category === "Lower Undead") { setResult({ r: null, action: "Move towards the closest hero. Will not avoid traps or pits, and cannot climb out of pits." }); return; }
+    setResult({ r: null, action: "Move towards the closest hero, avoiding traps not placed by heroes if possible (may climb objects if needed)." });
+  };
+
+  return (
+    <Panel className="mb-4">
+      <SectionTitle icon={Skull}>Roll Enemy Action</SectionTitle>
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {BEHAVIOUR_CATEGORIES.map((c) => (
+          <button
+            key={c}
+            onClick={() => { setCategory(c); setSituation(null); setResult(null); }}
+            className="text-xs px-2 py-1 rounded-full"
+            style={{ background: category === c ? palette.crimson : "#00000010", color: category === c ? palette.parchment : palette.ink }}
+          >
+            {c}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>What's the situation?</p>
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {situationOptions().map((s) => (
+          <button
+            key={s}
+            onClick={() => { setSituation(s); setResult(null); }}
+            className="text-xs px-2 py-1 rounded-full"
+            style={{ background: situation === s ? palette.forestDark : "#00000010", color: situation === s ? palette.parchment : palette.ink }}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+      <button
+        onClick={resolve}
+        disabled={!situation}
+        className="w-full flex items-center justify-center gap-2 py-2 rounded font-bold text-sm mb-2"
+        style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif", opacity: situation ? 1 : 0.5 }}
+      >
+        <Dice5 size={14} /> Resolve
+      </button>
+      {result && (
+        <div className="text-sm rounded p-3" style={{ background: palette.charcoal, color: palette.parchment, fontFamily: "Crimson Pro, serif" }}>
+          {result.r != null && <div className="text-xs mb-1 font-bold" style={{ color: palette.goldSoft, fontFamily: "JetBrains Mono, monospace" }}>Rolled {result.r}</div>}
+          {result.action}
+        </div>
+      )}
+      <p className="text-xs mt-3 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+        Reminder: an enemy always ends its turn with as few heroes behind it as possible. If the rules ever leave the outcome unclear, move it in whichever way favours the enemy most, and randomise between equal options.
+      </p>
+    </Panel>
+  );
+}
+
 function TurnTab({ party, setParty, heroes, updateHero, addLog }) {
   // Start of Turn resolver (moved here from the Party tab — it's step 1 of the Turn
   // Sequence, not persistent party state).
@@ -9614,6 +10041,8 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog }) {
           </div>
         )}
       </Panel>
+
+      <BehaviourWalker />
 
       <Panel>
         <SectionTitle icon={Users}>Initiative Bag</SectionTitle>
@@ -12786,6 +13215,7 @@ export default function App() {
     ["quest", "Quest", Map],
     ["compendium", "Compendium", ScrollText],
     ["lore", "Lore", Library],
+    ["bestiary", "Bestiary", Skull],
     ["campaigns", "Campaigns", FolderOpen],
     ["reference", "Reference", BookOpen],
   ];
@@ -12878,6 +13308,7 @@ export default function App() {
         {tab === "quest" && <QuestRollerPanel party={party} setParty={setParty} addLog={addLog} />}
         {tab === "compendium" && <CompendiumTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} initialCat={compendiumInitialCat} />}
         {tab === "lore" && <LoreTab goToTab={goToTab} />}
+        {tab === "bestiary" && <BestiaryTab />}
         {tab === "campaigns" && (
           <CampaignsTab
             campaigns={campaigns}

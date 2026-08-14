@@ -3,6 +3,18 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.38.0] — 2026-08-14
+
+### Added
+- Bestiary: full 100-entry Monster Table with complete stat blocks (CS/RS/DMG/NA/M/DEX/RES/To Hit/Type/Behaviour/Special Rules/XP/Loot), searchable and filterable by faction in a new Bestiary tab
+- Special Rules glossary browsable in the same tab, alongside the existing rule set already used for hero equipment effects
+- "Roll Enemy Action" panel in the Turn tab — walks through the Monster Behaviour AI logic for all 6 creature categories (Humanoid Close Combat, Humanoid Missile, Beast, Higher Undead, Lower Undead, Magic User) and rolls the real d10 tables for a result
+- Lore tab: new "Bestiary" category covering faction overviews (Bandits and Brigands, Orcs and Goblins, Dark Elves, The Undead, Beasts, Reptiles, The Ancient Lands) and Exotic Monster entries (Bloated Demon, Blood Demon, Lesser Plague Demon, Lurker, Psyker, Mimic, Drider, Naga, Shambler, Slime, Tomb Guardian, Plague Demon)
+- Two new Deities lore entries: Ohlnir and Rhidnir
+
+### Fixed
+- Merged newly-sourced Special Rules into the existing glossary rather than duplicating it, and added the 4 genuinely missing entries (Fast, Groundbreaker, Lightning Fast, Pyrophobia)
+
 ## [1.37.0] — 2026-08-14
 
 ### Added

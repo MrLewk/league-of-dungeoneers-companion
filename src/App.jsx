@@ -640,6 +640,14 @@ const STANDALONE_QUESTS = [
   { name: "First Blood", note: "Introductory quest, p221 — played before choosing a campaign" },
 ];
 
+// Quest Book I — Main Quests, in play order. First Blood is the flat introductory
+// quest; the two campaigns pull their sub-quest list from CAMPAIGNS below.
+const BOOK1_MAIN_QUEST_ORDER = [
+  "First Blood",
+  "The Dead Rising",
+  "Lair of the Spider Queen",
+];
+
 const CAMPAIGNS = [
   {
     name: "The Dead Rising",
@@ -747,19 +755,20 @@ const BOOK2_CAMPAIGNS = [
   },
 ];
 
+// Quest Book II — Backer Quests, written by Kickstarter backers.
 const BOOK2_BACKER_QUESTS = [
-  "A Hell of a Night ...",
-  "The Grey Lady",
-  "Runes to Ruin",
-  "At the Bat",
-  "Black Acanthus",
-  "Not Even in Death Do We Part",
-  "A Beast For Every Occasion",
-  "Tower of the Troll King",
-  "Life in Death",
-  "Saving the Nordman",
-  "Rescue Operation",
-  "By Rose and Anchor",
+  { name: "A Hell of a Night ...", author: "Daniel Herbera" },
+  { name: "The Grey Lady", author: "Charles Bingham" },
+  { name: "Runes to Ruin", author: "David Schneider" },
+  { name: "At the Bat", author: "Benjamin Murphy" },
+  { name: "Black Acanthus", author: "Aaron Gelb" },
+  { name: "Not Even in Death Do We Part", author: "Leland Schaidle" },
+  { name: "A Beast For Every Occasion", author: "Håkan \"Hakoon\" Lindell" },
+  { name: "Tower of the Troll King", author: "Michael Henderson" },
+  { name: "Life in Death", author: "Andrew Stillman" },
+  { name: "Saving the Nordman", author: "Peter Güttinger" },
+  { name: "Rescue Operation", author: "Marco Artemisio" },
+  { name: "By Rose and Anchor", author: "Hans Ziegler" },
 ];
 
 // Quest Book II — Mini Quests chapter. Short standalone encounters, no roll table to
@@ -3566,6 +3575,19 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.45.0",
+    date: "2026-08-15",
+    sections: {
+      "Added": [
+        "Quest Book II: Backer Quests now show \"Written by [author]\" under each title, pulled from the book's own credits, replacing the old \"titles only confirmed\" placeholder note",
+      ],
+      "Changed": [
+        "Quest Book I now matches Quest Book II's layout for consistency: a single \"Quest Book I: Main Quests\" panel (First Blood, then The Dead Rising and Lair of the Spider Queen as inline sub-checklists with progress counters), and \"Quests into the Ancient Lands\" renamed to \"Quest Book I: Ancient Lands\"",
+        "Quest tab reordered: Random Quests moved above the Quest Book I sections, and Side Quests moved to sit between Quest Book I and Quest Book II",
+      ],
+    },
+  },
   {
     version: "1.44.1",
     date: "2026-08-15",
@@ -13026,57 +13048,6 @@ function QuestRollerPanel({ party, setParty, addLog }) {
       </Panel>
 
       <Panel>
-        <SectionTitle icon={ScrollText}>Introductory Quest</SectionTitle>
-        <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-          Check off as you complete each one.
-        </p>
-        {STANDALONE_QUESTS.map((q) => (
-          <QuestChecklistRow
-            key={q.name}
-            label={q.name}
-            sub={q.note}
-            checked={quests.completed[`standalone:${q.name}`]}
-            onToggle={() => toggleCompleted(`standalone:${q.name}`, q.name)}
-          />
-        ))}
-      </Panel>
-
-      {CAMPAIGNS.map((campaign) => {
-        const doneCount = campaign.quests.filter((q) => quests.completed[`campaign:${campaign.name}:${q}`]).length;
-        return (
-          <Panel key={campaign.name}>
-            <SectionTitle icon={ScrollText}>{campaign.name} <span className="text-xs font-normal" style={{ color: palette.inkSoft }}>({doneCount}/{campaign.quests.length})</span></SectionTitle>
-            <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-              Check off as you complete each one, in order.
-            </p>
-            {campaign.quests.map((q) => (
-              <QuestChecklistRow
-                key={q}
-                label={q}
-                checked={quests.completed[`campaign:${campaign.name}:${q}`]}
-                onToggle={() => toggleCompleted(`campaign:${campaign.name}:${q}`, `${campaign.name} — ${q}`)}
-              />
-            ))}
-          </Panel>
-        );
-      })}
-
-      <Panel>
-        <SectionTitle icon={ScrollText}>Quests into the Ancient Lands</SectionTitle>
-        <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-          Check off as you complete each one. Each has 2 possible objective rooms depending on Ancient Lands tile access — check the right one at the table. Requires League of Dungeoneers membership (complete the first campaign) to reach via the Outpost.
-        </p>
-        {ANCIENT_LANDS_QUESTS.map((name) => (
-          <QuestChecklistRow
-            key={name}
-            label={name}
-            checked={quests.completed[`ancient:${name}`]}
-            onToggle={() => toggleCompleted(`ancient:${name}`, name)}
-          />
-        ))}
-      </Panel>
-
-      <Panel>
         <SectionTitle icon={Dice5}>Random Quests</SectionTitle>
         <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
           Roll 1d6 to pick an objective room (reroll on a 6). These can be replayed — layout shifts and difficulty scales with hero level. Check off as you complete each one.
@@ -13099,6 +13070,62 @@ function QuestRollerPanel({ party, setParty, addLog }) {
             label={q.name}
             checked={quests.completed[`random:${q.name}`]}
             onToggle={() => toggleCompleted(`random:${q.name}`, q.name)}
+          />
+        ))}
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={BookOpen}>Quest Book I: Main Quests</SectionTitle>
+        <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+          In play order. Multi-stage quests show their own stage checklist with a progress counter; the rest are single-page with no sub-stages.
+        </p>
+        {BOOK1_MAIN_QUEST_ORDER.map((name) => {
+          const campaign = CAMPAIGNS.find((c) => c.name === name);
+          if (campaign) {
+            const doneCount = campaign.quests.filter((q) => quests.completed[`campaign:${campaign.name}:${q}`]).length;
+            return (
+              <div key={name} className="mb-4">
+                <p className="text-sm font-bold mb-1" style={{ color: palette.crimson, fontFamily: "Cinzel, serif" }}>
+                  {name} <span className="text-xs font-normal" style={{ color: palette.inkSoft }}>({doneCount}/{campaign.quests.length})</span>
+                </p>
+                {campaign.quests.map((q) => (
+                  <QuestChecklistRow
+                    key={q}
+                    label={q}
+                    checked={quests.completed[`campaign:${campaign.name}:${q}`]}
+                    onToggle={() => toggleCompleted(`campaign:${campaign.name}:${q}`, `${campaign.name} — ${q}`)}
+                  />
+                ))}
+              </div>
+            );
+          }
+          const standalone = STANDALONE_QUESTS.find((q) => q.name === name);
+          if (standalone) {
+            return (
+              <QuestChecklistRow
+                key={name}
+                label={standalone.name}
+                sub={standalone.note}
+                checked={quests.completed[`standalone:${name}`]}
+                onToggle={() => toggleCompleted(`standalone:${name}`, name)}
+              />
+            );
+          }
+          return null;
+        })}
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={BookOpen}>Quest Book I: Ancient Lands</SectionTitle>
+        <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+          Check off as you complete each one. Each has 2 possible objective rooms depending on Ancient Lands tile access — check the right one at the table. Requires League of Dungeoneers membership (complete the first campaign) to reach via the Outpost.
+        </p>
+        {ANCIENT_LANDS_QUESTS.map((name) => (
+          <QuestChecklistRow
+            key={name}
+            label={name}
+            checked={quests.completed[`ancient:${name}`]}
+            onToggle={() => toggleCompleted(`ancient:${name}`, name)}
           />
         ))}
       </Panel>
@@ -13169,14 +13196,15 @@ function QuestRollerPanel({ party, setParty, addLog }) {
       <Panel>
         <SectionTitle icon={BookOpen}>Quest Book II: Backer Quests</SectionTitle>
         <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-          Only titles are confirmed so far (from the table of contents) — page numbers and mechanics aren't in yet.
+          The following quests were written by backers of the Kickstarter campaign.
         </p>
-        {BOOK2_BACKER_QUESTS.map((name) => (
+        {BOOK2_BACKER_QUESTS.map((q) => (
           <QuestChecklistRow
-            key={name}
-            label={name}
-            checked={quests.completed[`book2backer:${name}`]}
-            onToggle={() => toggleCompleted(`book2backer:${name}`, name)}
+            key={q.name}
+            label={q.name}
+            sub={`Written by ${q.author}`}
+            checked={quests.completed[`book2backer:${q.name}`]}
+            onToggle={() => toggleCompleted(`book2backer:${q.name}`, q.name)}
           />
         ))}
       </Panel>

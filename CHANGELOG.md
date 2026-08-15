@@ -3,6 +3,15 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.45.0] — 2026-08-15
+
+### Added
+- Quest Book II: Backer Quests now show "Written by [author]" under each title, pulled from the book's own credits, replacing the old "titles only confirmed" placeholder note
+
+### Changed
+- Quest Book I now matches Quest Book II's layout for consistency: a single "Quest Book I: Main Quests" panel (First Blood, then The Dead Rising and Lair of the Spider Queen as inline sub-checklists with progress counters), and "Quests into the Ancient Lands" renamed to "Quest Book I: Ancient Lands"
+- Quest tab reordered: Random Quests moved above the Quest Book I sections, and Side Quests moved to sit between Quest Book I and Quest Book II
+
 ## [1.44.1] — 2026-08-15
 
 ### Fixed

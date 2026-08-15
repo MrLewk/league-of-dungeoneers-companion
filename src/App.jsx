@@ -674,10 +674,24 @@ const ANCIENT_LANDS_QUESTS = [
   "Crypt of Khaba",
 ];
 
-// Quest Book II — Main Quests. The four with multi-stage structure (confirmed from
-// their actual quest text, not just the ToC) get their own checklist below in
-// BOOK2_CAMPAIGNS. The rest are single-page quests with no sub-quests, so their
-// titles stand alone here.
+// Quest Book II — Main Quests, in table-of-contents order. The four with confirmed
+// multi-stage structure pull their sub-quest list from BOOK2_CAMPAIGNS below; the
+// rest are single-page quests with no sub-quests and render as a plain checkbox.
+const BOOK2_MAIN_QUEST_ORDER = [
+  "Cult of the Hydra",
+  "Witches",
+  "Halls of the Goblin King",
+  "The Northern Tombs",
+  "The Lost Prayer",
+  "The Ghost of a King",
+  "A Kingdom Gone",
+  "The Toad",
+  "Corsairs",
+  "Giant Slayer",
+  "And Out Come The Wolves...",
+];
+
+// Single-page Main Quests — no sub-stages.
 const BOOK2_MAIN_QUESTS = [
   "The Lost Prayer",
   "The Ghost of a King",
@@ -3552,6 +3566,16 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.44.1",
+    date: "2026-08-15",
+    sections: {
+      "Fixed": [
+        "Quest Book II: Main Quests now render as a single list in table-of-contents order (Cult of the Hydra, Witches, Halls of the Goblin King, The Northern Tombs, then the single-page quests) instead of the multi-stage campaigns appearing as separate boxes above the rest, out of order — Backer Quests and Mini Quests remain their own boxes below",
+        "Removed a leftover line from the Main Quests panel that no longer matched what it now shows",
+      ],
+    },
+  },
   {
     version: "1.44.0",
     date: "2026-08-15",
@@ -13106,41 +13130,47 @@ function QuestRollerPanel({ party, setParty, addLog }) {
         ))}
       </Panel>
 
-      {BOOK2_CAMPAIGNS.map((campaign) => {
-        const doneCount = campaign.quests.filter((q) => quests.completed[`book2campaign:${campaign.name}:${q}`]).length;
-        return (
-          <Panel key={campaign.name}>
-            <SectionTitle icon={BookOpen}>{campaign.name} <span className="text-xs font-normal" style={{ color: palette.inkSoft }}>({doneCount}/{campaign.quests.length})</span></SectionTitle>
-            <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-              Quest Book II. Check off as you complete each stage, in order.
-            </p>
-            {campaign.quests.map((q) => (
-              <QuestChecklistRow
-                key={q}
-                label={q}
-                checked={quests.completed[`book2campaign:${campaign.name}:${q}`]}
-                onToggle={() => toggleCompleted(`book2campaign:${campaign.name}:${q}`, `${campaign.name} — ${q}`)}
-              />
-            ))}
-          </Panel>
-        );
-      })}
+      <Panel>
+        <SectionTitle icon={BookOpen}>Quest Book II: Main Quests</SectionTitle>
+        <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+          In table-of-contents order. Multi-stage quests show their own stage checklist with a progress counter; the rest are single-page with no sub-stages.
+        </p>
+        {BOOK2_MAIN_QUEST_ORDER.map((name) => {
+          const campaign = BOOK2_CAMPAIGNS.find((c) => c.name === name);
+          if (campaign) {
+            const doneCount = campaign.quests.filter((q) => quests.completed[`book2campaign:${campaign.name}:${q}`]).length;
+            return (
+              <div key={name} className="mb-4">
+                <p className="text-sm font-bold mb-1" style={{ color: palette.crimson, fontFamily: "Cinzel, serif" }}>
+                  {name} <span className="text-xs font-normal" style={{ color: palette.inkSoft }}>({doneCount}/{campaign.quests.length})</span>
+                </p>
+                {campaign.quests.map((q) => (
+                  <QuestChecklistRow
+                    key={q}
+                    label={q}
+                    checked={quests.completed[`book2campaign:${campaign.name}:${q}`]}
+                    onToggle={() => toggleCompleted(`book2campaign:${campaign.name}:${q}`, `${campaign.name} — ${q}`)}
+                  />
+                ))}
+              </div>
+            );
+          }
+          return (
+            <QuestChecklistRow
+              key={name}
+              label={name}
+              checked={quests.completed[`book2main:${name}`]}
+              onToggle={() => toggleCompleted(`book2main:${name}`, name)}
+            />
+          );
+        })}
+      </Panel>
 
       <Panel>
-        <SectionTitle icon={BookOpen}>Quest Book II</SectionTitle>
+        <SectionTitle icon={BookOpen}>Quest Book II: Backer Quests</SectionTitle>
         <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-          Single-page quests with no sub-stages, plus the Backer Quests. Only titles are confirmed for the Backer quests so far (from the table of contents) — page numbers and mechanics aren't in yet.
+          Only titles are confirmed so far (from the table of contents) — page numbers and mechanics aren't in yet.
         </p>
-        <p className="text-xs mb-1 font-bold uppercase" style={{ color: palette.goldSoft, fontFamily: "Cinzel, serif" }}>Main Quests</p>
-        {BOOK2_MAIN_QUESTS.map((name) => (
-          <QuestChecklistRow
-            key={name}
-            label={name}
-            checked={quests.completed[`book2main:${name}`]}
-            onToggle={() => toggleCompleted(`book2main:${name}`, name)}
-          />
-        ))}
-        <p className="text-xs mt-3 mb-1 font-bold uppercase" style={{ color: palette.goldSoft, fontFamily: "Cinzel, serif" }}>Backer Quests</p>
         {BOOK2_BACKER_QUESTS.map((name) => (
           <QuestChecklistRow
             key={name}

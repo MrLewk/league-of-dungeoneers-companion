@@ -3,6 +3,12 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.44.1] — 2026-08-15
+
+### Fixed
+- Quest Book II: Main Quests now render as a single list in table-of-contents order (Cult of the Hydra, Witches, Halls of the Goblin King, The Northern Tombs, then the single-page quests) instead of the multi-stage campaigns appearing as separate boxes above the rest, out of order — Backer Quests and Mini Quests remain their own boxes below
+- Removed a leftover line from the Main Quests panel that no longer matched what it now shows
+
 ## [1.44.0] — 2026-08-15
 
 ### Added

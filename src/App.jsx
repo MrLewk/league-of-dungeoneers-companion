@@ -10488,7 +10488,7 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog }) {
         )}
       </Panel>
 
-      <Panel>
+      <Panel className="mb-4">
         <SectionTitle icon={Users}>Initiative Bag</SectionTitle>
         <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
           1 hero token per hero, 1 per enemy, plus modifiers below. Build the bag, then draw one token at a time for turn order.

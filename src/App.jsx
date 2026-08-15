@@ -14227,8 +14227,13 @@ export default function App() {
               Rulebook v2.4 · QRS v2.24
             </span>
           </div>
-          <span className="text-xs" style={{ color: "#B8A78A", fontFamily: "JetBrains Mono, monospace" }}>
-            {saveState === "saving" ? "saving…" : saveState === "saved" ? "saved ✓" : saveState === "error" ? "save failed" : ""}
+          <span
+            className="flex items-center gap-1 text-xs shrink-0"
+            style={{ color: "#B8A78A", fontFamily: "JetBrains Mono, monospace", fontVariant: "small-caps", letterSpacing: "0.02em", whiteSpace: "nowrap" }}
+          >
+            {saveState === "saving" && "saving…"}
+            {saveState === "saved" && (<><span>saved</span> <Check size={12} /></>)}
+            {saveState === "error" && "save failed"}
           </span>
         </div>
       </header>

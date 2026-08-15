@@ -3,6 +3,18 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.39.0] — 2026-08-15
+
+### Added
+- Encounter Roller in the Turn tab — pick a faction (Beasts, Orcs and Goblins, Bandits and Brigands, Reptiles, Dark Elves, Undead, Ancient Lands), and it rolls the real 1d20 + level bonus against the full table, rolls the resulting creature count, and links each result to its Monster Table stats where the name matches
+
+### Changed
+- Turn tab reordered to match the rulebook's actual Turn Sequence: Start of Turn, Initiative Bag, Round, Action Points, Encounter Roller, Roll Enemy Action, Light Sources, Trade Gear, Short Rest
+
+### Fixed
+- Bestiary monster stat blocks (CS/RS/DMG/NA/M/DEX/RES/To Hit) were unreadable — dark text on a dark background
+- Lore tab's Bestiary filter could get stuck showing the wrong "The Ancient Lands" entry (there are two lore entries with that title, one under World and one under Bestiary) — each now opens its own correct text
+
 ## [1.38.0] — 2026-08-14
 
 ### Added

@@ -2153,6 +2153,495 @@ const MONSTER_TABLE_RAW = [
 ];
 const MONSTER_TABLE = MONSTER_TABLE_RAW.map((row) => Object.fromEntries(MONSTER_TABLE_FIELDS.map((f, i) => [f, row[i]])));
 
+// Encounter Tables (Bestiary p21-40) — 1d20 + X (X = 10 per hero level above 1),
+// find the matching row, roll each entry's Number formula. Ancient Lands is its own
+// location-based table (mixes Undead/Reptile-flavoured creatures per the rulebook).
+
+const ENCOUNTER_TABLE_BEASTS = [
+  { range: [1, 2], entries: [{ name: "Giant Rats", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [3, 4], entries: [{ name: "Bat Swarms", number: "1d2", weapons: "", armour: "0", special: "" }] },
+  { range: [5, 6], entries: [{ name: "Giant Rats", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [7, 8], entries: [{ name: "Giant Leeches", number: "1d2", weapons: "", armour: "0", special: "" }] },
+  { range: [9, 10], entries: [{ name: "Satyrs", number: "1d3", weapons: "Javelins, Shields", armour: "0", special: "" }] },
+  { range: [11, 12], entries: [{ name: "Giant Snakes", number: "1d2", weapons: "", armour: "0", special: "" }] },
+  { range: [13, 14], entries: [{ name: "Beastmen", number: "1d6", weapons: "Battleaxes, Shields", armour: "1", special: "" }] },
+  { range: [15, 16], entries: [{ name: "Gnolls", number: "1d6", weapons: "Longswords, Shields", armour: "1", special: "" }, { name: "Gnolls", number: "1d2", weapons: "Shortbows, Daggers", armour: "1", special: "" }] },
+  { range: [17, 18], entries: [{ name: "Giant Wolves", number: "1d4", weapons: "", armour: "0", special: "" }, { name: "Beastmen", number: "2", weapons: "Battle-axes", armour: "0", special: "" }] },
+  { range: [19, 20], entries: [{ name: "Satyrs", number: "1d6", weapons: "Javelins, Shields", armour: "0", special: "" }, { name: "Beastmen Guard", number: "1d4", weapons: "Battle-axes, Shields", armour: "2", special: "" }] },
+  { range: [21, 21], entries: [{ name: "Cave Bear", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [22, 22], entries: [{ name: "Gnolls", number: "1d6", weapons: "Longswords, Shields", armour: "1", special: "" }, { name: "Gnolls", number: "1d4", weapons: "Longbows, Daggers", armour: "1", special: "" }] },
+  { range: [23, 24], entries: [{ name: "Gnolls", number: "1d4", weapons: "Battleaxes, Shields", armour: "1", special: "" }, { name: "Gnoll Shaman", number: "1", weapons: "Staff", armour: "0", special: "Spells: 1 Close Combat spell, 1 Ranged or 1 Support" }] },
+  { range: [25, 26], entries: [{ name: "Harpies", number: "1d2", weapons: "", armour: "0", special: "" }, { name: "Slime", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [27, 28], entries: [{ name: "Giant Spiders", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [29, 30], entries: [{ name: "Giant Leeches", number: "1d4", weapons: "", armour: "0", special: "" }, { name: "Satyrs", number: "1d4", weapons: "Javelins, Shields", armour: "0", special: "" }] },
+  { range: [31, 32], entries: [{ name: "Beastmen", number: "1d4", weapons: "Battleaxes, Shields", armour: "3", special: "" }, { name: "Satyrs", number: "1d4", weapons: "Javelins, Shields", armour: "1", special: "" }] },
+  { range: [33, 34], entries: [{ name: "Satyrs", number: "1d6", weapons: "Javelins, Shields", armour: "1", special: "" }, { name: "Shambler", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [35, 36], entries: [{ name: "Gnolls", number: "1d6", weapons: "Battleaxes, Shields", armour: "2", special: "" }, { name: "Gnolls", number: "1d4", weapons: "Crossbows, Daggers", armour: "2", special: "" }] },
+  { range: [37, 38], entries: [{ name: "Giant Centipede", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [39, 40], entries: [{ name: "Minotaur", number: "1", weapons: "Greataxe", armour: "3", special: "" }] },
+  { range: [41, 42], entries: [{ name: "Lesser Plague Demons", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [43, 44], entries: [{ name: "River Troll", number: "1", weapons: "Warhammer", armour: "2", special: "" }] },
+  { range: [45, 46], entries: [{ name: "Satyrs", number: "1d4", weapons: "Javelins, Shields", armour: "1", special: "" }, { name: "Beastmen", number: "1d6", weapons: "Flails", armour: "3", special: "" }, { name: "Shambler", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [47, 48], entries: [{ name: "Slime", number: "2", weapons: "", armour: "0", special: "" }, { name: "Minotaur", number: "1", weapons: "Battleaxe", armour: "2", special: "" }] },
+  { range: [49, 50], entries: [{ name: "Ettin", number: "1", weapons: "Warhammer", armour: "2", special: "" }] },
+  { range: [51, 52], entries: [{ name: "Werewolves", number: "1d2", weapons: "", armour: "0", special: "" }] },
+  { range: [53, 54], entries: [{ name: "Stone Troll", number: "1", weapons: "Warhammer", armour: "2", special: "" }, { name: "Giant Centipede", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [55, 56], entries: [{ name: "Gargoyles", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [57, 57], entries: [{ name: "Beastmen", number: "1d6+2", weapons: "Battle-axes, Shields", armour: "3", special: "" }, { name: "Gnolls", number: "1d4", weapons: "Longbows, Daggers", armour: "1", special: "" }] },
+  { range: [58, 58], entries: [{ name: "Griffon", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [59, 60], entries: [{ name: "Satyrs", number: "1d6", weapons: "Javelins, Shields", armour: "1", special: "" }, { name: "Beastmen", number: "1d6", weapons: "Longswords, Shields", armour: "3", special: "" }, { name: "Gnoll Shaman", number: "1", weapons: "Staff", armour: "0", special: "Spells: 1 Close Combat, 1 Ranged and 1 Support" }] },
+  { range: [61, 62], entries: [{ name: "Beastmen", number: "1d6", weapons: "Battleaxes, Shields", armour: "2", special: "" }, { name: "Minotaur", number: "1", weapons: "Battleaxe, Shield", armour: "2", special: "" }] },
+  { range: [63, 64], entries: [{ name: "Blood Demons", number: "1d3", weapons: "Cursed Longswords", armour: "0", special: "" }] },
+  { range: [65, 66], entries: [{ name: "Beastmen", number: "1d6", weapons: "Morning Stars, Shields", armour: "1", special: "" }, { name: "Common Troll", number: "1", weapons: "Warhammer", armour: "1", special: "" }] },
+  { range: [67, 68], entries: [{ name: "Ettin", number: "1", weapons: "Warhammer", armour: "1", special: "" }, { name: "Gnolls", number: "1d4", weapons: "Longswords, Shields", armour: "2", special: "" }] },
+  { range: [69, 70], entries: [{ name: "Minotaurs", number: "3", weapons: "Greataxes", armour: "2", special: "" }, { name: "Shambler", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [71, 72], entries: [{ name: "Giant Spiders", number: "1d4", weapons: "", armour: "0", special: "" }] },
+  { range: [73, 74], entries: [{ name: "Plague Demons", number: "1d6", weapons: "Cursed Longswords", armour: "0", special: "" }] },
+  { range: [75, 76], entries: [{ name: "Common Trolls", number: "2", weapons: "Warhammers", armour: "0", special: "" }] },
+  { range: [77, 78], entries: [{ name: "Minotaur", number: "1", weapons: "Greataxe", armour: "2", special: "" }, { name: "Gnolls", number: "1d6", weapons: "Battleaxes, Shields", armour: "2", special: "" }, { name: "Gnoll Sergeant", number: "1", weapons: "Greatsword", armour: "2", special: "" }] },
+  { range: [79, 80], entries: [{ name: "Gnolls", number: "1d6", weapons: "Battleaxes, Shields", armour: "1", special: "" }, { name: "Gnoll Shaman", number: "1", weapons: "Staff", armour: "0", special: "Spells: 2 Close Combat, 2 Ranged and 1 Support" }, { name: "Gnoll Sergeant", number: "1", weapons: "Greataxe", armour: "2", special: "" }] },
+  { range: [81, 82], entries: [{ name: "Blood Demons", number: "1d6", weapons: "Cursed Longswords", armour: "0", special: "" }] },
+  { range: [83, 84], entries: [{ name: "Bloated Demon", number: "1", weapons: "", armour: "0", special: "" }, { name: "Shamblers", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [85, 86], entries: [{ name: "Bloated Demon", number: "1", weapons: "", armour: "0", special: "" }, { name: "Minotaurs", number: "3", weapons: "Greataxes", armour: "2", special: "" }] },
+  { range: [87, 87], entries: [{ name: "Lurker", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [88, 88], entries: [{ name: "Common Troll", number: "1", weapons: "Warhammer", armour: "1", special: "" }, { name: "Lurker", number: "1", weapons: "", armour: "0", special: "Spells: 3 Close Combat, 2 Ranged and 2 Support" }] },
+  { range: [89, 90], entries: [{ name: "Gigantic Spider", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [91, 92], entries: [{ name: "Wyvern", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [93, 94], entries: [{ name: "Minotaur", number: "1", weapons: "Greataxe", armour: "2", special: "" }, { name: "Beastmen", number: "1d6+2", weapons: "Longswords, Shields", armour: "2", special: "" }] },
+  { range: [95, 96], entries: [{ name: "Gigantic Spider", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [97, 98], entries: [{ name: "Blood Demons", number: "1d6+2", weapons: "Cursed Longswords", armour: "0", special: "" }, { name: "Lesser Plague Demons", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [99, 100], entries: [{ name: "Greater Demon", number: "1", weapons: "Greataxe", armour: "3", special: "" }] },
+  { range: [101, 102], entries: [{ name: "Minotaurs", number: "2", weapons: "Greataxes", armour: "3", special: "" }] },
+  { range: [103, 104], entries: [{ name: "Greater Demon", number: "1", weapons: "Cursed Greataxe", armour: "3", special: "" }, { name: "Wyvern", number: "1", weapons: "", armour: "2", special: "" }] },
+  { range: [105, 106], entries: [{ name: "Gigantic Spiders", number: "2", weapons: "", armour: "1", special: "" }] },
+  { range: [107, 108], entries: [{ name: "Griffons", number: "1d3", weapons: "", armour: "1", special: "" }, { name: "Hydra", number: "1", weapons: "", armour: "3", special: "" }] },
+  { range: [109, 110], entries: [{ name: "Wyverns", number: "2", weapons: "", armour: "3", special: "" }] },
+];
+
+const ENCOUNTER_TABLE_ORCS_GOBLINS = [
+  { range: [1, 2], entries: [{ name: "Giant Rats", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [3, 4], entries: [{ name: "Bat Swarms", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [5, 6], entries: [{ name: "Giant Rats", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [7, 8], entries: [{ name: "Goblins", number: "1d6", weapons: "Daggers", armour: "0", special: "" }] },
+  { range: [9, 10], entries: [{ name: "Goblins", number: "1d6", weapons: "Shortswords", armour: "0", special: "" }] },
+  { range: [11, 12], entries: [{ name: "Giant Snakes", number: "1d2", weapons: "", armour: "0", special: "" }] },
+  { range: [13, 14], entries: [{ name: "Orcs", number: "1d3", weapons: "Longswords, Shields", armour: "1", special: "" }] },
+  { range: [15, 16], entries: [{ name: "Cave Goblins", number: "1d6", weapons: "Shortswords, Shields", armour: "0", special: "" }, { name: "Cave Goblins", number: "1d4", weapons: "Shortbows, Daggers", armour: "0", special: "" }] },
+  { range: [17, 18], entries: [{ name: "Giant Wolves", number: "1d4", weapons: "", armour: "0", special: "" }, { name: "Cave Goblins", number: "2", weapons: "Nets and Shortswords", armour: "0", special: "" }] },
+  { range: [19, 20], entries: [{ name: "Orc Chieftain", number: "1", weapons: "Battleaxe, Shield", armour: "3", special: "" }, { name: "Orcs", number: "1d4", weapons: "Longswords, Shields", armour: "2", special: "" }] },
+  { range: [21, 22], entries: [{ name: "Goblins", number: "1d6", weapons: "Javelins, Shields", armour: "1", special: "" }, { name: "Orcs", number: "1d6", weapons: "Longswords, Shields", armour: "2", special: "" }, { name: "Goblin Shaman", number: "1", weapons: "Shortsword", armour: "0", special: "Spells: 1 Close Combat, 1 Ranged" }] },
+  { range: [23, 24], entries: [{ name: "Giant Wolves", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [25, 26], entries: [{ name: "Pox Rats", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [27, 28], entries: [{ name: "Giant Spiders", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [29, 30], entries: [{ name: "Ogre", number: "1", weapons: "Longsword", armour: "1", special: "" }] },
+  { range: [31, 32], entries: [{ name: "Orc Brutes", number: "1d4", weapons: "Battleaxes, Shields", armour: "3", special: "" }] },
+  { range: [33, 34], entries: [{ name: "Orcs", number: "1d6", weapons: "Battleaxes, Shields", armour: "1", special: "" }, { name: "Cave Goblins", number: "2", weapons: "Nets, Shortswords", armour: "1", special: "" }, { name: "Orc Chieftain", number: "1", weapons: "Morning Star, Shield", armour: "3", special: "" }] },
+  { range: [35, 36], entries: [{ name: "Orcs", number: "1d6", weapons: "Battleaxes, Shields", armour: "2", special: "" }, { name: "Shambler", number: "1", weapons: "", armour: "0", special: "" }, { name: "Orc Shaman", number: "1", weapons: "Staff", armour: "1", special: "Spells: 1 Close Combat, 1 Ranged, 1 Support" }] },
+  { range: [37, 38], entries: [{ name: "Cave Goblins", number: "2", weapons: "Nets, Shortswords", armour: "1", special: "" }, { name: "Ogre", number: "1", weapons: "Longsword, Shield", armour: "2", special: "" }] },
+  { range: [39, 40], entries: [{ name: "Giant Spiders", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [41, 42], entries: [{ name: "Ogres", number: "2", weapons: "Greatswords", armour: "2", special: "" }] },
+  { range: [43, 44], entries: [{ name: "Common Troll", number: "1", weapons: "Warhammer", armour: "1", special: "" }] },
+  { range: [45, 46], entries: [{ name: "Giant Wolves", number: "1d4", weapons: "", armour: "0", special: "" }, { name: "Orc Chieftain", number: "1", weapons: "Morning Star, Shield", armour: "2", special: "" }, { name: "Orc Chieftain", number: "1", weapons: "Greataxe", armour: "2", special: "" }] },
+  { range: [47, 48], entries: [{ name: "Ettin", number: "1", weapons: "Warhammer", armour: "0", special: "" }] },
+  { range: [49, 50], entries: [{ name: "Ogre Berserker", number: "1", weapons: "Longsword", armour: "0", special: "" }] },
+  { range: [51, 52], entries: [{ name: "Orcs", number: "1d6", weapons: "Halberds", armour: "1", special: "" }, { name: "Cave Goblins", number: "1d4", weapons: "Shortbows, Daggers", armour: "1", special: "" }] },
+  { range: [53, 54], entries: [{ name: "Stone Troll", number: "1", weapons: "Warhammer", armour: "2", special: "" }] },
+  { range: [55, 56], entries: [{ name: "Cave Goblins", number: "2", weapons: "Nets, Shortswords", armour: "1", special: "" }, { name: "Ogres", number: "2", weapons: "Longswords, Shields", armour: "2", special: "" }] },
+  { range: [57, 58], entries: [{ name: "Orc Brutes", number: "1d4", weapons: "Longswords", armour: "1", special: "" }, { name: "Giant Centipede", number: "1", weapons: "", armour: "0", special: "" }, { name: "Orc Shaman", number: "1", weapons: "Staff", armour: "0", special: "Spells: 2 Close Combat, 1 Ranged, 1 Support" }] },
+  { range: [59, 60], entries: [{ name: "Cave Goblins", number: "1d2", weapons: "Nets, Shortswords", armour: "0", special: "" }, { name: "Giant Wolves", number: "1d4", weapons: "", armour: "0", special: "" }, { name: "Ogre Chieftain", number: "1", weapons: "Longsword, Shield", armour: "3", special: "" }] },
+  { range: [61, 62], entries: [{ name: "Ogres", number: "1d3", weapons: "Flails", armour: "2", special: "" }, { name: "Shambler", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [63, 64], entries: [{ name: "Orcs", number: "1d6", weapons: "Longswords, Shields", armour: "2", special: "" }] },
+  { range: [65, 66], entries: [{ name: "Orc Brutes", number: "1d6", weapons: "Longswords, Shields", armour: "3", special: "" }, { name: "Goblins", number: "1d4", weapons: "Shortbows, Daggers", armour: "2", special: "" }] },
+  { range: [67, 68], entries: [{ name: "River Troll", number: "1", weapons: "Warhammer", armour: "0", special: "" }, { name: "Goblins", number: "1d4", weapons: "Shortbows, Daggers", armour: "0", special: "" }] },
+  { range: [69, 70], entries: [{ name: "Ogre Berserkers", number: "2", weapons: "Greatswords", armour: "0", special: "" }] },
+  { range: [71, 72], entries: [{ name: "Giant Spiders", number: "1d4", weapons: "", armour: "0", special: "" }] },
+  { range: [73, 74], entries: [{ name: "Orc Brutes", number: "1d4", weapons: "Longswords, Shields", armour: "3", special: "" }, { name: "Orc Shaman", number: "1", weapons: "Dagger", armour: "0", special: "Spells: 3 Close Combat, 1 Ranged, 1 Support" }] },
+  { range: [75, 76], entries: [{ name: "Giant Wolves", number: "1d4", weapons: "", armour: "0", special: "" }, { name: "Ettins", number: "2", weapons: "Warhammers", armour: "0", special: "" }] },
+  { range: [77, 78], entries: [{ name: "Ogres", number: "1d4", weapons: "Longswords, Shields", armour: "2", special: "" }, { name: "Shamblers", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [79, 80], entries: [{ name: "Orcs", number: "1d6", weapons: "Longswords, Shields", armour: "2", special: "" }, { name: "Goblin Shamans", number: "2", weapons: "Staffs", armour: "0", special: "Spells: 2 Close Combat, 2 Ranged, 1 Support" }] },
+  { range: [81, 82], entries: [{ name: "Orc Chieftains", number: "3", weapons: "Longswords, Shields", armour: "2", special: "" }, { name: "Cave Goblins", number: "4", weapons: "Shortbow, Dagger", armour: "0", special: "" }] },
+  { range: [83, 84], entries: [{ name: "Ogre Berserkers", number: "1d4", weapons: "Greatswords", armour: "2", special: "" }] },
+  { range: [85, 86], entries: [{ name: "Centaurs", number: "4", weapons: "Javelins, Shields", armour: "2", special: "" }] },
+  { range: [87, 88], entries: [{ name: "Common Troll", number: "1", weapons: "Warhammer", armour: "1", special: "" }, { name: "Orc Shaman", number: "1", weapons: "Staff", armour: "1", special: "Spells: 2 Close Combat, 2 Ranged, 2 Support" }] },
+  { range: [89, 90], entries: [{ name: "Ogre Chieftains", number: "2", weapons: "Longswords, Shields", armour: "3", special: "" }, { name: "Shambler", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [91, 92], entries: [{ name: "Ogre Berserkers", number: "1d4", weapons: "Greatswords", armour: "2", special: "" }] },
+  { range: [93, 94], entries: [{ name: "Giant Spiders", number: "4", weapons: "", armour: "0", special: "" }, { name: "Lurker", number: "1", weapons: "", armour: "0", special: "Spells: 3 Close Combat, 2 Ranged, 2 Support" }] },
+  { range: [95, 96], entries: [{ name: "Gigantic Spiders", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [97, 98], entries: [{ name: "Orc Brutes", number: "1d6", weapons: "Longswords, Shields", armour: "3", special: "" }, { name: "Goblins", number: "1d4", weapons: "Shortbow, Shortsword", armour: "2", special: "" }, { name: "Cave Goblins", number: "2", weapons: "Nets, Shortswords", armour: "0", special: "" }] },
+  { range: [99, 100], entries: [{ name: "Orc Chieftain", number: "1", weapons: "Longsword, Shield", armour: "4", special: "" }, { name: "Wyvern", number: "1", weapons: "", armour: "2", special: "" }] },
+  { range: [101, 102], entries: [{ name: "River Trolls", number: "3", weapons: "", armour: "2", special: "" }] },
+  { range: [103, 104], entries: [{ name: "Orc Chieftains", number: "2", weapons: "Longswords, Shields", armour: "4", special: "" }, { name: "Griffons", number: "3", weapons: "", armour: "0", special: "" }] },
+  { range: [105, 106], entries: [{ name: "Wyverns", number: "1d2", weapons: "", armour: "3", special: "" }] },
+  { range: [107, 108], entries: [{ name: "Orc Shamans", number: "2", weapons: "Staff", armour: "1", special: "Spells: 2 Close Combat, 2 Ranged, 2 Support" }, { name: "Common Trolls", number: "1d3+1", weapons: "Warhammers", armour: "2", special: "" }] },
+  { range: [109, 110], entries: [{ name: "Giants", number: "1d3", weapons: "Warhammers", armour: "3", special: "" }] },
+];
+
+const ENCOUNTER_TABLE_BANDITS_BRIGANDS = [
+  { range: [1, 2], entries: [{ name: "Giant Rats", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [3, 4], entries: [{ name: "Bat Swarms", number: "1d2", weapons: "", armour: "0", special: "" }] },
+  { range: [5, 6], entries: [{ name: "Giant Rats", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [7, 8], entries: [{ name: "Bat Swarms", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [9, 10], entries: [{ name: "Bandits", number: "1d3", weapons: "Shortswords", armour: "0", special: "" }] },
+  { range: [11, 12], entries: [{ name: "Giant Snakes", number: "1d2", weapons: "", armour: "0", special: "" }] },
+  { range: [13, 14], entries: [{ name: "Bandits", number: "1d3", weapons: "Shortswords", armour: "1", special: "" }, { name: "Bandits", number: "1d2", weapons: "Shortbows, Daggers", armour: "1", special: "" }] },
+  { range: [15, 16], entries: [{ name: "Bandits", number: "1d3", weapons: "Longswords", armour: "2", special: "" }, { name: "Bandits", number: "1d2", weapons: "Shortbows, Shortswords", armour: "1", special: "" }] },
+  { range: [17, 18], entries: [{ name: "Bandits", number: "1d3", weapons: "Battleaxes", armour: "1", special: "" }, { name: "Giant Wolves", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [19, 20], entries: [{ name: "Berserkers", number: "2", weapons: "Greataxes", armour: "0", special: "" }] },
+  { range: [21, 22], entries: [{ name: "Bandits", number: "1d3+1", weapons: "Morning Stars", armour: "2", special: "" }, { name: "Bandits", number: "1d3", weapons: "Longbows, Daggers", armour: "1", special: "" }] },
+  { range: [23, 24], entries: [{ name: "Giant Wolves", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [25, 26], entries: [{ name: "Pox Rats", number: "1d6", weapons: "", armour: "0", special: "" }, { name: "Slime", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [27, 28], entries: [{ name: "Bandits", number: "1d4+1", weapons: "Longswords, Shields", armour: "2", special: "" }, { name: "Bandit Leader", number: "1", weapons: "Greataxe", armour: "3", special: "" }] },
+  { range: [29, 30], entries: [{ name: "Ogre", number: "1", weapons: "Longsword", armour: "1", special: "" }] },
+  { range: [31, 32], entries: [{ name: "Bandits", number: "2", weapons: "Battleaxes, Shields", armour: "2", special: "" }, { name: "Warlock", number: "1", weapons: "Staff", armour: "0", special: "Spells: 1 Close Combat, 2 Ranged + Summon Demon" }] },
+  { range: [33, 34], entries: [{ name: "Bandits", number: "1d4", weapons: "Battle-axes, Shields", armour: "2", special: "" }, { name: "Bandits", number: "1d4", weapons: "Longbows, Daggers", armour: "1", special: "" }] },
+  { range: [35, 36], entries: [{ name: "Bandits", number: "1d4+1", weapons: "Broadswords, Shields", armour: "2", special: "" }, { name: "Bandit Leader", number: "1", weapons: "Battleaxe, Shield", armour: "3", special: "" }] },
+  { range: [37, 38], entries: [{ name: "Berserkers", number: "1d4", weapons: "Flails", armour: "0", special: "" }, { name: "Fallen Knight", number: "1", weapons: "Longsword, Shield", armour: "4", special: "" }, { name: "Fallen Knight", number: "1", weapons: "Battleaxe, Shield", armour: "4", special: "" }] },
+  { range: [39, 40], entries: [{ name: "Ogres", number: "2", weapons: "Greatswords", armour: "2", special: "" }] },
+  { range: [41, 42], entries: [{ name: "Bandits", number: "1d4+1", weapons: "Greatswords", armour: "2", special: "" }, { name: "Bandits", number: "1d4+1", weapons: "Crossbows, Daggers", armour: "1", special: "" }] },
+  { range: [43, 44], entries: [{ name: "Giant Wolves", number: "1d4", weapons: "", armour: "0", special: "" }, { name: "Bandit Leader", number: "1", weapons: "Longswords, Shields", armour: "2", special: "" }, { name: "Bandit Leader", number: "1", weapons: "Greataxe", armour: "2", special: "" }] },
+  { range: [45, 46], entries: [{ name: "Bandits", number: "1d6", weapons: "Battleaxes, Shields", armour: "0", special: "" }, { name: "Warlock", number: "1", weapons: "Shortsword", armour: "0", special: "Spells: 2 Close Combat, 2 Ranged, 1 Support + Summon Demon" }] },
+  { range: [47, 48], entries: [{ name: "Ogre Berserker", number: "1", weapons: "Flail", armour: "1", special: "" }] },
+  { range: [49, 50], entries: [{ name: "Shamblers", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [51, 52], entries: [{ name: "Fallen Knights", number: "1d3", weapons: "Longsword, Shield", armour: "4", special: "" }] },
+  { range: [53, 54], entries: [{ name: "Berserkers", number: "1d6", weapons: "Battleaxes", armour: "1", special: "" }] },
+  { range: [55, 56], entries: [{ name: "Berserkers", number: "1d4+1", weapons: "Longswords", armour: "1", special: "" }, { name: "Warlock", number: "1", weapons: "Broadsword", armour: "0", special: "Spells: 3 Close Combat, 2 Ranged, 1 Support + Summon Demon" }] },
+  { range: [57, 58], entries: [{ name: "Ogre Chieftain", number: "1", weapons: "Longsword, Shield", armour: "2", special: "" }, { name: "Bandits", number: "2", weapons: "Longbows, Daggers", armour: "1", special: "" }, { name: "Giant Wolves", number: "1d4", weapons: "", armour: "0", special: "" }] },
+  { range: [59, 60], entries: [{ name: "Ogres", number: "1d3", weapons: "Halberds", armour: "2", special: "" }] },
+  { range: [61, 62], entries: [{ name: "Giant Centipedes", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [63, 64], entries: [{ name: "Shamblers", number: "2", weapons: "", armour: "0", special: "" }, { name: "Bandits", number: "1d4", weapons: "Crossbows, Daggers", armour: "3", special: "" }] },
+  { range: [65, 66], entries: [{ name: "Berserkers", number: "1d4+1", weapons: "Battleaxes", armour: "2", special: "" }, { name: "Bandit Leader", number: "1", weapons: "Battleaxe, Shield", armour: "3", special: "" }] },
+  { range: [67, 68], entries: [{ name: "Ogre Berserkers", number: "2", weapons: "Greatswords", armour: "2", special: "" }] },
+  { range: [69, 70], entries: [{ name: "Giant Spiders", number: "1d4", weapons: "", armour: "0", special: "" }] },
+  { range: [71, 72], entries: [{ name: "Fallen Knights", number: "1d4", weapons: "Cursed Longswords, Shields", armour: "4", special: "" }, { name: "Warlock", number: "1", weapons: "Dagger", armour: "0", special: "Spells: 3 Close Combat, 2 Ranged, 1 Support + Summon Demon" }] },
+  { range: [73, 74], entries: [{ name: "Fallen Knight", number: "1d6", weapons: "Longswords, Shields", armour: "4", special: "" }, { name: "Giant Wolves", number: "1d4", weapons: "", armour: "0", special: "" }] },
+  { range: [75, 76], entries: [{ name: "Ogres", number: "1d4", weapons: "Longswords, Shields", armour: "2", special: "" }] },
+  { range: [77, 78], entries: [{ name: "Shamblers", number: "2", weapons: "", armour: "0", special: "" }, { name: "Warlocks", number: "2", weapons: "Staffs", armour: "0", special: "Spells: 2 Close Combat, 2 Ranged, 1 Support + Summon Greater Demon" }] },
+  { range: [79, 80], entries: [{ name: "Bandit Leaders", number: "3", weapons: "Longswords, Shields", armour: "3", special: "" }, { name: "Bandits", number: "4", weapons: "Crossbows, Daggers", armour: "2", special: "" }] },
+  { range: [81, 82], entries: [{ name: "Ogre Berserkers", number: "1d4", weapons: "Greatswords", armour: "2", special: "" }] },
+  { range: [83, 84], entries: [{ name: "Centaurs", number: "4", weapons: "Javelins, Shields", armour: "3", special: "" }] },
+  { range: [85, 86], entries: [{ name: "Common Troll", number: "1", weapons: "Warhammer", armour: "1", special: "" }, { name: "Warlock", number: "1", weapons: "Staff", armour: "0", special: "Spells: 3 Close Combat, 2 Ranged, 1 Support + Summon Greater Demon" }] },
+  { range: [87, 88], entries: [{ name: "Ogres Chieftains", number: "3", weapons: "Longswords, Shields", armour: "3", special: "" }] },
+  { range: [89, 90], entries: [{ name: "Ogre Berserkers", number: "1d4", weapons: "Greatswords", armour: "2", special: "" }] },
+  { range: [91, 92], entries: [{ name: "Centaurs", number: "2", weapons: "Longbows, Shortswords", armour: "1", special: "" }, { name: "Ogres", number: "2", weapons: "Longswords, Shields", armour: "2", special: "" }] },
+  { range: [93, 94], entries: [{ name: "Ogre Berserkers", number: "3", weapons: "Greataxes", armour: "3", special: "" }] },
+  { range: [95, 96], entries: [{ name: "Fallen Knights", number: "1d6", weapons: "Cursed Longswords, Shields", armour: "4", special: "" }, { name: "Bandits", number: "1d4", weapons: "Longbows, Shortsword", armour: "2", special: "" }] },
+  { range: [97, 98], entries: [{ name: "Ogre Chieftain", number: "1", weapons: "Battleaxe, Shield", armour: "3", special: "" }, { name: "Gigantic Spider", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [99, 100], entries: [{ name: "Wyvern", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [101, 102], entries: [{ name: "Gigantic Spiders", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [103, 104], entries: [{ name: "Giant", number: "1", weapons: "Warhammer", armour: "2", special: "" }, { name: "Fallen Knights", number: "1d6", weapons: "Cursed Longswords, Shields", armour: "4", special: "" }] },
+  { range: [105, 106], entries: [{ name: "Stone Golem", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [107, 108], entries: [{ name: "Wyvern", number: "1", weapons: "", armour: "0", special: "" }, { name: "Ogres Chieftain", number: "2", weapons: "Longswords, Shields", armour: "3", special: "" }] },
+  { range: [109, 110], entries: [{ name: "Giants", number: "2", weapons: "Warhammers", armour: "3", special: "" }] },
+];
+
+const ENCOUNTER_TABLE_REPTILES = [
+  { range: [1, 2], entries: [{ name: "Giant Rats", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [3, 4], entries: [{ name: "Bat Swarms", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [5, 6], entries: [{ name: "Giant Rats", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [7, 8], entries: [{ name: "Slime", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [9, 10], entries: [{ name: "Giant Snakes", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [11, 12], entries: [{ name: "Geckos", number: "1d2", weapons: "Shortswords", armour: "0", special: "" }] },
+  { range: [13, 14], entries: [{ name: "Geckos", number: "1d3", weapons: "Shortswords", armour: "0", special: "" }, { name: "Geckos", number: "1d2", weapons: "Shortswords, Shields", armour: "0", special: "" }] },
+  { range: [15, 16], entries: [{ name: "Gecko Assassins", number: "1d4", weapons: "Shortbows, Daggers", armour: "0", special: "" }, { name: "Froglings", number: "1d6", weapons: "Shortswords, Shields", armour: "0", special: "" }] },
+  { range: [17, 18], entries: [{ name: "Saurians", number: "1d4", weapons: "Battleaxes, Shields", armour: "1", special: "" }] },
+  { range: [19, 20], entries: [{ name: "Saurians", number: "1d4", weapons: "Morning Stars, Shields", armour: "1", special: "" }, { name: "Gecko Assassins", number: "1d4", weapons: "Shortbows, Daggers", armour: "0", special: "" }] },
+  { range: [21, 22], entries: [{ name: "Geckos", number: "1d6", weapons: "Javelins, Shields", armour: "0", special: "" }, { name: "Saurians", number: "1d6", weapons: "Longswords, Shields", armour: "1", special: "" }] },
+  { range: [23, 24], entries: [{ name: "Froglings", number: "1d4", weapons: "Battle-axes, Shields", armour: "0", special: "" }, { name: "Saurian Priest", number: "1", weapons: "Staff", armour: "0", special: "Spells: 1 Close Combat, 1 Ranged" }] },
+  { range: [25, 26], entries: [{ name: "Shambler", number: "1", weapons: "", armour: "0", special: "" }, { name: "Saurians", number: "1d4+1", weapons: "Javelins, Shields", armour: "1", special: "" }] },
+  { range: [27, 28], entries: [{ name: "Giant Toad", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [29, 30], entries: [{ name: "Giant Centipede", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [31, 32], entries: [{ name: "Saurian Elites", number: "1d4", weapons: "Battle-axes, Shields", armour: "3", special: "" }] },
+  { range: [33, 34], entries: [{ name: "Saurians", number: "1d6", weapons: "Battlehammers, Shields", armour: "1", special: "" }, { name: "Geckos", number: "2", weapons: "Nets, Shortswords", armour: "1", special: "" }, { name: "Saurian", number: "1", weapons: "Battleaxes, Shields", armour: "3", special: "" }] },
+  { range: [35, 36], entries: [{ name: "Saurians", number: "1d6", weapons: "Battleaxes, Shields", armour: "2", special: "" }, { name: "Raptor", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [37, 38], entries: [{ name: "Raptors", number: "1d4", weapons: "", armour: "0", special: "" }] },
+  { range: [39, 40], entries: [{ name: "Giant Spiders", number: "1d3+1", weapons: "", armour: "0", special: "" }] },
+  { range: [41, 42], entries: [{ name: "Nagas", number: "2", weapons: "Shortswords", armour: "2", special: "" }] },
+  { range: [43, 44], entries: [{ name: "Saurians", number: "1d4", weapons: "Battleaxes, Shields", armour: "2", special: "" }, { name: "Giant Toad", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [45, 46], entries: [{ name: "Saurian Elites", number: "1d4", weapons: "Battlehammers, Shields", armour: "3", special: "" }, { name: "Giant Toads", number: "1d2", weapons: "", armour: "0", special: "" }] },
+  { range: [47, 48], entries: [{ name: "Nagas", number: "1d2", weapons: "Longswords", armour: "2", special: "" }] },
+  { range: [49, 50], entries: [{ name: "Saurian Elites", number: "1d4", weapons: "Flails", armour: "3", special: "" }, { name: "Saurian Priest", number: "1", weapons: "Staff", armour: "1", special: "Spells: 1 Close Combat, 1 Ranged, 1 Support" }] },
+  { range: [51, 52], entries: [{ name: "Saurian Elites", number: "1d6", weapons: "Battleaxes, Shields", armour: "3", special: "" }, { name: "Shamblers", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [53, 54], entries: [{ name: "Naga", number: "1", weapons: "Shortswords", armour: "2", special: "" }, { name: "Slime", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [55, 56], entries: [{ name: "Geckos", number: "2", weapons: "Nets, Shortswords", armour: "1", special: "" }, { name: "Nagas", number: "2", weapons: "Shortswords", armour: "2", special: "" }] },
+  { range: [57, 58], entries: [{ name: "Saurian Elites", number: "1d4+1", weapons: "Longswords", armour: "1", special: "" }, { name: "Saurian Priest", number: "1", weapons: "Staff", armour: "0", special: "Spells: 2 Close Combat, 2 Ranged, 1 Support" }] },
+  { range: [59, 60], entries: [{ name: "Geckos", number: "1d2", weapons: "Nets, Shortswords", armour: "0", special: "" }, { name: "Raptors", number: "1d4", weapons: "", armour: "0", special: "" }, { name: "Naga", number: "1", weapons: "Battlehammers", armour: "3", special: "" }] },
+  { range: [61, 62], entries: [{ name: "Giant Snakes", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [63, 64], entries: [{ name: "Saurians", number: "1d6", weapons: "Longswords, Shields", armour: "2", special: "" }] },
+  { range: [65, 66], entries: [{ name: "Saurian Elites", number: "1d6", weapons: "Morning Stars, Shields", armour: "3", special: "" }, { name: "Geckos", number: "1d4", weapons: "Shortbows, Daggers", armour: "2", special: "" }] },
+  { range: [67, 68], entries: [{ name: "Naga", number: "1", weapons: "Battlehammers", armour: "0", special: "" }, { name: "Gecko Assassins", number: "1d4", weapons: "Shortbows, Daggers", armour: "0", special: "" }, { name: "Froglings", number: "1d4", weapons: "Nets, Shortswords", armour: "0", special: "" }] },
+  { range: [69, 70], entries: [{ name: "Giant Toads", number: "2", weapons: "", armour: "0", special: "" }, { name: "Slime", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [71, 72], entries: [{ name: "Giant Snakes", number: "1d4", weapons: "", armour: "0", special: "" }] },
+  { range: [73, 74], entries: [{ name: "Saurian Elites", number: "1d4", weapons: "Longswords, Shields", armour: "3", special: "" }, { name: "Saurian Priest", number: "1", weapons: "Staff", armour: "0", special: "Spells: 3 Close Combat, 2 Ranged, 1 Support" }, { name: "Salamander", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [75, 76], entries: [{ name: "Giant Toads", number: "1d2", weapons: "", armour: "0", special: "" }, { name: "Salamanders", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [77, 78], entries: [{ name: "Nagas", number: "1d4", weapons: "Shortswords", armour: "2", special: "" }] },
+  { range: [79, 80], entries: [{ name: "Saurians", number: "1d6", weapons: "Longswords, Shields", armour: "2", special: "" }, { name: "Saurian Priest", number: "1", weapons: "Staff", armour: "0", special: "Spells: 3 Close Combat, 2 Ranged, 2 Support" }] },
+  { range: [81, 82], entries: [{ name: "Saurian War Chiefs", number: "3", weapons: "Morning Stars, Shields", armour: "2", special: "" }, { name: "Shamblers", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [83, 84], entries: [{ name: "Gigantic Snake", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [85, 86], entries: [{ name: "Cockatrice", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [87, 88], entries: [{ name: "Naga", number: "1", weapons: "Daggers", armour: "1", special: "" }, { name: "Saurian Priest", number: "1", weapons: "Staff", armour: "1", special: "Spells: 4 Close Combat, 2 Ranged, 2 Support" }, { name: "Gecko Assassins", number: "2", weapons: "Shortbows, Daggers", armour: "1", special: "" }] },
+  { range: [89, 90], entries: [{ name: "Saurian War Chief", number: "1", weapons: "Longswords, Shields", armour: "3", special: "" }, { name: "Cockatrice", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [91, 92], entries: [{ name: "Nagas", number: "1d4", weapons: "Broadswords", armour: "2", special: "" }, { name: "Giant Toads", number: "2", weapons: "", armour: "0", special: "" }, { name: "Cockatrice", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [93, 94], entries: [{ name: "Naga", number: "1", weapons: "Longswords", armour: "3", special: "" }, { name: "Shambler", number: "1", weapons: "", armour: "0", special: "" }, { name: "Saurian Elites", number: "1d6", weapons: "Halberds, Shields", armour: "2", special: "" }] },
+  { range: [95, 96], entries: [{ name: "Gigantic Snake", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [97, 98], entries: [{ name: "Saurian Elites", number: "1d6", weapons: "Longswords, Shields", armour: "3", special: "" }, { name: "Geckos", number: "1d4", weapons: "Shortbows, Shortswords", armour: "2", special: "" }, { name: "Froglings", number: "2", weapons: "Nets, Shortswords", armour: "0", special: "" }] },
+  { range: [99, 100], entries: [{ name: "Hydra", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [101, 102], entries: [{ name: "Wyvern", number: "1", weapons: "", armour: "3", special: "" }] },
+  { range: [103, 104], entries: [{ name: "Saurian Priest", number: "2", weapons: "Staff", armour: "1", special: "Spells: 3 Close Combat, 2 Ranged, 1 Support" }, { name: "Stone Trolls", number: "3", weapons: "Warhammers", armour: "4", special: "" }] },
+  { range: [105, 106], entries: [{ name: "Stone Golem", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [107, 108], entries: [{ name: "Saurian Priest", number: "2", weapons: "Staff", armour: "0", special: "Spells: 3 Close Combat, 2 Ranged, 1 Support" }, { name: "Hydra", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [109, 110], entries: [{ name: "Dragon", number: "1", weapons: "", armour: "1", special: "Reroll if in a corridor." }] },
+];
+
+const ENCOUNTER_TABLE_DARK_ELVES = [
+  { range: [1, 2], entries: [{ name: "Giant Rats", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [3, 4], entries: [{ name: "Bat Swarms", number: "1d2", weapons: "", armour: "0", special: "" }] },
+  { range: [5, 6], entries: [{ name: "Giant Rats", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [7, 8], entries: [{ name: "Bat Swarms", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [9, 10], entries: [{ name: "Dark Elves", number: "1d3", weapons: "Shortswords", armour: "0", special: "" }] },
+  { range: [11, 12], entries: [{ name: "Giant Snakes", number: "1d2", weapons: "", armour: "0", special: "" }] },
+  { range: [13, 14], entries: [{ name: "Dark Elves", number: "1d3", weapons: "Shortswords", armour: "1", special: "" }, { name: "Dark Elves", number: "1d2", weapons: "Shortbows, Daggers", armour: "1", special: "" }] },
+  { range: [15, 16], entries: [{ name: "Dark Elves", number: "1d3", weapons: "Longswords", armour: "2", special: "" }, { name: "Dark Elf Assassins", number: "1d2", weapons: "Poisoned Shortswords", armour: "1", special: "Has the Poisonous special rule" }] },
+  { range: [17, 18], entries: [{ name: "Dark Elves", number: "1d3", weapons: "Battleaxes", armour: "1", special: "" }, { name: "Giant Wolves", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [19, 20], entries: [{ name: "Dark Elf Captain", number: "1", weapons: "Greataxe", armour: "1", special: "" }, { name: "Shambler", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [21, 22], entries: [{ name: "Dark Elves", number: "1d3+1", weapons: "Morning Stars", armour: "2", special: "" }, { name: "Dark Elf Snipers", number: "1d3", weapons: "Longbows, Daggers", armour: "1", special: "" }] },
+  { range: [23, 24], entries: [{ name: "Giant Centipedes", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [25, 26], entries: [{ name: "Pox Rats", number: "1d6", weapons: "", armour: "0", special: "" }, { name: "Harpies", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [27, 28], entries: [{ name: "Giant Spiders", number: "1d4+1", weapons: "", armour: "0", special: "" }, { name: "Shambler", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [29, 30], entries: [{ name: "Dryder", number: "1", weapons: "Longsword", armour: "1", special: "" }] },
+  { range: [31, 32], entries: [{ name: "Dark Elves", number: "2", weapons: "Battleaxes, Shields", armour: "2", special: "" }, { name: "Dark Elf Warlock", number: "1", weapons: "Staff", armour: "0", special: "Spells: 1 Close Combat, 1 Ranged" }] },
+  { range: [33, 34], entries: [{ name: "Dark Elves", number: "1d4", weapons: "Battleaxes, Shields", armour: "2", special: "" }, { name: "Dark Elf Snipers", number: "1d4", weapons: "Longbows, Daggers", armour: "1", special: "" }] },
+  { range: [35, 36], entries: [{ name: "Dark Elves", number: "1d4+1", weapons: "Broadswords, Shields", armour: "2", special: "" }, { name: "Dark Elf Captain", number: "1", weapons: "Battleaxe, Shield", armour: "3", special: "" }] },
+  { range: [37, 38], entries: [{ name: "Blood Demons", number: "1d4", weapons: "Flails", armour: "0", special: "" }, { name: "Harpies", number: "2", weapons: "", armour: "0", special: "" }, { name: "Shambler", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [39, 40], entries: [{ name: "Dryders", number: "2", weapons: "Greatswords", armour: "2", special: "" }] },
+  { range: [41, 42], entries: [{ name: "Dark Elves", number: "1d4+1", weapons: "Greatswords", armour: "2", special: "" }, { name: "Dark Elf Assassins", number: "1d4+1", weapons: "Crossbows, Poisoned Daggers", armour: "1", special: "Has the Poisonous special rule" }] },
+  { range: [43, 44], entries: [{ name: "Giant Wolves", number: "1d4", weapons: "", armour: "0", special: "" }, { name: "Dark Elf Captains", number: "1", weapons: "Longswords, Shields", armour: "2", special: "" }, { name: "Shambler", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [45, 46], entries: [{ name: "Dark Elves", number: "1d6", weapons: "Battleaxes, Shields", armour: "0", special: "" }, { name: "Dark Elf Warlock", number: "1", weapons: "Shortsword", armour: "0", special: "Spells: 2 Close Combat, 1 Ranged, 1 Support" }] },
+  { range: [47, 48], entries: [{ name: "Slime", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [49, 50], entries: [{ name: "Shamblers", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [51, 52], entries: [{ name: "Gargoyles", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [53, 54], entries: [{ name: "Shamblers", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [55, 56], entries: [{ name: "Plague Demons", number: "1d4", weapons: "Longswords", armour: "1", special: "" }, { name: "Psyker", number: "1", weapons: "Broadsword", armour: "0", special: "Spells: 2 Close Combat, 2 Ranged, 1 Support" }] },
+  { range: [57, 58], entries: [{ name: "Dryder", number: "1", weapons: "Longsword, Shield", armour: "2", special: "" }, { name: "Dark Elf Assassins", number: "2", weapons: "Poisoned Daggers", armour: "1", special: "Has the Poisonous special rule" }, { name: "Giant Spiders", number: "1d4", weapons: "", armour: "0", special: "" }] },
+  { range: [59, 60], entries: [{ name: "Dryders", number: "1d3", weapons: "Halberds", armour: "2", special: "" }] },
+  { range: [61, 62], entries: [{ name: "Giant Centipedes", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [63, 64], entries: [{ name: "Shamblers", number: "2", weapons: "", armour: "0", special: "" }, { name: "Dark Elf Assassins", number: "1d4", weapons: "Shortbows, Daggers", armour: "3", special: "" }] },
+  { range: [65, 66], entries: [{ name: "Dark Elf Captain", number: "1", weapons: "Battleaxe, Shield", armour: "3", special: "" }] },
+  { range: [67, 68], entries: [{ name: "Blood Demons", number: "2", weapons: "Greatswords", armour: "2", special: "" }] },
+  { range: [69, 70], entries: [{ name: "Giant Spiders", number: "1d4", weapons: "", armour: "0", special: "" }] },
+  { range: [71, 72], entries: [{ name: "Blood Demons", number: "1d4", weapons: "Cursed Longswords, Shields", armour: "4", special: "" }, { name: "Dark Elf Warlock", number: "1", weapons: "Dagger", armour: "0", special: "Spells: 3 Close Combat, 2 Ranged, 1 Support" }] },
+  { range: [73, 74], entries: [{ name: "Dark Elves", number: "1d6", weapons: "Longswords, Shields", armour: "4", special: "" }, { name: "Giant Spiders", number: "1d4", weapons: "", armour: "0", special: "" }] },
+  { range: [75, 76], entries: [{ name: "Dryders", number: "2", weapons: "Longswords, Shields", armour: "2", special: "" }] },
+  { range: [77, 78], entries: [{ name: "Shamblers", number: "2", weapons: "", armour: "0", special: "" }, { name: "Psyker", number: "2", weapons: "Staffs", armour: "0", special: "Spells: 3 Close Combat, 2 Ranged, 1 Support" }] },
+  { range: [79, 80], entries: [{ name: "Dark Elf Captains", number: "2", weapons: "Longswords, Shields", armour: "3", special: "" }, { name: "Dark Elf Snipers", number: "4", weapons: "Crossbows, Daggers", armour: "2", special: "" }] },
+  { range: [81, 82], entries: [{ name: "Dryders", number: "2", weapons: "Greatswords", armour: "2", special: "" }] },
+  { range: [83, 84], entries: [{ name: "Medusa", number: "1", weapons: "Broadsword, Shield", armour: "0", special: "" }] },
+  { range: [85, 86], entries: [{ name: "Common Troll", number: "1", weapons: "Warhammer", armour: "1", special: "" }, { name: "Psyker", number: "1", weapons: "Staff", armour: "0", special: "Spells: 3 Close Combat, 2 Ranged, 2 Support" }] },
+  { range: [87, 88], entries: [{ name: "Cockatrice", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [89, 90], entries: [{ name: "Common Trolls", number: "2", weapons: "Warhammers", armour: "2", special: "" }, { name: "Dark Elves", number: "1d6", weapons: "Battlehammers, Shields", armour: "1", special: "" }] },
+  { range: [91, 92], entries: [{ name: "Medusa", number: "1", weapons: "Longsword, Shield", armour: "2", special: "" }] },
+  { range: [93, 94], entries: [{ name: "Dryders", number: "3", weapons: "Greataxes", armour: "3", special: "" }] },
+  { range: [95, 96], entries: [{ name: "Blood Demons", number: "1d6", weapons: "Cursed Longswords, Shields", armour: "4", special: "" }, { name: "Dark Elf Assassins", number: "1d4", weapons: "Poisoned Shortswords", armour: "2", special: "" }] },
+  { range: [97, 98], entries: [{ name: "Dryder", number: "1", weapons: "Battleaxe, Shield", armour: "3", special: "" }, { name: "Gigantic Spider", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [99, 100], entries: [{ name: "Hydra", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [101, 102], entries: [{ name: "Gigantic Spiders", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [103, 104], entries: [{ name: "Dark Elf Warlock", number: "2", weapons: "Staff", armour: "0", special: "Spells: 3 Close Combat, 2 Ranged, 2 Support" }, { name: "Greater Demons", number: "2", weapons: "Cursed Longswords, Shields", armour: "3", special: "" }] },
+  { range: [105, 106], entries: [{ name: "Dryders", number: "1d3+1", weapons: "Battleaxes, Shields", armour: "3", special: "" }] },
+  { range: [107, 108], entries: [{ name: "Psykers", number: "2", weapons: "Staff", armour: "0", special: "Spells: 3 Close Combat, 2 Ranged, 2 Support" }, { name: "Stone Golem", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [109, 110], entries: [{ name: "Hydras", number: "1d2", weapons: "", armour: "3", special: "" }] },
+];
+
+const ENCOUNTER_TABLE_UNDEAD = [
+  { range: [1, 2], entries: [{ name: "Giant Rats", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [3, 4], entries: [{ name: "Bat Swarms", number: "1d2", weapons: "", armour: "0", special: "" }] },
+  { range: [5, 6], entries: [{ name: "Giant Rats", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [7, 8], entries: [{ name: "Bat Swarms", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [9, 10], entries: [{ name: "Zombies", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [11, 12], entries: [{ name: "Giant Snakes", number: "1d2", weapons: "", armour: "0", special: "" }] },
+  { range: [13, 14], entries: [{ name: "Zombies", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [15, 16], entries: [{ name: "Skeletons", number: "1d4", weapons: "Longswords, Shields", armour: "1", special: "" }] },
+  { range: [17, 18], entries: [{ name: "Skeletons", number: "1d4", weapons: "Longswords, Shields", armour: "2", special: "" }, { name: "Skeletons", number: "2", weapons: "Shortbows, Daggers", armour: "0", special: "" }] },
+  { range: [19, 20], entries: [{ name: "Wights", number: "1d3", weapons: "Cursed Longswords", armour: "2", special: "" }] },
+  { range: [21, 22], entries: [{ name: "Zombies", number: "1d6", weapons: "Longswords", armour: "1", special: "" }] },
+  { range: [23, 24], entries: [{ name: "Ghouls", number: "1d4", weapons: "", armour: "0", special: "" }] },
+  { range: [25, 26], entries: [{ name: "Shambler", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [27, 28], entries: [{ name: "Skeletons", number: "1d4", weapons: "Longswords, Shields", armour: "2", special: "" }, { name: "Necromancer", number: "1", weapons: "Staff", armour: "0", special: "Spells: 1 Close Combat, 1 Ranged + Raise Dead" }] },
+  { range: [29, 30], entries: [{ name: "Zombies", number: "1d4", weapons: "Broadswords, Shields", armour: "2", special: "" }] },
+  { range: [31, 32], entries: [{ name: "Wights", number: "1d4+1", weapons: "Cursed Longswords", armour: "3", special: "" }] },
+  { range: [33, 34], entries: [{ name: "Skeletons", number: "1d6", weapons: "Longswords, Shields", armour: "1", special: "" }, { name: "Dire Wolves", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [35, 36], entries: [{ name: "Giant Spiders", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [37, 38], entries: [{ name: "Shambler", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [39, 40], entries: [{ name: "Mummy", number: "1", weapons: "", armour: "1", special: "" }] },
+  { range: [41, 42], entries: [{ name: "Ghouls", number: "1d6+1", weapons: "", armour: "0", special: "" }] },
+  { range: [43, 44], entries: [{ name: "Wights", number: "1d6", weapons: "Cursed Longswords", armour: "3", special: "" }, { name: "Skeletons", number: "1d4", weapons: "Longbows, Daggers", armour: "1", special: "" }] },
+  { range: [45, 46], entries: [{ name: "Dire Wolves", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [47, 48], entries: [{ name: "Dire Wolves", number: "1d4", weapons: "", armour: "0", special: "" }, { name: "Necromancer", number: "1", weapons: "Staff", armour: "0", special: "Spells: 1 Close Combat, 2 Ranged + Raise Dead" }] },
+  { range: [49, 50], entries: [{ name: "Zombie Ogre", number: "1", weapons: "Warhammer", armour: "0", special: "" }] },
+  { range: [51, 52], entries: [{ name: "Mummies", number: "2", weapons: "", armour: "1", special: "" }] },
+  { range: [53, 54], entries: [{ name: "Mummy", number: "1", weapons: "", armour: "1", special: "" }, { name: "Zombies", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [55, 56], entries: [{ name: "Skeletons", number: "1d6", weapons: "Morning Stars, Shields", armour: "1", special: "" }, { name: "Skeletons", number: "1d6", weapons: "Longbows, Daggers", armour: "0", special: "" }] },
+  { range: [57, 58], entries: [{ name: "Wights", number: "1d6+1", weapons: "Cursed Halberds", armour: "3", special: "" }] },
+  { range: [59, 60], entries: [{ name: "Giant Spiders", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [61, 62], entries: [{ name: "Zombie Ogre", number: "1", weapons: "Warhammer", armour: "1", special: "" }] },
+  { range: [63, 64], entries: [{ name: "Zombies", number: "1d6", weapons: "Longswords, Shields", armour: "2", special: "" }, { name: "Necromancer", number: "1", weapons: "Staff", armour: "0", special: "Spells: 2 Close Combat, 2 Ranged + Raise Dead" }] },
+  { range: [65, 66], entries: [{ name: "Minotaur Skeletons", number: "1d3", weapons: "Greataxes", armour: "0", special: "" }] },
+  { range: [67, 68], entries: [{ name: "Ghouls", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [69, 70], entries: [{ name: "Zombie Ogres", number: "2", weapons: "Warhammers", armour: "0", special: "" }, { name: "Necromancer", number: "1", weapons: "Staff", armour: "0", special: "Spells: 2 Close Combat, 2 Ranged, 1 Support + Raise Dead" }] },
+  { range: [71, 72], entries: [{ name: "Zombie Ogre", number: "1", weapons: "Warhammer", armour: "1", special: "" }] },
+  { range: [73, 74], entries: [{ name: "Wights", number: "1d4+1", weapons: "Cursed Halberds", armour: "3", special: "" }] },
+  { range: [75, 76], entries: [{ name: "Wights", number: "1d4+1", weapons: "Flails", armour: "3", special: "" }, { name: "Skeletons", number: "4", weapons: "Longbows, Daggers", armour: "2", special: "" }] },
+  { range: [77, 78], entries: [{ name: "Minotaur Skeletons", number: "1d4", weapons: "Greataxes", armour: "1", special: "" }] },
+  { range: [79, 80], entries: [{ name: "Vampire Fledgling", number: "1", weapons: "Longsword", armour: "3", special: "" }, { name: "Zombies", number: "1d6+1", weapons: "Longswords, Shields", armour: "2", special: "" }] },
+  { range: [81, 82], entries: [{ name: "Ghost", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [83, 84], entries: [{ name: "Zombies", number: "1d10", weapons: "Battleaxes, Shields", armour: "2", special: "" }] },
+  { range: [85, 86], entries: [{ name: "Zombies", number: "2d6", weapons: "", armour: "2", special: "" }] },
+  { range: [87, 88], entries: [{ name: "Vampire Fledgling", number: "1", weapons: "Battleaxe", armour: "2", special: "" }, { name: "Ghouls", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [89, 90], entries: [{ name: "Wraiths", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [91, 92], entries: [{ name: "Wights", number: "1d6", weapons: "Cursed Halberds", armour: "3", special: "" }] },
+  { range: [93, 94], entries: [{ name: "Ghosts", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [95, 96], entries: [{ name: "Banshee", number: "1", weapons: "", armour: "0", special: "" }, { name: "Zombies", number: "1d4", weapons: "Longswords, Shields", armour: "2", special: "" }] },
+  { range: [97, 98], entries: [{ name: "Wraiths", number: "1d3", weapons: "", armour: "0", special: "" }, { name: "Necromancer", number: "1", weapons: "Staff", armour: "0", special: "Spells: 3 Close Combat, 2 Ranged, 1 Support + Raise Dead" }] },
+  { range: [99, 100], entries: [{ name: "Wights", number: "1d6", weapons: "Longswords, Shields", armour: "3", special: "" }, { name: "Wraiths", number: "1d3", weapons: "", armour: "0", special: "" }, { name: "Vampire", number: "1", weapons: "Longsword", armour: "2", special: "" }] },
+  { range: [101, 102], entries: [{ name: "Vampires Fledgling", number: "3", weapons: "Battleaxes", armour: "2", special: "" }] },
+  { range: [103, 104], entries: [{ name: "Mummys", number: "1d4+4", weapons: "Longswords, Shields", armour: "2", special: "" }, { name: "Mummy Priest", number: "1", weapons: "Staff", armour: "0", special: "Spells: 3 Close Combat, 2 Ranged, 1 Support + Raise Dead" }] },
+  { range: [105, 106], entries: [{ name: "Banshees", number: "1d3+1", weapons: "", armour: "0", special: "" }] },
+  { range: [107, 108], entries: [{ name: "Necromancer", number: "1", weapons: "Staff", armour: "2", special: "Spells: 3 Close Combat, 2 Ranged, 1 Support + Raise Dead" }, { name: "Vampires", number: "2", weapons: "Longswords", armour: "3", special: "" }] },
+  { range: [109, 110], entries: [{ name: "Vampires", number: "3", weapons: "Longswords", armour: "3", special: "" }] },
+];
+
+const ENCOUNTER_TABLE_ANCIENT_LANDS = [
+  { range: [1, 2], entries: [{ name: "Giant Rats", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [3, 4], entries: [{ name: "Bat Swarms", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [5, 6], entries: [{ name: "Giant Pox Rats", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [7, 8], entries: [{ name: "Slime", number: "1d2", weapons: "", armour: "0", special: "" }] },
+  { range: [9, 10], entries: [{ name: "Skeletons", number: "1d6", weapons: "Battleaxes, Shields", armour: "1", special: "" }] },
+  { range: [11, 12], entries: [{ name: "Giant Leeches", number: "1d2", weapons: "", armour: "0", special: "" }] },
+  { range: [13, 14], entries: [{ name: "Wights", number: "1d6", weapons: "Cursed Longswords, Shields", armour: "0", special: "" }] },
+  { range: [15, 16], entries: [{ name: "Skeletons", number: "1d4", weapons: "Longswords, Shields", armour: "1", special: "" }, { name: "Mummy", number: "1", weapons: "Halberd", armour: "1", special: "" }] },
+  { range: [17, 18], entries: [{ name: "Skeletons", number: "1d4", weapons: "Longswords, Shields", armour: "2", special: "" }, { name: "Tomb Guardian", number: "1", weapons: "Greataxes", armour: "2", special: "" }] },
+  { range: [19, 20], entries: [{ name: "Giant Scorpion", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [21, 22], entries: [{ name: "Mummies", number: "1d4", weapons: "Broadswords", armour: "0", special: "" }] },
+  { range: [23, 24], entries: [{ name: "Gargoyles", number: "1d4", weapons: "", armour: "0", special: "" }, { name: "Shambler", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [25, 26], entries: [{ name: "Giant Spiders", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [27, 28], entries: [{ name: "Wights", number: "1d4", weapons: "Longswords, Shields", armour: "2", special: "" }, { name: "Necromancer", number: "1", weapons: "Staff", armour: "0", special: "Spells: 2 Close Combat, 2 Ranged + Raise Dead" }] },
+  { range: [29, 30], entries: [{ name: "Tomb Guardian", number: "2", weapons: "Greataxes", armour: "1", special: "" }] },
+  { range: [31, 32], entries: [{ name: "Giant Scorpions", number: "1d2", weapons: "", armour: "0", special: "" }] },
+  { range: [33, 34], entries: [{ name: "Skeletons", number: "1d6", weapons: "Longswords, Shields", armour: "1", special: "" }, { name: "Gargoyles", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [35, 36], entries: [{ name: "Giant Spiders", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [37, 38], entries: [{ name: "Sphinx", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [39, 40], entries: [{ name: "Mummies", number: "1d4", weapons: "Longswords, Shields", armour: "1", special: "" }] },
+  { range: [41, 42], entries: [{ name: "Giant Snakes", number: "1d6", weapons: "", armour: "0", special: "" }, { name: "Slime", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [43, 44], entries: [{ name: "Wights", number: "1d6", weapons: "Cursed Longswords", armour: "3", special: "" }, { name: "Skeletons", number: "1d4", weapons: "Longbows, Daggers", armour: "1", special: "" }] },
+  { range: [45, 46], entries: [{ name: "Giant Centipede", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [47, 48], entries: [{ name: "Wights", number: "1d6", weapons: "Cursed Halberds", armour: "2", special: "" }, { name: "Necromancer", number: "1", weapons: "Staff", armour: "0", special: "Spells: 2 Close Combat, 2 Ranged + Raise Dead" }] },
+  { range: [49, 50], entries: [{ name: "Zombie Troll", number: "1", weapons: "Warhammer", armour: "0", special: "" }] },
+  { range: [51, 52], entries: [{ name: "Mummies", number: "1d4+1", weapons: "Battlehammers", armour: "1", special: "" }, { name: "Shambler", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [53, 54], entries: [{ name: "Tomb Guardian", number: "1d2", weapons: "Halberds", armour: "2", special: "" }, { name: "Wights", number: "1d6", weapons: "Cursed Battleaxes", armour: "2", special: "" }] },
+  { range: [55, 56], entries: [{ name: "Sphinx", number: "1d2", weapons: "", armour: "0", special: "" }, { name: "Gargoyles", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [57, 58], entries: [{ name: "Banshee", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [59, 60], entries: [{ name: "Giant Spiders", number: "1d6", weapons: "", armour: "0", special: "" }] },
+  { range: [61, 62], entries: [{ name: "Zombie Troll", number: "1", weapons: "Warhammer", armour: "1", special: "" }] },
+  { range: [63, 64], entries: [{ name: "Mummies", number: "1d6", weapons: "Longswords, Shields", armour: "2", special: "" }, { name: "Mummy Priest", number: "1", weapons: "Staff", armour: "0", special: "Spells: 3 Close Combat, 2 Ranged, 1 Support + Raise Dead" }] },
+  { range: [65, 66], entries: [{ name: "Mummies", number: "1d6", weapons: "Longswords, Shields", armour: "2", special: "" }, { name: "Slime", number: "1d2", weapons: "", armour: "0", special: "" }] },
+  { range: [67, 68], entries: [{ name: "Giant Scorpions", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [69, 70], entries: [{ name: "Tomb Guardians", number: "2", weapons: "Warhammers", armour: "1", special: "" }, { name: "Giant Scorpion", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [71, 72], entries: [{ name: "Tomb Guardians", number: "1d3", weapons: "Warhammers", armour: "1", special: "" }] },
+  { range: [73, 74], entries: [{ name: "Wights", number: "1d4+1", weapons: "Cursed Halberds", armour: "3", special: "" }] },
+  { range: [75, 76], entries: [{ name: "Wights", number: "1d4+1", weapons: "Battleaxes, Shields", armour: "3", special: "" }, { name: "Mummies", number: "4", weapons: "Greatswords", armour: "2", special: "" }] },
+  { range: [77, 77], entries: [{ name: "Mummies", number: "4", weapons: "", armour: "1", special: "" }] },
+  { range: [78, 78], entries: [{ name: "Gargoyles", number: "4", weapons: "", armour: "0", special: "" }] },
+  { range: [79, 80], entries: [{ name: "Mummy Queen", number: "1", weapons: "Longsword", armour: "3", special: "Spells: 3 Close Combat, 2 Ranged, 2 Support + Raise Dead" }, { name: "Mummies", number: "1d6+1", weapons: "Longswords, Shields", armour: "2", special: "" }] },
+  { range: [81, 82], entries: [{ name: "Ghost", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [83, 84], entries: [{ name: "Gigantic Spider", number: "1", weapons: "", armour: "0", special: "" }] },
+  { range: [85, 86], entries: [{ name: "Tomb Guardians", number: "1d3", weapons: "Greataxes", armour: "2", special: "" }] },
+  { range: [87, 88], entries: [{ name: "Mummy Queen", number: "1", weapons: "Longsword", armour: "2", special: "Spells: 5 Close Combat, 2 Ranged, 2 Support + Raise Dead" }, { name: "Tomb Guardians", number: "1d3", weapons: "Halberds", armour: "2", special: "" }] },
+  { range: [89, 90], entries: [{ name: "Wraiths", number: "1d3", weapons: "", armour: "0", special: "" }] },
+  { range: [91, 92], entries: [{ name: "Wights", number: "1d6", weapons: "Cursed Halberds", armour: "3", special: "" }] },
+  { range: [93, 94], entries: [{ name: "Ghosts", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [95, 96], entries: [{ name: "Banshee", number: "1", weapons: "", armour: "0", special: "" }, { name: "Giant Scorpions", number: "1d4", weapons: "", armour: "0", special: "" }] },
+  { range: [97, 98], entries: [{ name: "Wraiths", number: "1d3", weapons: "", armour: "0", special: "" }, { name: "Sphinx", number: "2", weapons: "", armour: "0", special: "" }] },
+  { range: [99, 100], entries: [{ name: "Wights", number: "1d6", weapons: "Longswords, Shields", armour: "3", special: "" }, { name: "Wraiths", number: "1d3", weapons: "", armour: "0", special: "" }, { name: "Mummy Queen", number: "1", weapons: "Longsword", armour: "2", special: "Spells: 3 Close Combat, 3 Ranged, 2 Support + Raise Dead" }] },
+  { range: [101, 102], entries: [{ name: "Vampire Fledgling", number: "2", weapons: "Longswords", armour: "3", special: "" }] },
+  { range: [103, 104], entries: [{ name: "Mummy Priest", number: "2", weapons: "", armour: "0", special: "Spells: 3 Close Combat, 3 Ranged, 2 Support + Raise Dead" }, { name: "Minotaur Skeletons", number: "1d4+1", weapons: "Greataxes, Shields", armour: "2", special: "" }] },
+  { range: [105, 106], entries: [{ name: "Banshees", number: "1d3+1", weapons: "", armour: "0", special: "" }] },
+  { range: [107, 108], entries: [{ name: "Mummy Queen", number: "2", weapons: "Longswords", armour: "2", special: "Spells: 3 Close Combat, 3 Ranged, 2 Support + Raise Dead" }, { name: "Tomb Guardians", number: "1d3+1", weapons: "Halberds", armour: "3", special: "" }] },
+  { range: [109, 110], entries: [{ name: "Vampires", number: "2", weapons: "Longswords", armour: "3", special: "" }, { name: "Necromancers", number: "2", weapons: "Daggers", armour: "1", special: "Spells: 3 Close Combat, 3 Ranged, 2 Support + Raise Dead" }] },
+];
+
+
+const ENCOUNTER_TABLES = {
+  "Beasts": ENCOUNTER_TABLE_BEASTS,
+  "Orcs and Goblins": ENCOUNTER_TABLE_ORCS_GOBLINS,
+  "Bandits and Brigands": ENCOUNTER_TABLE_BANDITS_BRIGANDS,
+  "Reptiles": ENCOUNTER_TABLE_REPTILES,
+  "Dark Elves": ENCOUNTER_TABLE_DARK_ELVES,
+  "Undead": ENCOUNTER_TABLE_UNDEAD,
+  "Ancient Lands": ENCOUNTER_TABLE_ANCIENT_LANDS,
+};
+
+function findEncounterRow(table, roll) {
+  return table.find((row) => roll >= row.range[0] && roll <= row.range[1]);
+}
+
+// Parses "1d6", "1d4+1", "2d6", or a flat number/string into a rolled total.
+function rollEncounterNumber(spec) {
+  if (typeof spec === "number") return spec;
+  const m = String(spec).match(/(\d+)d(\d+)(?:\+(\d+))?/);
+  if (!m) return Number(spec) || 0;
+  const [, count, sides, bonus] = m;
+  let total = 0;
+  for (let i = 0; i < Number(count); i++) total += rollDie(Number(sides));
+  return total + (bonus ? Number(bonus) : 0);
+}
+
+// Maps an Encounter Table creature name (often plural, or an unlisted variant like
+// "Beastmen Guard") to its Monster Table stat-block name, for the inline stat lookup.
+const ENCOUNTER_NAME_ALIASES = {
+  "Beastmen Guard": "Beastman Guard",
+  "Beastmen": "Beastman",
+  "Dark Elves": "Dark Elf",
+  "Dark Elf Snipers": "Dark Elf Sniper",
+  "Dark Elf Captains": "Dark Elf Captain",
+  "Dark Elf Assassins": "Dark Elf Assassin",
+  "Dire Wolves": "Dire Wolf",
+  "Dryder": "Drider",
+  "Dryders": "Drider",
+  "Giant Leeches": "Giant Leech",
+  "Giant Wolves": "Giant Wolf",
+  "Ogres Chieftain": "Ogre Chieftain",
+  "Ogres Chieftains": "Ogre Chieftain",
+  "Ogre Chieftains": "Ogre Chieftain",
+  "Orc Chieftains": "Orc Chieftain",
+  "Pox Rats": "Giant Pox rat",
+  "Saurian War Chief": "Saurian Warchief",
+  "Saurian War Chiefs": "Saurian Warchief",
+  "Vampires Fledgling": "Vampire Fledgling",
+  "Vampire Fledgling": "Vampire Fledgling",
+  "Wraiths": "Wraith",
+  "Zombie Troll": "Zombie Troll",
+  "Zombies": "Zombie",
+  "Mummys": "Mummy",
+  "Necromancers": "Necromancer",
+};
+
+function findMonsterStatsForEncounter(name) {
+  const trimmed = name.trim();
+  const direct = MONSTER_TABLE.find((m) => m.name.toLowerCase() === trimmed.toLowerCase());
+  if (direct) return direct;
+  const alias = ENCOUNTER_NAME_ALIASES[trimmed];
+  if (alias) {
+    const aliased = MONSTER_TABLE.find((m) => m.name.toLowerCase() === alias.toLowerCase());
+    if (aliased) return aliased;
+  }
+  // Fallback: strip a trailing "s" (simple plural) and retry.
+  if (trimmed.endsWith("s") && !trimmed.endsWith("ss")) {
+    const singular = trimmed.slice(0, -1);
+    const found = MONSTER_TABLE.find((m) => m.name.toLowerCase() === singular.toLowerCase());
+    if (found) return found;
+  }
+  return null;
+}
+
+
 // Monster Behaviour (Bestiary p16-19) — interactive "what does the enemy do" walker.
 const BEHAVIOUR_CATEGORIES = ["Humanoid (Close Combat)", "Humanoid (Missile Weapon)", "Beast", "Higher Undead", "Lower Undead", "Magic User"];
 
@@ -2812,8 +3301,8 @@ function BestiaryTab() {
 
   const StatCell = ({ label, val }) => (
     <div className="text-center">
-      <div className="text-[9px] uppercase" style={{ color: palette.inkSoft, fontFamily: "Cinzel, serif" }}>{label}</div>
-      <div className="text-sm font-bold" style={{ color: palette.ink, fontFamily: "JetBrains Mono, monospace" }}>{val}</div>
+      <div className="text-[9px] uppercase" style={{ color: palette.goldSoft, fontFamily: "Cinzel, serif" }}>{label}</div>
+      <div className="text-sm font-bold" style={{ color: palette.parchment, fontFamily: "JetBrains Mono, monospace" }}>{val}</div>
     </div>
   );
 
@@ -2982,10 +3471,10 @@ function LoreTab({ goToTab }) {
       ) : (
         filtered.map((entry) => (
           <LoreEntryCard
-            key={entry.title}
+            key={`${entry.category}-${entry.title}`}
             entry={entry}
-            open={openTitle === entry.title}
-            onToggle={() => setOpenTitle(openTitle === entry.title ? null : entry.title)}
+            open={openTitle === `${entry.category}-${entry.title}`}
+            onToggle={() => setOpenTitle(openTitle === `${entry.category}-${entry.title}` ? null : `${entry.category}-${entry.title}`)}
             goToTab={goToTab}
           />
         ))
@@ -3013,6 +3502,22 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.39.0",
+    date: "2026-08-15",
+    sections: {
+      "Added": [
+        "Encounter Roller in the Turn tab — pick a faction (Beasts, Orcs and Goblins, Bandits and Brigands, Reptiles, Dark Elves, Undead, Ancient Lands), and it rolls the real 1d20 + level bonus against the full table, rolls the resulting creature count, and links each result to its Monster Table stats where the name matches",
+      ],
+      "Changed": [
+        "Turn tab reordered to match the rulebook's actual Turn Sequence: Start of Turn, Initiative Bag, Round, Action Points, Encounter Roller, Roll Enemy Action, Light Sources, Trade Gear, Short Rest",
+      ],
+      "Fixed": [
+        "Bestiary monster stat blocks (CS/RS/DMG/NA/M/DEX/RES/To Hit) were unreadable — dark text on a dark background",
+        "Lore tab's Bestiary filter could get stuck showing the wrong \\\"The Ancient Lands\\\" entry (there are two lore entries with that title, one under World and one under Bestiary) — each now opens its own correct text",
+      ],
+    },
+  },
   {
     version: "1.38.0",
     date: "2026-08-14",
@@ -9538,6 +10043,95 @@ function AlchemyTab({ heroes, updateHero, addLog }) {
 }
 
 
+// Encounter Roller (Bestiary p21-40) — 1d20 + X (X = 10 per hero level above 1) against
+// the faction table for the current quest, auto-rolling the Number formula for each
+// result and linking to Monster Table stats where the name resolves.
+function EncounterRoller({ heroes, addLog }) {
+  const factionNames = Object.keys(ENCOUNTER_TABLES);
+  const [faction, setFaction] = useState(factionNames[0]);
+  const [result, setResult] = useState(null);
+
+  const highestLevel = heroes.length ? Math.max(...heroes.map((h) => h.level || 1)) : 1;
+  const levelBonus = (highestLevel - 1) * 10;
+
+  const roll = () => {
+    const d20 = rollDie(20);
+    const total = d20 + levelBonus;
+    const table = ENCOUNTER_TABLES[faction];
+    const row = findEncounterRow(table, Math.min(total, 110));
+    if (!row) {
+      setResult({ d20, total, row: null });
+      return;
+    }
+    const rolled = row.entries.map((e) => ({
+      ...e,
+      count: rollEncounterNumber(e.number),
+      stats: findMonsterStatsForEncounter(e.name),
+    }));
+    setResult({ d20, total, row, rolled });
+    const summary = rolled.map((e) => `${e.count}x ${e.name}`).join(", ");
+    addLog(`Encounter roll (${faction}): 1d20 (${d20}) + ${levelBonus} = ${total} — ${summary}.`);
+  };
+
+  return (
+    <Panel className="mb-4">
+      <SectionTitle icon={Skull}>Encounter Roller</SectionTitle>
+      <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+        Faction (set by the quest you're running):
+      </p>
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {factionNames.map((f) => (
+          <button
+            key={f}
+            onClick={() => { setFaction(f); setResult(null); }}
+            className="text-xs px-2 py-1 rounded-full"
+            style={{ background: faction === f ? palette.crimson : "#00000010", color: faction === f ? palette.parchment : palette.ink }}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+        1d20 + {levelBonus} (highest hero level {highestLevel})
+      </p>
+      <button
+        onClick={roll}
+        className="w-full flex items-center justify-center gap-2 py-2 rounded font-bold text-sm mb-2"
+        style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+      >
+        <Dice5 size={14} /> Roll Encounter
+      </button>
+      {result && (
+        <div className="text-sm rounded p-3 space-y-2" style={{ background: palette.charcoal, color: palette.parchment, fontFamily: "Crimson Pro, serif" }}>
+          <div className="text-xs font-bold" style={{ color: palette.goldSoft, fontFamily: "JetBrains Mono, monospace" }}>
+            d20 {result.d20} + {levelBonus} = {result.total}
+          </div>
+          {!result.row && (
+            <p className="text-xs italic">
+              Not yet transcribed into the app — that part of the {faction} table wasn't in the source photos.{" "}
+              <button onClick={roll} className="underline" style={{ color: palette.goldSoft }}>Reroll</button>
+            </p>
+          )}
+          {result.rolled && result.rolled.map((e, i) => (
+            <div key={i} className="rounded p-2" style={{ background: "#00000025" }}>
+              <div className="font-bold text-sm">{e.count}x {e.name}</div>
+              {e.weapons && <div className="text-xs" style={{ color: palette.parchment, opacity: 0.75 }}>Weapons: {e.weapons}</div>}
+              <div className="text-xs" style={{ color: palette.parchment, opacity: 0.75 }}>Armour: {e.armour || 0}</div>
+              {e.special && <div className="text-xs" style={{ color: palette.parchment, opacity: 0.75 }}>Special: {e.special}</div>}
+              {e.stats && (
+                <div className="text-xs mt-1 pt-1" style={{ color: palette.goldSoft, borderTop: "1px solid #ffffff20", fontFamily: "JetBrains Mono, monospace" }}>
+                  CS {e.stats.cs} · RS {e.stats.rs} · HP {e.stats.hp} · DMG {e.stats.dmg} · NA {Number(e.stats.na) + Number(e.armour || 0)} · Type {e.stats.type}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+
 function BehaviourWalker() {
   const [category, setCategory] = useState(BEHAVIOUR_CATEGORIES[0]);
   const [situation, setSituation] = useState(null);
@@ -9848,116 +10442,6 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog }) {
   return (
     <div>
       <Panel className="mb-4">
-        <SectionTitle icon={Timer}>Round</SectionTitle>
-        <div className="flex items-center gap-3 mb-3">
-          <div
-            className="rounded-full flex items-center justify-center font-bold text-2xl"
-            style={{ width: 64, height: 64, background: palette.forestDark, color: palette.parchment, fontFamily: "JetBrains Mono, monospace", border: `3px solid ${palette.ink}` }}
-          >
-            {party.round}
-          </div>
-          <div className="flex-1 flex gap-2">
-            <button
-              onClick={nextRound}
-              className="flex-1 text-sm px-3 py-2 rounded font-bold active:scale-95 transition-transform"
-              style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
-            >
-              Next Round
-            </button>
-            <button
-              onClick={resetRound}
-              className="px-3 py-2 rounded text-xs font-semibold active:scale-95 transition-transform"
-              style={{ background: "#00000015", color: palette.inkSoft }}
-              title="Reset round to 1 and AP for all heroes"
-            >
-              <RotateCcw size={14} />
-            </button>
-          </div>
-        </div>
-        <p className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-          "Next Round" resets every hero's AP to 2, and counts down any tracked light sources — removing any that go out.
-        </p>
-      </Panel>
-
-      <Panel className="mb-4">
-        <SectionTitle icon={Zap}>Action Points (2 per hero)</SectionTitle>
-        <div className="space-y-1.5">
-          {heroes.map((h) => {
-            const ap = h.ap ?? 2;
-            return (
-              <div key={h.id} className="flex items-center gap-2 rounded p-2" style={{ background: ap <= 0 ? "#7A1F2B15" : "#00000008" }}>
-                <span className="flex-1 text-xs font-semibold truncate" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>{h.name}</span>
-                <div className="flex gap-0.5">
-                  {[0, 1].map((i) => (
-                    <div
-                      key={i}
-                      className="rounded-full"
-                      style={{ width: 14, height: 14, background: ap > i ? palette.gold : "#00000020", border: `1px solid ${palette.line}` }}
-                    />
-                  ))}
-                </div>
-                <button onClick={() => spendAP(h.id, 1)} disabled={ap <= 0} className="text-[10px] px-2 py-1 rounded font-semibold active:scale-95 transition-transform" style={{ background: ap > 0 ? palette.crimsonDark : "#00000015", color: ap > 0 ? palette.parchment : palette.inkSoft }}>
-                  −1 AP
-                </button>
-                <button onClick={() => setAP(h.id, 2)} className="text-[10px] px-2 py-1 rounded font-semibold active:scale-95 transition-transform" style={{ background: "#00000015", color: palette.inkSoft }}>
-                  Reset
-                </button>
-              </div>
-            );
-          })}
-          {heroes.length === 0 && <p className="text-xs italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>No heroes yet.</p>}
-        </div>
-      </Panel>
-
-      {heroes.length >= 2 && (
-        <Panel className="mb-4">
-          <SectionTitle icon={Users}>Trade Gear</SectionTitle>
-          <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-            1 AP per hero involved, LOS required. Moves an item from one hero's backpack/quick slots to another's.
-          </p>
-          <select
-            value={tradeFromHero?.id || ""}
-            onChange={(e) => { setTradeFrom(e.target.value); setTradeItem(""); }}
-            className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
-            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-          >
-            {heroes.map((h) => <option key={h.id} value={h.id}>From: {h.name} ({h.ap ?? 2} AP)</option>)}
-          </select>
-          <select
-            value={tradeItem}
-            onChange={(e) => setTradeItem(e.target.value)}
-            className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
-            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-          >
-            <option value="">Pick an item…</option>
-            {tradeFromHero?.backpack.map((it) => (
-              <option key={it.id} value={it.id}>{it.name || "(unnamed item)"} {it.slot === "quickslot" ? "(Quick Slot)" : ""}</option>
-            ))}
-          </select>
-          <select
-            value={tradeToHero?.id || ""}
-            onChange={(e) => setTradeTo(e.target.value)}
-            className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
-            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-          >
-            {heroes.map((h) => <option key={h.id} value={h.id}>To: {h.name} ({h.ap ?? 2} AP)</option>)}
-          </select>
-          <button
-            onClick={doTrade}
-            className="w-full text-xs px-2 py-2 rounded font-semibold active:scale-95 transition-transform"
-            style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
-          >
-            Trade (1 AP each)
-          </button>
-          {tradeFeedback && (
-            <p className="text-xs mt-1.5 font-semibold" style={{ color: tradeFeedback.tone === "good" ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif" }}>
-              {tradeFeedback.text}
-            </p>
-          )}
-        </Panel>
-      )}
-
-      <Panel className="mb-4">
         <SectionTitle icon={Dice5}>Start of Turn</SectionTitle>
         <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
           Rolls the Scenario die (1d10); on a 9-10 it rolls Threat (1d20) and, if triggered, the matching Threat Table — applying the result to Threat automatically.
@@ -9984,65 +10468,6 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog }) {
           </div>
         )}
       </Panel>
-
-      <Panel className="mb-4">
-        <SectionTitle icon={Bed}>Short Rest</SectionTitle>
-        <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-          Automates the numeric steps: −1 food, Threat −5 then a follow-up roll, Party Morale +2, +1d6 HP per hero, Energy regen (or full with a Bed Roll), full Mana for casters. Arranging heroes, barring the door, moving Wandering Monsters, brewing potions, and the Ambush roll still need doing by hand — see the full checklist in Reference.
-        </p>
-        <button
-          onClick={takeShortRest}
-          className="w-full mb-2 text-sm px-3 py-2 rounded font-bold active:scale-95 transition-transform"
-          style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
-        >
-          Take a Short Rest
-        </button>
-        {restSummary && (
-          <div className="rounded p-2" style={{ background: "#00000010" }}>
-            {restSummary.map((line, i) => (
-              <p key={i} className="text-xs" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>{line}</p>
-            ))}
-          </div>
-        )}
-      </Panel>
-
-      <Panel className="mb-4">
-        <SectionTitle icon={Flashlight}>Light Sources</SectionTitle>
-        <div className="flex gap-1.5 mb-2">
-          <input
-            value={lightName}
-            onChange={(e) => setLightName(e.target.value)}
-            placeholder="Name"
-            className="flex-1 min-w-0 text-xs rounded px-2 py-1.5"
-            style={{ border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-          />
-          <input
-            type="number"
-            value={lightDuration}
-            onChange={(e) => setLightDuration(Number(e.target.value) || 1)}
-            className="w-16 text-xs rounded px-2 py-1.5"
-            style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
-            title="Turns remaining"
-          />
-          <button onClick={addLightSource} className="px-3 py-1.5 rounded font-semibold active:scale-95 transition-transform" style={{ background: palette.forestDark, color: palette.parchment }}>
-            <Plus size={14} />
-          </button>
-        </div>
-        {(party.lightSources || []).length === 0 ? (
-          <p className="text-xs italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>None tracked. Add a torch/lantern with however many turns it has left, per your table/card.</p>
-        ) : (
-          <div className="space-y-1">
-            {party.lightSources.map((l) => (
-              <div key={l.id} className="flex items-center justify-between text-xs rounded p-2" style={{ background: l.remaining <= 1 ? "#7A1F2B15" : "#00000008", fontFamily: "Crimson Pro, serif" }}>
-                <span style={{ color: palette.ink }}>{l.name} — {l.remaining} turn{l.remaining === 1 ? "" : "s"} left</span>
-                <button onClick={() => removeLightSource(l.id)} style={{ color: palette.crimson }}><X size={13} /></button>
-              </div>
-            ))}
-          </div>
-        )}
-      </Panel>
-
-      <BehaviourWalker />
 
       <Panel>
         <SectionTitle icon={Users}>Initiative Bag</SectionTitle>
@@ -10113,6 +10538,177 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog }) {
           </>
         )}
       </Panel>
+      <Panel className="mb-4">
+        <SectionTitle icon={Timer}>Round</SectionTitle>
+        <div className="flex items-center gap-3 mb-3">
+          <div
+            className="rounded-full flex items-center justify-center font-bold text-2xl"
+            style={{ width: 64, height: 64, background: palette.forestDark, color: palette.parchment, fontFamily: "JetBrains Mono, monospace", border: `3px solid ${palette.ink}` }}
+          >
+            {party.round}
+          </div>
+          <div className="flex-1 flex gap-2">
+            <button
+              onClick={nextRound}
+              className="flex-1 text-sm px-3 py-2 rounded font-bold active:scale-95 transition-transform"
+              style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
+            >
+              Next Round
+            </button>
+            <button
+              onClick={resetRound}
+              className="px-3 py-2 rounded text-xs font-semibold active:scale-95 transition-transform"
+              style={{ background: "#00000015", color: palette.inkSoft }}
+              title="Reset round to 1 and AP for all heroes"
+            >
+              <RotateCcw size={14} />
+            </button>
+          </div>
+        </div>
+        <p className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+          "Next Round" resets every hero's AP to 2, and counts down any tracked light sources — removing any that go out.
+        </p>
+      </Panel>
+
+      <Panel className="mb-4">
+        <SectionTitle icon={Zap}>Action Points (2 per hero)</SectionTitle>
+        <div className="space-y-1.5">
+          {heroes.map((h) => {
+            const ap = h.ap ?? 2;
+            return (
+              <div key={h.id} className="flex items-center gap-2 rounded p-2" style={{ background: ap <= 0 ? "#7A1F2B15" : "#00000008" }}>
+                <span className="flex-1 text-xs font-semibold truncate" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>{h.name}</span>
+                <div className="flex gap-0.5">
+                  {[0, 1].map((i) => (
+                    <div
+                      key={i}
+                      className="rounded-full"
+                      style={{ width: 14, height: 14, background: ap > i ? palette.gold : "#00000020", border: `1px solid ${palette.line}` }}
+                    />
+                  ))}
+                </div>
+                <button onClick={() => spendAP(h.id, 1)} disabled={ap <= 0} className="text-[10px] px-2 py-1 rounded font-semibold active:scale-95 transition-transform" style={{ background: ap > 0 ? palette.crimsonDark : "#00000015", color: ap > 0 ? palette.parchment : palette.inkSoft }}>
+                  −1 AP
+                </button>
+                <button onClick={() => setAP(h.id, 2)} className="text-[10px] px-2 py-1 rounded font-semibold active:scale-95 transition-transform" style={{ background: "#00000015", color: palette.inkSoft }}>
+                  Reset
+                </button>
+              </div>
+            );
+          })}
+          {heroes.length === 0 && <p className="text-xs italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>No heroes yet.</p>}
+        </div>
+      </Panel>
+
+      <EncounterRoller heroes={heroes} addLog={addLog} />
+
+      <BehaviourWalker />
+
+      {heroes.length >= 2 && (
+        <Panel className="mb-4">
+          <SectionTitle icon={Users}>Trade Gear</SectionTitle>
+          <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+            1 AP per hero involved, LOS required. Moves an item from one hero's backpack/quick slots to another's.
+          </p>
+          <select
+            value={tradeFromHero?.id || ""}
+            onChange={(e) => { setTradeFrom(e.target.value); setTradeItem(""); }}
+            className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            {heroes.map((h) => <option key={h.id} value={h.id}>From: {h.name} ({h.ap ?? 2} AP)</option>)}
+          </select>
+          <select
+            value={tradeItem}
+            onChange={(e) => setTradeItem(e.target.value)}
+            className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            <option value="">Pick an item…</option>
+            {tradeFromHero?.backpack.map((it) => (
+              <option key={it.id} value={it.id}>{it.name || "(unnamed item)"} {it.slot === "quickslot" ? "(Quick Slot)" : ""}</option>
+            ))}
+          </select>
+          <select
+            value={tradeToHero?.id || ""}
+            onChange={(e) => setTradeTo(e.target.value)}
+            className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            {heroes.map((h) => <option key={h.id} value={h.id}>To: {h.name} ({h.ap ?? 2} AP)</option>)}
+          </select>
+          <button
+            onClick={doTrade}
+            className="w-full text-xs px-2 py-2 rounded font-semibold active:scale-95 transition-transform"
+            style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
+          >
+            Trade (1 AP each)
+          </button>
+          {tradeFeedback && (
+            <p className="text-xs mt-1.5 font-semibold" style={{ color: tradeFeedback.tone === "good" ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif" }}>
+              {tradeFeedback.text}
+            </p>
+          )}
+        </Panel>
+      )}
+
+      <Panel className="mb-4">
+        <SectionTitle icon={Flashlight}>Light Sources</SectionTitle>
+        <div className="flex gap-1.5 mb-2">
+          <input
+            value={lightName}
+            onChange={(e) => setLightName(e.target.value)}
+            placeholder="Name"
+            className="flex-1 min-w-0 text-xs rounded px-2 py-1.5"
+            style={{ border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          />
+          <input
+            type="number"
+            value={lightDuration}
+            onChange={(e) => setLightDuration(Number(e.target.value) || 1)}
+            className="w-16 text-xs rounded px-2 py-1.5"
+            style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+            title="Turns remaining"
+          />
+          <button onClick={addLightSource} className="px-3 py-1.5 rounded font-semibold active:scale-95 transition-transform" style={{ background: palette.forestDark, color: palette.parchment }}>
+            <Plus size={14} />
+          </button>
+        </div>
+        {(party.lightSources || []).length === 0 ? (
+          <p className="text-xs italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>None tracked. Add a torch/lantern with however many turns it has left, per your table/card.</p>
+        ) : (
+          <div className="space-y-1">
+            {party.lightSources.map((l) => (
+              <div key={l.id} className="flex items-center justify-between text-xs rounded p-2" style={{ background: l.remaining <= 1 ? "#7A1F2B15" : "#00000008", fontFamily: "Crimson Pro, serif" }}>
+                <span style={{ color: palette.ink }}>{l.name} — {l.remaining} turn{l.remaining === 1 ? "" : "s"} left</span>
+                <button onClick={() => removeLightSource(l.id)} style={{ color: palette.crimson }}><X size={13} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      <Panel className="mb-4">
+        <SectionTitle icon={Bed}>Short Rest</SectionTitle>
+        <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+          Automates the numeric steps: −1 food, Threat −5 then a follow-up roll, Party Morale +2, +1d6 HP per hero, Energy regen (or full with a Bed Roll), full Mana for casters. Arranging heroes, barring the door, moving Wandering Monsters, brewing potions, and the Ambush roll still need doing by hand — see the full checklist in Reference.
+        </p>
+        <button
+          onClick={takeShortRest}
+          className="w-full mb-2 text-sm px-3 py-2 rounded font-bold active:scale-95 transition-transform"
+          style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
+        >
+          Take a Short Rest
+        </button>
+        {restSummary && (
+          <div className="rounded p-2" style={{ background: "#00000010" }}>
+            {restSummary.map((line, i) => (
+              <p key={i} className="text-xs" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>{line}</p>
+            ))}
+          </div>
+        )}
+      </Panel>
+
     </div>
   );
 }

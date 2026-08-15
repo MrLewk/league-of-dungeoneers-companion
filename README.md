@@ -14,25 +14,64 @@ needed.
 
 ## Features
 
-- **Party tracker** — Threat Level and Party Morale with one-tap buttons for
-  every trigger in the rules, plus food and coin tracking and a running
-  session log.
-- **Hero sheets** — HP, Energy, Sanity, Mana, the full skill list, weapon and
-  per-location armour (with durability), and chips for every Talent, Perk,
-  Spell, Prayer, and Special Rule attached to that hero.
-- **Combat calculator** — tick the modifiers that apply (height advantage,
-  attacking from behind, shields, defensive stance, etc.) and it totals the
-  effective CS/RS for you, rolls, and tells you Success / Fail / Perfect. A
-  separate panel handles the damage formula (Weapon DMG + DB − NA − Armour).
-- **Cast spells & say prayers** — pick a hero, pick from what they know, and
-  the app deducts the Mana or Energy cost and logs it automatically.
-- **Compendium** — every Talent, Perk, Prayer, Spell, and monster Special
-  Rule in the game, searchable, with a one-tap "Add" to attach any of them to
-  a hero.
-- **Dice tray & loot roller** — d4/d6/d10/d20/d100, a hit-location roller,
-  and the T1–T5 loot tables so you don't need to flip pages mid-battle.
-- **Multiple campaigns** — save, load, rename, and delete separate
-  campaigns, and start a fresh one any time without losing the others.
+The app is organised into tabs covering every phase of a session, front to
+back — the aim is to run a full campaign without needing to open the
+rulebook except for narrative flavour.
+
+- **Party** — Threat Level and Party Morale with one-tap buttons for every
+  trigger in the rules, plus food and coin tracking and a running session
+  log.
+- **Turn** — step-by-step turn/round structure matching the rulebook's Turn
+  Sequence, with Action Point tracking and a full Encounter Roller (all
+  seven faction tables — Beasts, Orcs and Goblins, Bandits and Brigands,
+  Reptiles, Dark Elves, Undead, Ancient Lands) linked straight into the
+  Bestiary.
+- **Heroes** — full hero sheets: HP, Energy, Sanity, Mana, encumbrance, the
+  full skill list, weapon and per-location armour (with durability), auto-
+  calculated stats and conditions, and chips for every Talent, Perk, Spell,
+  Prayer, Special Rule, and Background attached to that hero.
+- **Combat** — a full combat calculator for Close Combat, Ranged, Damage
+  (with Hit Location), Stat Checks, Spells, and Prayers. Tick the modifiers
+  that apply (height advantage, attacking from behind, shields, defensive
+  stance, etc.) and it totals the effective CS/RS, rolls, and reports
+  Success / Fail / Perfect. Casting spells or saying prayers automatically
+  deducts the Mana or Energy cost and logs it.
+- **Bestiary** — every monster and NPC statblock, searchable, ready to
+  reference straight into the Combat tab.
+- **Actions** — Door/Chest Opener, Portcullis, Cobweb Covered Opening,
+  Levers, and Search Tile resolvers, so exploration checks are one tap
+  instead of a table lookup.
+- **Alchemy** — the full potion, elixir, and ingredient system, including
+  identification and brewing.
+- **Dice** — a dice tray (d4/d6/d10/d20/d100) and a hit-location roller for
+  anything that falls outside the automated calculators.
+- **Reference** — Magic Items, Enchantments, and the full Legendary Items
+  Compendium, all searchable.
+- **Travel** — movement, daily events, rations/foraging, and rest handled
+  automatically as the party moves between settlements.
+- **Settlement** — every settlement service (Arena, Asylum, Banks,
+  Blacksmith, Fortune Teller, General Store, Guilds, Horse Racing Track,
+  Inner Sanctum, Temples), gated correctly by settlement (e.g. Inner
+  Sanctum vs Temples in Silver City), plus the Estate system (Silver City
+  only) with its own unlimited storage.
+- **Guilds** — all six Guilds in one place: services, training, and guild
+  business.
+- **Quest** — Campaign, Random, Side Quests, and Ancient Lands quests, with
+  completion tracking per quest type.
+- **Compendium** — every Talent, Perk, Prayer, Spell, monster Special Rule,
+  and Legendary Item in the game, searchable, with a one-tap "Add" to attach
+  any of them to a hero.
+- **Lore** — 45 lore entries across 6 categories, for worldbuilding and
+  flavour between sessions.
+- **Campaigns** — save, load, rename, delete, export, and import as many
+  separate campaigns as you like, and start a fresh one any time without
+  losing the others.
+
+Every calculation the rules ask you to do by hand — combat math, damage,
+encumbrance, resource costs, Threat/Morale triggers, travel events — is
+automated. Manual dice prompts are kept only for the handful of things that
+genuinely need physical cards or a table roll (e.g. Fine/Mundane/Wonderful
+Treasure decks).
 
 ## This is a fan project
 

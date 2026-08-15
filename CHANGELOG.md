@@ -3,6 +3,12 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.43.0] — 2026-08-15
+
+### Changed
+- Nav reordered to group tabs by when you'd actually reach for them: live-play tabs (Party, Turn, Heroes, Combat, Bestiary, Actions, Alchemy, Dice, Reference) come first, downtime/between-quest tabs (Travel, Settlement, Guilds, Quest, Compendium, Lore, Campaigns) come second — Bestiary and Reference moved up since they're needed mid-fight, not just as an afterthought
+- Nav is now two independently-scrollable rows instead of one long row — the live-play group and the downtime group are each visible at a glance, so you're not swiping through all 16 tabs to get from Combat to Travel
+
 ## [1.42.0] — 2026-08-15
 
 ### Added

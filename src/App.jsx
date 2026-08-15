@@ -3505,6 +3505,16 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.43.0",
+    date: "2026-08-15",
+    sections: {
+      "Changed": [
+        "Nav reordered to group tabs by when you'd actually reach for them: live-play tabs (Party, Turn, Heroes, Combat, Bestiary, Actions, Alchemy, Dice, Reference) come first, downtime/between-quest tabs (Travel, Settlement, Guilds, Quest, Compendium, Lore, Campaigns) come second — Bestiary and Reference moved up since they're needed mid-fight, not just as an afterthought",
+        "Nav is now two independently-scrollable rows instead of one long row — the live-play group and the downtime group are each visible at a glance, so you're not swiping through all 16 tabs to get from Combat to Travel",
+      ],
+    },
+  },
+  {
     version: "1.42.0",
     date: "2026-08-15",
     sections: {
@@ -13922,6 +13932,27 @@ export default function App() {
     if (dragState.current.moved) { e.preventDefault(); e.stopPropagation(); }
     dragState.current.moved = false;
   };
+  const navRef2 = useRef(null);
+  const dragState2 = useRef({ dragging: false, moved: false, startX: 0, scrollLeft: 0 });
+  const onNav2PointerDown = (e) => {
+    const el = navRef2.current;
+    if (!el) return;
+    dragState2.current = { dragging: true, moved: false, startX: e.pageX - el.offsetLeft, scrollLeft: el.scrollLeft };
+  };
+  const onNav2PointerMove = (e) => {
+    const el = navRef2.current;
+    if (!el || !dragState2.current.dragging) return;
+    e.preventDefault();
+    const x = e.pageX - el.offsetLeft;
+    const walk = x - dragState2.current.startX;
+    if (Math.abs(walk) > 4) dragState2.current.moved = true;
+    el.scrollLeft = dragState2.current.scrollLeft - walk;
+  };
+  const endNav2Drag = () => { dragState2.current.dragging = false; };
+  const onNav2ClickCapture = (e) => {
+    if (dragState2.current.moved) { e.preventDefault(); e.stopPropagation(); }
+    dragState2.current.moved = false;
+  };
   const [compendiumInitialCat, setCompendiumInitialCat] = useState("talents");
   const goToTab = (targetTab, opts) => {
     if (targetTab === "compendium" && opts?.cat) setCompendiumInitialCat(opts.cat);
@@ -14155,18 +14186,20 @@ export default function App() {
     ["turn", "Turn", Timer],
     ["heroes", "Heroes", Users],
     ["combat", "Combat", Swords],
+    ["bestiary", "Bestiary", Skull],
+    ["actions", "Actions", ClipboardList],
+    ["alchemy", "Alchemy", FlaskConical],
+    ["dice", "Dice", Dice5],
+    ["reference", "Reference", BookOpen],
+  ];
+  const tabs2 = [
     ["travel", "Travel", Map],
     ["settlement", "Settlement", Landmark],
     ["guilds", "Guilds", Shield],
-    ["alchemy", "Alchemy", FlaskConical],
-    ["actions", "Actions", ClipboardList],
-    ["dice", "Dice", Dice5],
     ["quest", "Quest", Map],
     ["compendium", "Compendium", ScrollText],
     ["lore", "Lore", Library],
-    ["bestiary", "Bestiary", Skull],
     ["campaigns", "Campaigns", FolderOpen],
-    ["reference", "Reference", BookOpen],
   ];
 
   return (
@@ -14202,7 +14235,7 @@ export default function App() {
 
       <nav
         ref={navRef}
-        className="max-w-2xl mx-auto flex gap-2 px-4 pt-3 pb-2 overflow-x-auto scroll-hide"
+        className="max-w-2xl mx-auto flex gap-2 px-4 pt-3 pb-1.5 overflow-x-auto scroll-hide"
         style={{ scrollSnapType: "x proximity", cursor: "grab" }}
         onMouseDown={onNavPointerDown}
         onMouseMove={onNavPointerMove}
@@ -14231,6 +14264,33 @@ export default function App() {
                 title="A hero has Improvement Points to spend"
               />
             )}
+          </button>
+        ))}
+      </nav>
+      <nav
+        ref={navRef2}
+        className="max-w-2xl mx-auto flex gap-2 px-4 pt-1.5 pb-2 overflow-x-auto scroll-hide"
+        style={{ scrollSnapType: "x proximity", cursor: "grab" }}
+        onMouseDown={onNav2PointerDown}
+        onMouseMove={onNav2PointerMove}
+        onMouseUp={endNav2Drag}
+        onMouseLeave={endNav2Drag}
+        onClickCapture={onNav2ClickCapture}
+      >
+        {tabs2.map(([key, label, Icon]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className="relative flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold shrink-0"
+            style={{
+              scrollSnapAlign: "start",
+              background: tab === key ? palette.crimson : palette.panel,
+              color: tab === key ? palette.parchment : palette.inkSoft,
+              fontFamily: "Cinzel, serif",
+              border: `1px solid ${tab === key ? palette.crimson : palette.line}`,
+            }}
+          >
+            <Icon size={14} /> {label}
           </button>
         ))}
       </nav>

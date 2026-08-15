@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.41.0] — 2026-08-15
+
+### Added
+- Read a Magic Scroll (Combat tab, next to Spells) — any hero can attempt a scroll straight from their own inventory. Uses WIS instead of Arcane Arts, Casting Value is reduced by 10 (min 0), and Focus is never allowed. The scroll is automatically removed from the hero's backpack on a successful cast, a dispelled cast, or a miscast — it survives a plain failure or a missed touch roll
+
 ## [1.40.0] — 2026-08-15
 
 ### Added

@@ -3505,6 +3505,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.41.0",
+    date: "2026-08-15",
+    sections: {
+      "Added": [
+        "Read a Magic Scroll (Combat tab, next to Spells) — any hero can attempt a scroll straight from their own inventory. Uses WIS instead of Arcane Arts, Casting Value is reduced by 10 (min 0), and Focus is never allowed. The scroll is automatically removed from the hero's backpack on a successful cast, a dispelled cast, or a miscast — it survives a plain failure or a missed touch roll",
+      ],
+    },
+  },
+  {
     version: "1.40.0",
     date: "2026-08-15",
     sections: {
@@ -9531,6 +9540,62 @@ function resolveSpellCast(hero, spell, opts) {
   return { type, threshold, aa, checkTarget: aaTarget, roll, success, effectExecuted, dispelled, dispelRoll, dispelTarget, miscast, miscastRoll, incantationFailed, manaDelta, manaNote, cost, powerAllowed, effectivePower };
 }
 
+// Magic Scrolls (p63) — any hero may read a scroll using WIS instead of Arcane Arts, CV is
+// reduced by 10 (min 0), and Focus is never allowed. The scroll itself is destroyed on a
+// successful cast, a dispelled cast, or a miscast — a plain failure (or a missed touch) and
+// the scroll survives to try again. Otherwise follows the same Touch/Ranged/Incantation
+// flowchart and 95+ Miscast Threshold as normal casting.
+function resolveScrollCast(hero, spell, opts) {
+  const { wounded, hasLOS, enemyAdjacent, inSettlement, canDispel, enemyRS } = opts;
+  const type = spellTypeOf(spell);
+  const effectiveCV = Math.max(0, (spell.cv || 0) - 10);
+
+  if (type !== "Touch" && enemyAdjacent) {
+    return { blocked: true, type, msg: "An enemy is adjacent — only Touch Spells may be cast." };
+  }
+  if (type === "Incantation" && !inSettlement) {
+    return { blocked: true, type, msg: "Incantations can only be cast while in a settlement." };
+  }
+  if (type === "Ranged" && !hasLOS) {
+    return { blocked: true, type, msg: "No line of sight to the target — can't cast. Choose a different action." };
+  }
+
+  const threshold = miscastThreshold({ wounded, focusAP: 0, increasedPower: 0 });
+  const wis = Number(hero.stats.WIS) || 0;
+  const checkTarget = wis - effectiveCV;
+
+  if (type === "Touch") {
+    const touchTarget = (Number(hero.skills.cs) || 0) + 20;
+    const touchRoll = rollPercent();
+    if (touchRoll > touchTarget) {
+      return { type, effectiveCV, touchTarget, touchRoll, touched: false, effectExecuted: false, scrollDestroyed: false };
+    }
+    const roll = rollPercent();
+    const success = roll <= checkTarget;
+    let miscast = false, miscastRoll = null;
+    if (!success && roll >= threshold) { miscast = true; miscastRoll = rollDie(10); }
+    return { type, effectiveCV, touchTarget, touchRoll, touched: true, wis, checkTarget, roll, success, effectExecuted: success, threshold, miscast, miscastRoll, scrollDestroyed: success || miscast };
+  }
+
+  const roll = rollPercent();
+  const success = roll <= checkTarget;
+  let effectExecuted = false, dispelled = false, dispelRoll = null, dispelTarget = null;
+  if (success && type === "Ranged" && canDispel) {
+    dispelTarget = Math.floor((Number(enemyRS) || 0) / 2);
+    dispelRoll = rollPercent();
+    if (dispelRoll <= dispelTarget) dispelled = true;
+    else effectExecuted = true;
+  } else if (success) {
+    effectExecuted = true;
+  }
+
+  let miscast = false, miscastRoll = null, incantationFailed = false;
+  if (!success && roll >= threshold) { miscast = true; miscastRoll = rollDie(10); }
+  else if (type === "Incantation" && !success) incantationFailed = true;
+
+  return { type, effectiveCV, threshold, wis, checkTarget, roll, success, effectExecuted, dispelled, dispelRoll, dispelTarget, miscast, miscastRoll, incantationFailed, scrollDestroyed: effectExecuted || dispelled || miscast };
+}
+
 function validateRecipeComponents(strength, components) {
   const rule = ALCHEMY_STRENGTH_RULES[strength];
   if (!rule) return "Pick a strength.";
@@ -11062,6 +11127,59 @@ function CombatCalc({ heroes, updateHero, addLog }) {
   const chosenSpellType = chosenSpell ? spellTypeOf(chosenSpell) : null;
   const powerAllowedFor = chosenSpell && (chosenSpell.school === "Restoration" || chosenSpell.school === "Destruction");
   const maxPower = castHero ? Math.min(5, castHero.level || 1) : 5;
+
+  // Read a Magic Scroll
+  const [scrollHeroPick, setScrollHeroPick] = useState("");
+  const [scrollItemPick, setScrollItemPick] = useState("");
+  const [scrollResult, setScrollResult] = useState(null);
+  const [scrollWounded, setScrollWounded] = useState(false);
+  const [scrollHasLOS, setScrollHasLOS] = useState(true);
+  const [scrollEnemyAdjacent, setScrollEnemyAdjacent] = useState(false);
+  const [scrollInSettlement, setScrollInSettlement] = useState(false);
+  const [scrollCanDispel, setScrollCanDispel] = useState(false);
+  const [scrollEnemyRS, setScrollEnemyRS] = useState(0);
+  const scrollHero = heroes.find((h) => h.id === scrollHeroPick);
+  const heroScrolls = scrollHero ? scrollHero.backpack.filter((it) => it.name.startsWith("Scroll of ")) : [];
+  const chosenScrollItem = heroScrolls.find((it) => it.id === scrollItemPick);
+  const chosenScrollSpell = chosenScrollItem ? SPELLS.find((s) => s.name === chosenScrollItem.name.replace(/^Scroll of /, "")) : null;
+  const chosenScrollType = chosenScrollSpell ? spellTypeOf(chosenScrollSpell) : null;
+  const readScroll = () => {
+    if (!scrollHero || !chosenScrollSpell || !chosenScrollItem) return;
+    const r = resolveScrollCast(scrollHero, chosenScrollSpell, {
+      wounded: scrollWounded, hasLOS: scrollHasLOS, enemyAdjacent: scrollEnemyAdjacent,
+      inSettlement: scrollInSettlement, canDispel: scrollCanDispel, enemyRS: scrollEnemyRS,
+    });
+    if (r.blocked) { setScrollResult({ ok: false, lines: [r.msg], destroyed: false }); return; }
+
+    const lines = [];
+    if (r.type === "Touch") {
+      lines.push(`Touch roll: ${r.touchRoll} vs ${r.touchTarget} (CS+20) — ${r.touched ? "touched!" : "missed."}`);
+      if (r.touched) lines.push(`WIS roll: ${r.roll} vs ${r.checkTarget} (WIS ${r.wis} − CV ${r.effectiveCV}) — ${r.success ? "success! " + chosenScrollSpell.name + " takes effect." : "failed."}`);
+    } else {
+      lines.push(`Rolled ${r.roll} vs ${r.checkTarget} (WIS ${r.wis} − CV ${r.effectiveCV}).`);
+      if (r.type === "Incantation") {
+        if (r.effectExecuted) lines.push(`Success! ${chosenScrollSpell.name} takes effect.`);
+        else if (r.incantationFailed) lines.push(`Incantation failed.`);
+      } else {
+        if (r.effectExecuted) lines.push(`Success! ${chosenScrollSpell.name} takes effect.`);
+        else if (r.dispelled) lines.push(`Cast succeeded, but the enemy dispelled it (rolled ${r.dispelRoll} vs their RS/2 = ${r.dispelTarget}).`);
+        else lines.push(`Cast failed.`);
+      }
+    }
+    if (r.miscast) {
+      const entry = MISCAST_TABLE.find((m) => m.roll === r.miscastRoll);
+      lines.push(`MISCAST! Rolled ${r.miscastRoll} on the Miscast Table: ${entry.text}`);
+      if (r.miscastRoll === 9) lines.push(`(Roll 1d4 on the Demon table to see what materialises.)`);
+    }
+    lines.push(r.scrollDestroyed ? "The scroll crumbles to ash." : "The scroll survives — it can be read again.");
+
+    if (r.scrollDestroyed) {
+      updateHero({ ...scrollHero, backpack: scrollHero.backpack.filter((it) => it.id !== chosenScrollItem.id) });
+      setScrollItemPick("");
+    }
+    setScrollResult({ ok: r.effectExecuted, lines, destroyed: r.scrollDestroyed });
+    addLog && addLog(`${scrollHero.name} reads a Scroll of ${chosenScrollSpell.name}: ${lines.join(" ")}`);
+  };
   const castSpell = () => {
     if (!castHero || !chosenSpell) return;
     const r = resolveSpellCast(castHero, chosenSpell, { focusAP, wounded, increasedPower, hasLOS, enemyAdjacent, inSettlement, canDispel, enemyRS });
@@ -11120,7 +11238,7 @@ function CombatCalc({ heroes, updateHero, addLog }) {
   return (
     <div>
       <div className="flex gap-1.5 mb-4 flex-wrap">
-        {[["cc", "Close Combat", Swords], ["ranged", "Ranged", Dice5], ["throw", "Throw Potion", FlaskConical], ["damage", "Damage", Shield], ["check", "Stat/Skill Check", Brain], ["spells", "Spells", Sparkles], ["prayers", "Prayers", Heart]].map(([key, label, Icon]) => (
+        {[["cc", "Close Combat", Swords], ["ranged", "Ranged", Dice5], ["throw", "Throw Potion", FlaskConical], ["damage", "Damage", Shield], ["check", "Stat/Skill Check", Brain], ["spells", "Spells", Sparkles], ["scroll", "Read Scroll", ScrollText], ["prayers", "Prayers", Heart]].map(([key, label, Icon]) => (
           <button
             key={key}
             onClick={() => { setMode(key); setResult(null); }}
@@ -11633,6 +11751,116 @@ function CombatCalc({ heroes, updateHero, addLog }) {
               </>
             );
           })()}
+        </Panel>
+      )}
+
+      {mode === "scroll" && (
+        <Panel className="mb-4">
+          <SectionTitle icon={ScrollText}>Read a Magic Scroll</SectionTitle>
+          <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
+            Any hero can read a scroll — the check uses WIS instead of Arcane Arts, and the spell's Casting Value is reduced by 10 (min 0). No Focus is allowed.
+          </p>
+          {heroes.length === 0 ? (
+            <p className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>Add a hero first.</p>
+          ) : (
+            <>
+              <label className="text-xs block mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                Hero
+                <select
+                  value={scrollHeroPick}
+                  onChange={(e) => { setScrollHeroPick(e.target.value); setScrollItemPick(""); setScrollResult(null); }}
+                  className="w-full text-sm rounded px-2 py-1.5 mt-1"
+                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                >
+                  <option value="">Choose a hero…</option>
+                  {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                </select>
+              </label>
+              {scrollHero && (
+                <p className="text-xs mb-2" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.ink }}>WIS: {scrollHero.stats.WIS}</p>
+              )}
+              {scrollHero && (
+                heroScrolls.length === 0 ? (
+                  <p className="text-xs mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
+                    {scrollHero.name} isn't carrying any scrolls. Make one at the Magic Workshop, or trade one over from another hero first.
+                  </p>
+                ) : (
+                  <label className="text-xs block mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                    Scroll
+                    <select
+                      value={scrollItemPick}
+                      onChange={(e) => { setScrollItemPick(e.target.value); setScrollResult(null); }}
+                      className="w-full text-sm rounded px-2 py-1.5 mt-1"
+                      style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                    >
+                      <option value="">Choose a scroll…</option>
+                      {heroScrolls.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+                    </select>
+                  </label>
+                )
+              )}
+              {chosenScrollSpell && (
+                <div className="rounded p-2.5 mb-3" style={{ background: "#00000008" }}>
+                  <p className="text-xs" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.inkSoft }}>
+                    {chosenScrollType} ({chosenScrollSpell.school}) · CV {chosenScrollSpell.cv} → {Math.max(0, chosenScrollSpell.cv - 10)} from scroll
+                  </p>
+                  <p className="text-xs mt-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>{chosenScrollSpell.effect}</p>
+                </div>
+              )}
+              {chosenScrollSpell && (
+                <div className="rounded p-2.5 mb-3 space-y-2" style={{ background: "#00000008" }}>
+                  <label className="flex items-center gap-1.5 text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                    <input type="checkbox" checked={scrollWounded} onChange={(e) => setScrollWounded(e.target.checked)} /> Hero is wounded (-5 Miscast Threshold)
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                    <input type="checkbox" checked={scrollEnemyAdjacent} onChange={(e) => setScrollEnemyAdjacent(e.target.checked)} /> An enemy is adjacent (blocks everything but Touch Spells)
+                  </label>
+                  {chosenScrollType === "Incantation" && (
+                    <label className="flex items-center gap-1.5 text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                      <input type="checkbox" checked={scrollInSettlement} onChange={(e) => setScrollInSettlement(e.target.checked)} /> Currently in a settlement (required for Incantations)
+                    </label>
+                  )}
+                  {chosenScrollType === "Ranged" && (
+                    <label className="flex items-center gap-1.5 text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                      <input type="checkbox" checked={scrollHasLOS} onChange={(e) => setScrollHasLOS(e.target.checked)} /> Has line of sight to the target
+                    </label>
+                  )}
+                  {chosenScrollType === "Ranged" && (
+                    <>
+                      <label className="flex items-center gap-1.5 text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                        <input type="checkbox" checked={scrollCanDispel} onChange={(e) => setScrollCanDispel(e.target.checked)} /> An enemy caster may try to dispel this
+                      </label>
+                      {scrollCanDispel && (
+                        <label className="text-xs block" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                          Enemy's RS (dispel target is RS/2)
+                          <input type="number" min="0" value={scrollEnemyRS} onChange={(e) => setScrollEnemyRS(Math.max(0, Number(e.target.value)))} className="w-full text-xs rounded px-2 py-1 mt-0.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }} />
+                        </label>
+                      )}
+                    </>
+                  )}
+                  {chosenScrollType === "Touch" && (
+                    <p className="text-[10px] italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>Touch Spells can't be dispelled.</p>
+                  )}
+                  <p className="text-[10px]" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.inkSoft }}>
+                    Miscast Threshold: {miscastThreshold({ wounded: scrollWounded, focusAP: 0, increasedPower: 0 })} · WIS: {scrollHero?.stats.WIS}
+                  </p>
+                </div>
+              )}
+              <button
+                onClick={readScroll}
+                disabled={!scrollHero || !chosenScrollSpell}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded font-bold text-sm"
+                style={{ background: palette.ember, color: palette.parchment, opacity: (!scrollHero || !chosenScrollSpell) ? 0.5 : 1 }}
+              >
+                <ScrollText size={16} /> Read Scroll
+              </button>
+              {scrollResult && (
+                <div className="text-xs mt-3 text-center rounded p-2 font-bold space-y-0.5" style={{ background: scrollResult.ok ? palette.forestDark : palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+                  {scrollResult.lines.map((l, i) => <p key={i}>{l}</p>)}
+                </div>
+              )}
+            </>
+          )}
         </Panel>
       )}
 

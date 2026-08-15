@@ -3,6 +3,19 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.40.0] — 2026-08-15
+
+### Added
+- Close Combat To-Hit calculator now has checkable Charge (+10) and Power attack (+20) modifiers, matching the QRS To-Hit table — previously only documented in prose, not available as a toggle
+- Close Combat/Ranged To-Hit results now surface next-step guidance: a hit shows a "Go to Damage" shortcut with a reminder of the damage formula, a natural 01-05 flags Bloodlust (roll DMG twice, take the higher — or automatic max on a Power Attack), and a 00 result notes the weapon-damage/drop-weapon rule
+
+### Changed
+- Nav order: Heroes moved up to right after Turn, and Combat moved to right after Heroes, so in-session tabs sit together instead of split up by out-of-dungeon tabs
+- Dice tab's plain "Hit Location (d6)" button removed in favour of the fully automated version on Combat → Damage (hero-linked, auto-applies Sanity/Durability effects) — a note now points there instead
+
+### Fixed
+- Party tab's Threat note referenced "Start of Turn above", which moved to the Turn tab in the last version — now points to the right place
+
 ## [1.39.0] — 2026-08-15
 
 ### Added

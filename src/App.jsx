@@ -1509,7 +1509,9 @@ const GENERAL_EQUIPMENT = [
 
 const CC_ATTACK_MODS = [
   { label: "Enemy lying down (also loses its to-hit)", value: 30 },
+  { label: "Power attack (no dodge/parry next turn, enemy +10 CS vs you)", value: 20 },
   { label: "Attacking from behind", value: 20 },
+  { label: "Charge (started ≥2 squares away)", value: 10 },
   { label: "Height advantage", value: 10 },
   { label: "Enemy weapon has the Fast Rule", value: -5 },
   { label: "Enemy weapon has slow rule", value: 5 },
@@ -3502,6 +3504,23 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.40.0",
+    date: "2026-08-15",
+    sections: {
+      "Added": [
+        "Close Combat To-Hit calculator now has checkable Charge (+10) and Power attack (+20) modifiers, matching the QRS To-Hit table — previously only documented in prose, not available as a toggle",
+        "Close Combat/Ranged To-Hit results now surface next-step guidance: a hit shows a \\\"Go to Damage\\\" shortcut with a reminder of the damage formula, a natural 01-05 flags Bloodlust (roll DMG twice, take the higher — or automatic max on a Power Attack), and a 00 result notes the weapon-damage/drop-weapon rule",
+      ],
+      "Changed": [
+        "Nav order: Heroes moved up to right after Turn, and Combat moved to right after Heroes, so in-session tabs sit together instead of split up by out-of-dungeon tabs",
+        "Dice tab's plain \\\"Hit Location (d6)\\\" button removed in favour of the fully automated version on Combat → Damage (hero-linked, auto-applies Sanity/Durability effects) — a note now points there instead",
+      ],
+      "Fixed": [
+        "Party tab's Threat note referenced \\\"Start of Turn above\\\", which moved to the Turn tab in the last version — now points to the right place",
+      ],
+    },
+  },
   {
     version: "1.39.0",
     date: "2026-08-15",
@@ -10821,7 +10840,7 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
           ))}
         </div>
         <p className="text-xs mt-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-          Use "Start of Turn" above to roll the Scenario die and Threat automatically each turn, or the buttons below for one-off Threat changes.
+          Use "Start of Turn" on the Turn tab to roll the Scenario die and Threat automatically each turn, or the buttons above for one-off Threat changes.
         </p>
       </Panel>
 
@@ -10981,7 +11000,7 @@ function CombatCalc({ heroes, updateHero, addLog }) {
     if (r <= 5) outcome = "PERFECT";
     else if (r <= effective) outcome = "SUCCESS";
     else outcome = "FAILURE";
-    setResult({ r, outcome });
+    setResult({ r, outcome, isBloodlust: r <= 5, isDoubleZero: r === 100 });
   };
 
   // Damage calc
@@ -11233,6 +11252,26 @@ function CombatCalc({ heroes, updateHero, addLog }) {
             >
               Rolled {result.r} — {result.outcome}
             </div>
+          )}
+          {result && result.outcome !== "FAILURE" && (
+            <div className="mt-2 rounded p-2.5" style={{ background: "#00000008" }}>
+              <p className="text-xs" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
+                <b>Hit.</b> Next, work out Damage: weapon DMG + Damage Bonus − enemy Natural Armour − Armour. Roll Hit Location there too if it applies to this attack.
+                {result.isBloodlust && " Bloodlust! Roll DMG twice and take the higher — or, if this was a Power Attack, DMG is automatic max instead."}
+              </p>
+              <button
+                onClick={() => { setMode("damage"); setResult(null); }}
+                className="mt-2 text-xs px-3 py-1.5 rounded-full font-semibold flex items-center gap-1.5"
+                style={{ background: palette.crimson, color: palette.parchment, fontFamily: "Crimson Pro, serif" }}
+              >
+                <Shield size={12} /> Go to Damage
+              </button>
+            </div>
+          )}
+          {result && result.isDoubleZero && (
+            <p className="text-xs mt-2 italic" style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif" }}>
+              Rolled 00 — if the attacker is a hero, their weapon takes damage; if the attacker is an enemy, it drops its weapon (or falls over if unarmed).
+            </p>
           )}
         </Panel>
       )}
@@ -11716,14 +11755,10 @@ function DiceTray({ party, setParty, heroes, updateHero, addLog }) {
               d{d}
             </button>
           ))}
-          <button
-            onClick={() => doRoll(6, "Hit location")}
-            className="px-3 py-2 rounded font-bold text-sm"
-            style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
-          >
-            Hit Location (d6)
-          </button>
         </div>
+        <p className="text-xs mb-3 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+          Need Hit Location? That's on Combat → Damage, where it's tied to a hero and auto-applies the result.
+        </p>
         <div className="grid grid-cols-3 gap-2">
           {rolls.map((r) => (
             <div key={r.id} className="text-center rounded p-2" style={{ background: "#00000010" }}>
@@ -11731,11 +11766,6 @@ function DiceTray({ party, setParty, heroes, updateHero, addLog }) {
               <div className="text-xl font-bold" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.ink }}>
                 {r.r}
               </div>
-              {r.label === "Hit location" && (
-                <div className="text-xs" style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif" }}>
-                  {r.r === 1 ? "Head" : r.r >= 3 && r.r <= 5 ? "Torso" : r.r === 6 ? "Legs" : "Arms"}
-                </div>
-              )}
             </div>
           ))}
         </div>
@@ -13800,11 +13830,11 @@ export default function App() {
   const tabs = [
     ["party", "Party", Flame],
     ["turn", "Turn", Timer],
+    ["heroes", "Heroes", Users],
+    ["combat", "Combat", Swords],
     ["travel", "Travel", Map],
     ["settlement", "Settlement", Landmark],
     ["guilds", "Guilds", Shield],
-    ["heroes", "Heroes", Users],
-    ["combat", "Combat", Swords],
     ["alchemy", "Alchemy", FlaskConical],
     ["actions", "Actions", ClipboardList],
     ["dice", "Dice", Dice5],

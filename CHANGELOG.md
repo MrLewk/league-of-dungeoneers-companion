@@ -3,6 +3,13 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.44.0] — 2026-08-15
+
+### Added
+- Quest Book II: four Main Quests with confirmed multi-stage structure now have their own checklists with progress counters — Cult of the Hydra (5 stages), Halls of the Goblin King (6 holds), The Northern Tombs (3 tombs), and Witches (6 stages) — moved out of the flat title list into the same format as The Dead Rising and Lair of the Spider Queen
+- Lore tab: 3 new entries — Teezmeald the Vile and the Seven Holds, The Northern Tribes and the Grand Chiefs (History), and Kyaris, the Five-Headed (Deities)
+- Compendium: Crown of Aulfric added to Legendary Items (+2 Initiative Tokens on the first turn of combat, no helmet, can't be sold), with a matching Lore entry
+
 ## [1.43.0] — 2026-08-15
 
 ### Changed

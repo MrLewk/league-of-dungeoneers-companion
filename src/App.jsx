@@ -674,13 +674,11 @@ const ANCIENT_LANDS_QUESTS = [
   "Crypt of Khaba",
 ];
 
-// Quest Book II — from its own table of contents. Only titles are confirmed so far,
-// no page numbers or mechanics, since only the ToC has been reviewed.
+// Quest Book II — Main Quests. The four with multi-stage structure (confirmed from
+// their actual quest text, not just the ToC) get their own checklist below in
+// BOOK2_CAMPAIGNS. The rest are single-page quests with no sub-quests, so their
+// titles stand alone here.
 const BOOK2_MAIN_QUESTS = [
-  "Cult of the Hydra",
-  "Witches",
-  "Halls of the Goblin King",
-  "The Northern Tombs",
   "The Lost Prayer",
   "The Ghost of a King",
   "A Kingdom Gone",
@@ -688,6 +686,51 @@ const BOOK2_MAIN_QUESTS = [
   "Corsairs",
   "Giant Slayer",
   "And Out Come The Wolves...",
+];
+
+// Quest Book II — Main Quests with confirmed multi-stage structure, in the same
+// shape as CAMPAIGNS. Check off as you complete each stage, in order.
+const BOOK2_CAMPAIGNS = [
+  {
+    name: "Cult of the Hydra",
+    quests: [
+      "The Temple (ambush)",
+      "Level One: Entry Level",
+      "Level Two: The Guardian",
+      "Level Three: The Head of the Serpent",
+      "The Hydra",
+    ],
+  },
+  {
+    name: "Halls of the Goblin King",
+    quests: [
+      "Hold 1: The Hall of Turog",
+      "Hold 2: The Dungeon of Gundaz the Defiler",
+      "Hold 3: The Temple of Dregrir the Wyzard",
+      "Hold 4: The Cave of Klatche the Ogre",
+      "Hold 6: The Dungeon of Quorthon Smallz",
+      "Hold 7: The Black Tree Fortress",
+    ],
+  },
+  {
+    name: "The Northern Tombs",
+    quests: [
+      "Jarl Knut's Tomb",
+      "The Tomb of Ragnvald",
+      "The Tomb of Grand Chief Arnulf",
+    ],
+  },
+  {
+    name: "Witches",
+    quests: [
+      "The Stakeout",
+      "Quest Site 30: The Temple",
+      "Quest Site 31: The Ruins",
+      "Quest Site 32: The Observatory",
+      "Quest Site 33: The Tower",
+      "Down the Stairs (The Elder Witch)",
+    ],
+  },
 ];
 
 const BOOK2_BACKER_QUESTS = [
@@ -2740,6 +2783,7 @@ const LEGENDARY_ITEMS = [
   { name: "Necklace of Flight", type: "Necklace", effect: "Lets the wearer walk across water, chasms, and pits (and stay on such a square), and makes them immune to pit traps. Cannot be used to cross lava." },
   { name: "Armour of the Father", type: "Armour (Torso)", effect: "The hero chooses whether this is a Padded Vest, Leather Vest, Chainmail Shirt, or Breastplate depending on their profession. Same stats as that armour type, but with a +1 DEF modifier and +15 RES." },
   { name: "Necklace of Deflection", type: "Necklace", effect: "Whenever hit by a projectile from ranged weapons or traps (arrows, darts, sling stones), roll 1d6: 1-3 the projectile misses completely, 4 hits an arm, 5 hits a leg, 6 hits the head." },
+  { name: "Crown of Aulfric", type: "Item (head)", effect: "Grants the party +2 Initiative Tokens on the first turn of combat. Cannot be combined with any kind of helmet. Cannot be sold." },
 ];
 // Flat, unconditional, permanent bonuses for Legendary Items — applied the same way as
 // TALENT_EFFECTS. Items needing live combat judgement (Sword of Lightning, Golden Khopesh's
@@ -2783,10 +2827,13 @@ const LORE_ENTRIES = [
   // History
   { title: "The Kingdom — Lorainia", category: "History", text: "For millennia, the tribes of Men fought amongst themselves for power, until Rannulf Mournoak rose up, declared himself High King, and — unlike anyone before him — actually managed to keep the throne, uniting the tribes into a single, expanding Kingdom. Explorers who ventured further south than anyone had gone before found the ruins of an ancient, long-vanished civilization full of riches; the veterans of those expeditions became known as Dungeoneers. Eventually the ruins' former inhabitants rose again as Undead and struck back, nearly overrunning a third of the Kingdom before the darkness vanished as suddenly as it came. Rituals and witch-hunting orders were established to keep the dead from returning, and no real effort was made to reclaim the southern lands — until the current High King, Logan III, declared that expeditions south should begin again." },
   { title: "Life in the Kingdom", category: "History", text: "The Undead War didn't just cost the Kingdom lives — it cut off the flow of southern gold and coincided with a run of worsening harvests and increasingly brutal winters. Poverty spread as the economy strained, and Orc, Goblin, and beast attacks on villages grew bolder and more frequent. With hunger and cold pressing in, crime has risen sharply across the Kingdom, and many quietly see the High King's decision to reopen the south as more a sign of desperation than ambition." },
+  { title: "Teezmeald the Vile and the Seven Holds", category: "History", text: "A goblin warlord once known as Teezmeald the Large rose to power in the hills northeast of the Outpost, uniting the southern goblin tribes through trickery, bribery, and brute force. Renamed Teezmeald the Vile, he built seven fortified holds to house his loyal captains and the plunder and slaves taken from raided villages. The young human Kingdom, unable to stop him alone, turned to the Elves for aid — the elven princess Aelynthi Bihorn led a band of rangers against the holds, finally cutting Teezmeald down in single combat at the last of them, the Black Tree Fortress. Now the empty holds are filling with goblins and worse once more." },
+  { title: "The Northern Tribes and the Grand Chiefs", category: "History", text: "The pastoral clans of the northwestern highlands submitted to King Almelac after the Battle of the Green River, swearing warriors and taxes to the Crown in exchange for the right to keep their own elected chieftains, answerable in turn to a Grand Chief. The tribes still bury their leaders — and much of their worldly wealth — in hidden underground tombs, considering the sites holy ground closed to outsiders. Most tribes have since abandoned the old lavish burials, but the tombs of the earlier Grand Chiefs remain, largely undisturbed, beneath the northern hills." },
 
   // Deities
   { title: "Kredelia, the Goddess of Travellers", category: "Deities", text: "Protector of those on the road, Kredelia is traditionally offered a small gift before setting out on any long journey, in the hope of warding off bandits and other misfortune. Travellers she favours are said to receive a boon that makes their journey a little easier." },
   { title: "The Dark Gods", category: "Deities", text: "Several gods are collectively — and only ever — referred to as \"the Dark Gods,\" out of superstition and fear of what invoking their true names might bring. Worshipping them is forbidden throughout the Kingdom, though secret followers persist regardless. The most widely followed among them is Kheros, the God of Death, to whom necromancers turn for power." },
+  { title: "Kyaris, the Five-Headed", category: "Deities", text: "One of the Dark Gods, depicted as a five-headed hydra and worshipped by an old sect of outcast Elves known as the Cult of the Hydra. Openly hostile to order and civilisation, the cult once raided villages, assassinated a high priest, and plotted to storm Silver City before being hunted down and believed wiped out — until reports of new followers recruiting in the shadier corners of society began to surface again." },
   { title: "Metheia, the God of Life", category: "Deities", text: "As God of Life, Metheia commands more devotion than almost any other deity in the Kingdom — most citizens offer her a short prayer each morning, simply in thanks for waking to see another day. Every major city keeps a chapel in her honour, and her priests are typically the ones tending the sick and wounded in the temple wards nearby." },
   { title: "Ohlnir, the God of Strength", category: "Deities", text: "God of war and one of the five most-worshipped deities. His followers admire physical prowess and hold that many of the world's problems could — and should — be solved with might and weapons. It's why Barbarians so often wear his sign, alongside soldiers and Warrior Priests." },
   { title: "Rhidnir, the Trickster God", category: "Deities", text: "A fickle deity who delights in interference and the most unexpected of outcomes. Said to be the father of both Gnolls and Beastmen. Few travellers dare pass a shrine of his without tossing a coin as an offering, and he's the natural patron of those who walk society's narrower paths — thieves and highwaymen among them." },
@@ -2825,6 +2872,7 @@ const LORE_ENTRIES = [
   { title: "The Golden Khopesh", category: "Legendary Items", text: "Wielded by a nameless mummified prince during the darkest days of the Undead War, cutting through armour and warriors alike until he was finally killed — not by skill, but by sheer chance, crushed under a stone hurled from a human trebuchet. The blade passed to a human artillery captain, later found dead in his bed, withered and wild-eyed; the khopesh itself was never recovered.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
   { title: "Vial of Never Ending", category: "Legendary Items", text: "Crafted by the renowned alchemist Akh-Zum, famed for his life-restoring elixirs — any healing potion mixed directly in this vial is strengthened enough to restore the drinker to full health.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
   { title: "Ring of the Hierophant", category: "Legendary Items", text: "Made by the now-extinct Hierophant Order, formed after the Undead War specifically to hunt down the Undead that lingered on afterward. It gives off a faint light, invisible to human eyes but deeply unpleasant to anything Undead.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
+  { title: "Crown of Aulfric", category: "Legendary Items", text: "Once worn by Aulfric the Wise, a tribal leader whose unmatched skill at deploying his warriors kept rival chiefs a step behind for years — until he was betrayed and struck down the very day his crown was stolen from him. The crown was recovered shortly after and buried with him, and it's said to still sharpen the tactical instincts of whoever claims it from his grave.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
   { title: "Amulet of Haamile", category: "Legendary Items", text: "Made by Haamile, steward of the great magical college of Martslock and the greatest sorcerer of his age, who crafted the amulet in his final years to preserve his once-brilliant mind as it began to fade. It was kept safe at the college for centuries after his death before eventually being forgotten and lost.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
   { title: "Boots of Stability", category: "Legendary Items", text: "Once worn by the notoriously drunk Lord Fouquet, who — however deep into his cups — never once stumbled or fell at the many parties he caused scenes at. The boots disappeared after his death; their maker was never identified.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
   { title: "Stone of Valheir", category: "Legendary Items", text: "One of three mesmerizing, colour-shifting stones discovered by the Dwarven King Valheir over a thousand years ago. Legend says he spent his remaining years simply staring into them and eventually went mad — the stones themselves were then lost for ages, until now.", relatedTab: "compendium", relatedCat: "legendary", relatedLabel: "Compendium: Legendary Items" },
@@ -3504,6 +3552,17 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.44.0",
+    date: "2026-08-15",
+    sections: {
+      "Added": [
+        "Quest Book II: four Main Quests with confirmed multi-stage structure now have their own checklists with progress counters — Cult of the Hydra (5 stages), Halls of the Goblin King (6 holds), The Northern Tombs (3 tombs), and Witches (6 stages) — moved out of the flat title list into the same format as The Dead Rising and Lair of the Spider Queen",
+        "Lore tab: 3 new entries — Teezmeald the Vile and the Seven Holds, The Northern Tribes and the Grand Chiefs (History), and Kyaris, the Five-Headed (Deities)",
+        "Compendium: Crown of Aulfric added to Legendary Items (+2 Initiative Tokens on the first turn of combat, no helmet, can't be sold), with a matching Lore entry",
+      ],
+    },
+  },
   {
     version: "1.43.0",
     date: "2026-08-15",
@@ -13047,10 +13106,30 @@ function QuestRollerPanel({ party, setParty, addLog }) {
         ))}
       </Panel>
 
+      {BOOK2_CAMPAIGNS.map((campaign) => {
+        const doneCount = campaign.quests.filter((q) => quests.completed[`book2campaign:${campaign.name}:${q}`]).length;
+        return (
+          <Panel key={campaign.name}>
+            <SectionTitle icon={BookOpen}>{campaign.name} <span className="text-xs font-normal" style={{ color: palette.inkSoft }}>({doneCount}/{campaign.quests.length})</span></SectionTitle>
+            <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+              Quest Book II. Check off as you complete each stage, in order.
+            </p>
+            {campaign.quests.map((q) => (
+              <QuestChecklistRow
+                key={q}
+                label={q}
+                checked={quests.completed[`book2campaign:${campaign.name}:${q}`]}
+                onToggle={() => toggleCompleted(`book2campaign:${campaign.name}:${q}`, `${campaign.name} — ${q}`)}
+              />
+            ))}
+          </Panel>
+        );
+      })}
+
       <Panel>
         <SectionTitle icon={BookOpen}>Quest Book II</SectionTitle>
         <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-          Only titles are confirmed so far (from its table of contents) — page numbers and mechanics for the main and Backer quests aren't in yet.
+          Single-page quests with no sub-stages, plus the Backer Quests. Only titles are confirmed for the Backer quests so far (from the table of contents) — page numbers and mechanics aren't in yet.
         </p>
         <p className="text-xs mb-1 font-bold uppercase" style={{ color: palette.goldSoft, fontFamily: "Cinzel, serif" }}>Main Quests</p>
         {BOOK2_MAIN_QUESTS.map((name) => (

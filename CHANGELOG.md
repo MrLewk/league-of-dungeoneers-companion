@@ -3,6 +3,13 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.46.0] — 2026-08-15
+
+### Added
+- Hero sheet: "Apply Starting Talents/Perks" button for every profession, granting the real fixed Talents/Perks each profession starts with (e.g. Warrior gets Disciplined + Heroic Force of Will, Knight gets all 4 of its Talents plus 2 Perks) — same pattern as the existing Apply Starting Equipment button, safe to press more than once
+- Where a profession offers a player choice instead of a fixed grant, that choice now appears directly on the hero sheet: Warrior and Warrior Priest show tap-to-pick buttons for their named Talent choice (Mighty Blow/Braveheart, Confident/Braveheart), and Wizard shows a dropdown filtered to just Arcane Perks for its "choose one Arcane Perk" pick
+- "+ Add Talent / Perk" button on every hero sheet, jumping straight to the Compendium tab with that hero and the Talents category already pre-selected
+
 ## [1.45.0] — 2026-08-15
 
 ### Added

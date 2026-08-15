@@ -3221,9 +3221,9 @@ function CompendiumList({ items, showLevel, showType, onAdd, addedNames }) {
   );
 }
 
-function CompendiumTab({ heroes, updateHero, addLog, initialCat }) {
+function CompendiumTab({ heroes, updateHero, addLog, initialCat, initialHero }) {
   const [cat, setCat] = useState(initialCat || "talents");
-  const [heroPick, setHeroPick] = useState("");
+  const [heroPick, setHeroPick] = useState(initialHero || "");
   const cats = [
     ["talents", "Talents", TALENTS, true, false, "talents"],
     ["perks", "Perks", PERKS, false, true, "perks"],
@@ -3575,6 +3575,17 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.46.0",
+    date: "2026-08-15",
+    sections: {
+      "Added": [
+        "Hero sheet: \"Apply Starting Talents/Perks\" button for every profession, granting the real fixed Talents/Perks each profession starts with (e.g. Warrior gets Disciplined + Heroic Force of Will, Knight gets all 4 of its Talents plus 2 Perks) — same pattern as the existing Apply Starting Equipment button, safe to press more than once",
+        "Where a profession offers a player choice instead of a fixed grant, that choice now appears directly on the hero sheet: Warrior and Warrior Priest show tap-to-pick buttons for their named Talent choice (Mighty Blow/Braveheart, Confident/Braveheart), and Wizard shows a dropdown filtered to just Arcane Perks for its \"choose one Arcane Perk\" pick",
+        "\"+ Add Talent / Perk\" button on every hero sheet, jumping straight to the Compendium tab with that hero and the Talents category already pre-selected",
+      ],
+    },
+  },
   {
     version: "1.45.0",
     date: "2026-08-15",
@@ -5264,7 +5275,29 @@ const STARTING_EQUIPMENT = {
   Wizard: { weaponOptions: ["Staff"], armour: null, backpackItems: [], manualNote: "" },
 };
 
-function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) {
+// Starting Talents/Perks per profession — fixed grants confirmed from the official
+// character creator's starting-kit logic, cross-checked against this app's own
+// TALENTS/PERKS categorisation (a couple of names sit in a different list than the
+// source labelled them — e.g. Shapeshifter is a Perk here, not a Talent — the app's
+// existing rulebook-verified entry wins in that case). `choices` covers anything that
+// needs a player pick between a small fixed set of named options; `choiceFilterType`
+// picks from a whole Perk/Talent category instead (e.g. Wizard's "any Arcane Perk").
+// pickNote covers anything handled by a different system entirely (Prayers/Spells,
+// which are learned via the Inner Sanctum/Wizards' Guild).
+const PROFESSION_STARTING_TALENTS = {
+  Warrior: { talents: ["Disciplined"], perks: ["Heroic Force of Will"], choices: [{ label: "Starting Talent", kind: "talent", options: ["Mighty Blow", "Braveheart"] }], pickNote: "" },
+  Barbarian: { talents: [], perks: ["Heroic Force of Will", "Frenzy"], choices: [], pickNote: "" },
+  Alchemist: { talents: ["Resistance to Poison"], perks: ["Heroic Force of Will"], choices: [], pickNote: "" },
+  Ranger: { talents: ["Observant", "Marksman"], perks: ["Heroic Force of Will"], choices: [], pickNote: "" },
+  Rogue: { talents: ["Backstabber", "Streetwise"], perks: ["Heroic Force of Will"], choices: [], pickNote: "" },
+  Thief: { talents: ["Evaluate"], perks: ["Heroic Force of Will"], choices: [], pickNote: "" },
+  "Warrior Priest": { talents: [], perks: ["Heroic Force of Will"], choices: [{ label: "Starting Talent", kind: "talent", options: ["Confident", "Braveheart"] }], pickNote: "Plus 2 level-1 Prayers, via the Inner Sanctum." },
+  Wizard: { talents: [], perks: [], choices: [{ label: "Starting Perk", kind: "perk", filterType: "Arcane" }], pickNote: "Plus 3 level-1 Spells, via the Wizards' Guild." },
+  Druid: { talents: [], perks: ["Heroic Force of Will", "Shapeshifter"], choices: [], pickNote: "Plus Invocations and Beastforms — handled separately." },
+  Knight: { talents: ["Mounted Combat", "Natural Leader", "Tank", "Chivalrous"], perks: ["Heroic Force of Will", "Challenge"], choices: [], pickNote: "" },
+};
+
+function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, goToTab }) {
   const [sanityEvent, setSanityEvent] = useState(SANITY_EVENTS[0].label);
   const [pendingCondition, setPendingCondition] = useState(null);
   const [hateEnemyInput, setHateEnemyInput] = useState("");
@@ -5323,6 +5356,50 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
     const line = `Starting equipment applied: ${lines.join(", ")}.${startingCfg.manualNote ? ` ${startingCfg.manualNote}` : ""}`;
     setStartEquipResult({ ok: true, line });
     addLog(`${hero.name}: ${line}`);
+  };
+
+  const [startTalentsResult, setStartTalentsResult] = useState(null);
+  const professionGrants = PROFESSION_STARTING_TALENTS[hero.profession];
+  const applyStartingTalentsPerks = () => {
+    if (!professionGrants) return;
+    const hasFixedGrants = professionGrants.talents.length > 0 || professionGrants.perks.length > 0;
+    if (!hasFixedGrants) {
+      setStartTalentsResult({ ok: true, line: professionGrants.pickNote || "This profession has no fixed starting Talents/Perks." });
+      return;
+    }
+    const newTalents = professionGrants.talents.filter((t) => !hero.talents.includes(t));
+    const newPerks = professionGrants.perks.filter((p) => !hero.perks.includes(p));
+    if (newTalents.length === 0 && newPerks.length === 0) {
+      setStartTalentsResult({ ok: true, line: "Already has this profession's starting Talents/Perks." });
+      return;
+    }
+    let workingHero = hero;
+    let talents = hero.talents;
+    newTalents.forEach((tName) => {
+      workingHero = { ...workingHero, ...talentEffectPatch(workingHero, tName, 1) };
+      talents = [...talents, tName];
+    });
+    const perks = [...hero.perks, ...newPerks];
+    update({ ...workingHero, talents, perks });
+    const granted = [...newTalents, ...newPerks].join(", ");
+    const line = `Starting Talents/Perks applied: ${granted}.`;
+    setStartTalentsResult({ ok: true, line });
+    addLog(`${hero.name}: ${line}`);
+  };
+  const [startChoicePick, setStartChoicePick] = useState({});
+  const applyStartingChoice = (choice, name) => {
+    if (!name) return;
+    if (choice.kind === "talent") {
+      if (hero.talents.includes(name)) return;
+      const patch = talentEffectPatch(hero, name, 1);
+      update({ ...hero, ...patch, talents: [...hero.talents, name] });
+      if (TALENT_EFFECTS[name]) addLog(`${hero.name}: gained Talent "${name}" (${TALENT_EFFECTS[name].label}, applied automatically).`);
+      else addLog(`${hero.name}: gained Talent "${name}" (${choice.label}).`);
+    } else {
+      if (hero.perks.includes(name)) return;
+      update({ ...hero, perks: [...hero.perks, name] });
+      addLog(`${hero.name}: gained Perk "${name}" (${choice.label}).`);
+    }
   };
 
 
@@ -5959,6 +6036,88 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
                 <p className="text-[10px] mt-1.5" style={{ color: startEquipResult.ok ? palette.forestDark : palette.crimson, fontWeight: 600 }}>
                   {startEquipResult.line}
                 </p>
+              )}
+            </div>
+          )}
+          {professionGrants && (
+            <div className="mt-2 p-2 rounded" style={{ background: "#00000006" }}>
+              <p className="text-xs font-semibold mb-1" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Starting Talents/Perks</p>
+              {(professionGrants.talents.length > 0 || professionGrants.perks.length > 0) && (
+                <button onClick={applyStartingTalentsPerks} className="w-full text-xs px-2 py-1.5 rounded font-semibold" style={{ background: palette.forestDark, color: palette.parchment }}>
+                  Apply Starting Talents/Perks ({hero.profession})
+                </button>
+              )}
+              {startTalentsResult && (
+                <p className="text-[10px] mt-1.5" style={{ color: startTalentsResult.ok ? palette.forestDark : palette.crimson, fontWeight: 600 }}>
+                  {startTalentsResult.line}
+                </p>
+              )}
+              {professionGrants.choices.map((choice) => {
+                const list = choice.kind === "talent" ? hero.talents : hero.perks;
+                if (choice.options) {
+                  return (
+                    <div key={choice.label} className="mt-2">
+                      <p className="text-[10px] uppercase font-semibold mb-1" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>{choice.label} — pick one</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {choice.options.map((name) => {
+                          const has = list.includes(name);
+                          return (
+                            <button
+                              key={name}
+                              onClick={() => applyStartingChoice(choice, name)}
+                              disabled={has}
+                              className="text-xs px-2 py-1 rounded font-semibold"
+                              style={{
+                                background: has ? palette.forestDark : "#fff",
+                                color: has ? palette.parchment : palette.ink,
+                                border: `1px solid ${has ? palette.forestDark : palette.line}`,
+                              }}
+                            >
+                              {has ? "✓ " : ""}{name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                }
+                if (choice.filterType) {
+                  const dataset = choice.kind === "talent" ? TALENTS : PERKS;
+                  const options = dataset.filter((i) => i.type === choice.filterType);
+                  const pickKey = `${hero.profession}:${choice.label}`;
+                  const alreadyPicked = options.filter((o) => list.includes(o.name));
+                  return (
+                    <div key={choice.label} className="mt-2">
+                      <p className="text-[10px] uppercase font-semibold mb-1" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>{choice.label} — choose one {choice.filterType} {choice.kind}</p>
+                      {alreadyPicked.length > 0 && (
+                        <p className="text-[10px] mb-1" style={{ color: palette.forestDark, fontWeight: 600 }}>✓ {alreadyPicked.map((o) => o.name).join(", ")}</p>
+                      )}
+                      <div className="flex gap-1.5">
+                        <select
+                          value={startChoicePick[pickKey] || ""}
+                          onChange={(e) => setStartChoicePick({ ...startChoicePick, [pickKey]: e.target.value })}
+                          className="flex-1 text-xs rounded px-2 py-1"
+                          style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                        >
+                          <option value="">Choose…</option>
+                          {options.map((o) => <option key={o.name} value={o.name}>{o.name}</option>)}
+                        </select>
+                        <button
+                          onClick={() => { applyStartingChoice(choice, startChoicePick[pickKey]); setStartChoicePick({ ...startChoicePick, [pickKey]: "" }); }}
+                          disabled={!startChoicePick[pickKey]}
+                          className="text-xs px-3 py-1 rounded font-semibold"
+                          style={{ background: palette.crimsonDark, color: palette.parchment }}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })}
+              {professionGrants.pickNote && (
+                <p className="text-[10px] mt-1.5 italic" style={{ color: palette.inkSoft }}>{professionGrants.pickNote}</p>
               )}
             </div>
           )}
@@ -6851,6 +7010,16 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty }) 
             rows={2}
             style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
           />
+
+          {goToTab && (
+            <button
+              onClick={() => goToTab("compendium", { cat: "talents", hero: hero.id })}
+              className="w-full flex items-center justify-center gap-1.5 text-xs py-1.5 rounded font-semibold mt-2"
+              style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+            >
+              <Plus size={13} /> Add Talent / Perk (Compendium)
+            </button>
+          )}
 
           {(hero.talents.length > 0 || hero.perks.length > 0 || hero.spells.length > 0 || hero.prayers.length > 0 || hero.specialRules.length > 0 || (hero.legendaryItems || []).length > 0) && (
             <div className="mt-2">
@@ -13951,7 +14120,7 @@ function CampaignsTab({ campaigns, activeId, onNew, onLoad, onRename, onDelete, 
 }
 
 // ---------- Heroes Tab (per-hero sub-tabs) ----------
-function HeroesTab({ heroes, updateHero, removeHero, addHero, addLog, pushToast, party, setParty }) {
+function HeroesTab({ heroes, updateHero, removeHero, addHero, addLog, pushToast, party, setParty, goToTab }) {
   const [selectedId, setSelectedId] = useState(heroes[0] ? heroes[0].id : null);
 
   useEffect(() => {
@@ -14024,6 +14193,7 @@ function HeroesTab({ heroes, updateHero, removeHero, addHero, addLog, pushToast,
           pushToast={pushToast}
           party={party}
           setParty={setParty}
+          goToTab={goToTab}
         />
       ) : (
         <Panel>
@@ -14091,8 +14261,10 @@ export default function App() {
     dragState2.current.moved = false;
   };
   const [compendiumInitialCat, setCompendiumInitialCat] = useState("talents");
+  const [compendiumInitialHero, setCompendiumInitialHero] = useState("");
   const goToTab = (targetTab, opts) => {
     if (targetTab === "compendium" && opts?.cat) setCompendiumInitialCat(opts.cat);
+    if (targetTab === "compendium" && opts?.hero) setCompendiumInitialHero(opts.hero);
     setTab(targetTab);
   };
   const [loaded, setLoaded] = useState(false);
@@ -14450,14 +14622,14 @@ export default function App() {
           <GuildsTab party={party} setParty={setParty} heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />
         )}
         {tab === "heroes" && (
-          <HeroesTab heroes={heroes} updateHero={updateHero} removeHero={removeHero} addHero={addHero} addLog={addLog} pushToast={pushToast} party={party} setParty={setParty} />
+          <HeroesTab heroes={heroes} updateHero={updateHero} removeHero={removeHero} addHero={addHero} addLog={addLog} pushToast={pushToast} party={party} setParty={setParty} goToTab={goToTab} />
         )}
         {tab === "combat" && <CombatCalc heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
         {tab === "alchemy" && <AlchemyTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
         {tab === "actions" && <ActionsTray party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />}
         {tab === "dice" && <DiceTray party={party} setParty={setParty} heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
         {tab === "quest" && <QuestRollerPanel party={party} setParty={setParty} addLog={addLog} />}
-        {tab === "compendium" && <CompendiumTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} initialCat={compendiumInitialCat} />}
+        {tab === "compendium" && <CompendiumTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} initialCat={compendiumInitialCat} initialHero={compendiumInitialHero} />}
         {tab === "lore" && <LoreTab goToTab={goToTab} />}
         {tab === "bestiary" && <BestiaryTab />}
         {tab === "campaigns" && (

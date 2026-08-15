@@ -3,6 +3,15 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.42.0] — 2026-08-15
+
+### Added
+- Scrolls Salesman settlement event now actually lets you buy — pick a hero and tap Buy (100c) on one of the 3 random spell offers to add a real Scroll to their backpack, instead of just listing what's on offer
+- Loot Roller's T4 "1 random scroll" result now rolls an actual spell and lets you add the Scroll straight to a chosen hero's backpack
+
+### Fixed
+- DiceTray was the one tab in the app still wired to the raw two-argument updateHero instead of the single-object adapter every other tab uses — harmless until this session's new Loot Roller code needed it, since it would have silently failed to add scrolls to a hero's backpack
+
 ## [1.41.0] — 2026-08-15
 
 ### Added

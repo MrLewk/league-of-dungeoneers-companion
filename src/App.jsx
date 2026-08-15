@@ -3505,6 +3505,19 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.42.0",
+    date: "2026-08-15",
+    sections: {
+      "Added": [
+        "Scrolls Salesman settlement event now actually lets you buy — pick a hero and tap Buy (100c) on one of the 3 random spell offers to add a real Scroll to their backpack, instead of just listing what's on offer",
+        "Loot Roller's T4 \\\"1 random scroll\\\" result now rolls an actual spell and lets you add the Scroll straight to a chosen hero's backpack",
+      ],
+      "Fixed": [
+        "DiceTray was the one tab in the app still wired to the raw two-argument updateHero instead of the single-object adapter every other tab uses — harmless until this session's new Loot Roller code needed it, since it would have silently failed to add scrolls to a hero's backpack",
+      ],
+    },
+  },
+  {
     version: "1.41.0",
     date: "2026-08-15",
     sections: {
@@ -6826,6 +6839,8 @@ function MapViewer({ map, onClose }) {
 function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds }) {
   const [eventResult, setEventResult] = useState(null);
   const [eventResolution, setEventResolution] = useState(null);
+  const [scrollOffers, setScrollOffers] = useState(null);
+  const [scrollBuyHero, setScrollBuyHero] = useState("");
   const [questResult, setQuestResult] = useState(null);
   const [activityHero, setActivityHero] = useState(heroes[0]?.id || "");
   const [activityChoice, setActivityChoice] = useState(SETTLEMENT_ACTIVITIES[0].name);
@@ -6927,9 +6942,21 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
     if (s) setActivityChoice(SETTLEMENT_ACTIVITIES.find((a) => a.locations.some((loc) => loc === "Any" || loc === "Inn" || s.services.includes(loc)))?.name || SETTLEMENT_ACTIVITIES[0].name);
   };
 
+  const buyScroll = (spellName) => {
+    if (!scrollBuyHero) return;
+    const hero = heroes.find((h) => h.id === scrollBuyHero);
+    if (!hero) return;
+    if (party.coins < 100) { addLog(`Can't afford a Scroll of ${spellName}: 100c needed, party only has ${party.coins}c.`); return; }
+    setParty((prev) => ({ ...prev, coins: prev.coins - 100 }));
+    updateHero({ ...hero, backpack: [...hero.backpack, { id: uid(), name: `Scroll of ${spellName}`, value: "", enc: 1, dur: "1" }] });
+    setScrollOffers((prev) => prev.map((o) => (o.spell === spellName ? { ...o, bought: true } : o)));
+    addLog(`${hero.name} buys a Scroll of ${spellName} for 100c.`);
+  };
+
   const rollEvent = () => {
     if (!settlement) return;
     setEventResolution(null);
+    setScrollOffers(null);
     const roll = rollDie(12);
     const [lo, hi] = settlement.eventOn;
     const triggered = roll >= lo && roll <= hi;
@@ -6968,8 +6995,8 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
       }
     } else if (event.resolve === "scrolls") {
       const shuffled = [...SPELLS].sort(() => Math.random() - 0.5).slice(0, 3);
-      const lines = shuffled.map((s) => `${s.name} (Lvl ${s.lvl}, ${s.school}) — 100c`);
-      setEventResolution(lines);
+      setScrollOffers(shuffled.map((s) => ({ spell: s.name, lvl: s.lvl, school: s.school, bought: false })));
+      setEventResolution([`Offers: ${shuffled.map((s) => s.name).join(", ")} (100c each). Pick a hero below to buy one.`]);
       addLog(`Scrolls Salesman offers: ${shuffled.map((s) => s.name).join(", ")} (100c each).`);
     } else if (event.resolve === "assassination") {
       if (heroes.length === 0) return;
@@ -7891,6 +7918,35 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
                     {eventResolution.map((line, i) => (
                       <p key={i} className="text-xs" style={{ color: palette.forestDark, fontWeight: 600 }}>• {line}</p>
                     ))}
+                    {scrollOffers && (
+                      <div className="mt-2 space-y-1.5">
+                        <label className="text-xs block" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                          Buying hero
+                          <select
+                            value={scrollBuyHero}
+                            onChange={(e) => setScrollBuyHero(e.target.value)}
+                            className="w-full text-xs rounded px-2 py-1 mt-0.5"
+                            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                          >
+                            <option value="">Choose a hero…</option>
+                            {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                          </select>
+                        </label>
+                        {scrollOffers.map((o) => (
+                          <div key={o.spell} className="flex items-center justify-between text-xs rounded px-2 py-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                            <span style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>{o.spell} (Lvl {o.lvl}, {o.school})</span>
+                            <button
+                              onClick={() => buyScroll(o.spell)}
+                              disabled={o.bought || !scrollBuyHero}
+                              className="text-[10px] px-2 py-1 rounded font-semibold"
+                              style={{ background: o.bought ? "#00000015" : palette.crimsonDark, color: o.bought ? palette.inkSoft : palette.parchment, opacity: !scrollBuyHero && !o.bought ? 0.5 : 1 }}
+                            >
+                              {o.bought ? "Bought" : "Buy — 100c"}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </>
@@ -11941,6 +11997,7 @@ function DiceTray({ party, setParty, heroes, updateHero, addLog }) {
   const dice = [4, 6, 10, 20, 100];
 
   const [lootRolls, setLootRolls] = useState([]);
+  const [lootScrollHero, setLootScrollHero] = useState("");
   const lootLookup = (tableKey, roll) => {
     const table = LOOT_TABLES[tableKey];
     for (const entry of table) {
@@ -11953,7 +12010,16 @@ function DiceTray({ party, setParty, heroes, updateHero, addLog }) {
   const rollLoot = (tableKey) => {
     const r = rollDie(10);
     const result = lootLookup(tableKey, r);
-    setLootRolls((prev) => [{ tableKey, r, result, id: uid() }, ...prev].slice(0, 8));
+    const randomScroll = result === "1 random scroll" ? SPELLS[Math.floor(Math.random() * SPELLS.length)].name : null;
+    setLootRolls((prev) => [{ tableKey, r, result, randomScroll, added: false, id: uid() }, ...prev].slice(0, 8));
+  };
+  const addLootScroll = (entryId) => {
+    const hero = heroes.find((h) => h.id === lootScrollHero);
+    const entry = lootRolls.find((l) => l.id === entryId);
+    if (!hero || !entry || !entry.randomScroll) return;
+    updateHero({ ...hero, backpack: [...hero.backpack, { id: uid(), name: `Scroll of ${entry.randomScroll}`, value: "", enc: 1, dur: "1" }] });
+    setLootRolls((prev) => prev.map((l) => (l.id === entryId ? { ...l, added: true } : l)));
+    addLog && addLog(`${hero.name} finds a Scroll of ${entry.randomScroll}.`);
   };
 
 
@@ -12028,10 +12094,39 @@ function DiceTray({ party, setParty, heroes, updateHero, addLog }) {
           ))}
         </div>
         <div className="space-y-1.5">
+          {lootRolls.some((l) => l.randomScroll && !l.added) && (
+            <label className="text-xs block mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+              Hero to receive a found scroll
+              <select
+                value={lootScrollHero}
+                onChange={(e) => setLootScrollHero(e.target.value)}
+                className="w-full text-xs rounded px-2 py-1 mt-0.5"
+                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+              >
+                <option value="">Choose a hero…</option>
+                {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+              </select>
+            </label>
+          )}
           {lootRolls.map((l) => (
-            <div key={l.id} className="flex items-center gap-2 text-xs rounded p-2" style={{ background: "#00000010", fontFamily: "Crimson Pro, serif", color: palette.ink }}>
-              <span className="font-bold px-1.5 py-0.5 rounded" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "JetBrains Mono, monospace" }}>{l.tableKey}: {l.r}</span>
-              {l.result}
+            <div key={l.id} className="rounded p-2" style={{ background: "#00000010" }}>
+              <div className="flex items-center gap-2 text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+                <span className="font-bold px-1.5 py-0.5 rounded" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "JetBrains Mono, monospace" }}>{l.tableKey}: {l.r}</span>
+                {l.result}
+              </div>
+              {l.randomScroll && (
+                <div className="flex items-center justify-between mt-1.5 text-xs">
+                  <span style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>Rolled: Scroll of {l.randomScroll}</span>
+                  <button
+                    onClick={() => addLootScroll(l.id)}
+                    disabled={l.added || !lootScrollHero}
+                    className="text-[10px] px-2 py-1 rounded font-semibold"
+                    style={{ background: l.added ? "#00000015" : palette.crimsonDark, color: l.added ? palette.inkSoft : palette.parchment, opacity: !lootScrollHero && !l.added ? 0.5 : 1 }}
+                  >
+                    {l.added ? "Added" : "Add to Backpack"}
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -14158,7 +14253,7 @@ export default function App() {
         {tab === "combat" && <CombatCalc heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
         {tab === "alchemy" && <AlchemyTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
         {tab === "actions" && <ActionsTray party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />}
-        {tab === "dice" && <DiceTray party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />}
+        {tab === "dice" && <DiceTray party={party} setParty={setParty} heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
         {tab === "quest" && <QuestRollerPanel party={party} setParty={setParty} addLog={addLog} />}
         {tab === "compendium" && <CompendiumTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} initialCat={compendiumInitialCat} />}
         {tab === "lore" && <LoreTab goToTab={goToTab} />}

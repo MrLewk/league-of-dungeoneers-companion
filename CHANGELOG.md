@@ -3,6 +3,13 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.47.0] — 2026-08-17
+
+### Added
+- Dungeon Status card at the top of the Travel tab — tracks the party as In Settlement, Travelling, or In Dungeon, with dedicated actions for each transition (Depart Settlement, Arrive at Settlement, Enter Dungeon, Exit Dungeon)
+- Exiting a dungeon now automatically clears every hero's "until next dungeon exit" Temporary Effects (Temple boons, Curses) in one action, instead of relying on the old manual "Left dungeon — clear all" tap — with a confirmation step first since it can't be undone
+- Dungeon Status persists with the saved campaign, so closing the app mid-dungeon doesn't lose track of where the party is
+
 ## [1.46.0] — 2026-08-15
 
 ### Added

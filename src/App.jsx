@@ -449,6 +449,7 @@ function quickSlotCapacity(hero) {
 const defaultParty = () => ({
   threat: 2, threatFloor: 2, morale: 0, food: 4, coins: 150,
   settlementName: "",
+  dungeonState: "settlement", // "settlement" | "travel" | "dungeon" — drives the Travel tab status badge and the auto-clear of tempEffects on dungeon exit
   settlementAP: {}, // heroId -> { spent: number, log: [{label, cost}] }
   innCostPerNight: 25,
   startingMorale: 0,
@@ -3575,6 +3576,17 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.47.0",
+    date: "2026-08-17",
+    sections: {
+      "Added": [
+        "Dungeon Status card at the top of the Travel tab — tracks the party as In Settlement, Travelling, or In Dungeon, with dedicated actions for each transition (Depart Settlement, Arrive at Settlement, Enter Dungeon, Exit Dungeon)",
+        "Exiting a dungeon now automatically clears every hero's \"until next dungeon exit\" Temporary Effects (Temple boons, Curses) in one action, instead of relying on the old manual \"Left dungeon — clear all\" tap — with a confirmation step first since it can't be undone",
+        "Dungeon Status persists with the saved campaign, so closing the app mid-dungeon doesn't lose track of where the party is",
+      ],
+    },
+  },
   {
     version: "1.46.0",
     date: "2026-08-15",
@@ -13562,6 +13574,31 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
   const [forageHero, setForageHero] = useState("");
   const [forageTerrain, setForageTerrain] = useState("neither");
   const [forageResult, setForageResult] = useState(null);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [exitClearedNote, setExitClearedNote] = useState("");
+
+  const dungeonState = party.dungeonState || "settlement";
+  const setDungeonState = (s) => setParty((prev) => ({ ...prev, dungeonState: s }));
+
+  const confirmExitDungeon = () => {
+    let clearedCount = 0;
+    let heroesAffected = 0;
+    heroes.forEach((h) => {
+      const n = (h.tempEffects || []).length;
+      if (n > 0) {
+        heroesAffected += 1;
+        clearedCount += n;
+        updateHero(h.id, { ...h, ...clearAllTempEffects(h) });
+      }
+    });
+    setDungeonState("travel");
+    setShowExitConfirm(false);
+    const line = clearedCount > 0
+      ? `Exited dungeon — cleared ${clearedCount} temporary effect${clearedCount === 1 ? "" : "s"} across ${heroesAffected} hero${heroesAffected === 1 ? "" : "es"}.`
+      : "Exited dungeon — no temporary effects to clear.";
+    setExitClearedNote(line);
+    addLog(line);
+  };
 
   const rationCost = ancientLands ? 2 : 1;
 
@@ -13697,8 +13734,89 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
     addLog(`Daily Rest: ${lines.join(" ")}`);
   };
 
+  const statusMeta = {
+    settlement: { icon: Landmark, color: palette.forest, label: "In Settlement", sub: "Temporary effects persist until the party exits a dungeon" },
+    travel: { icon: Map, color: palette.gold, label: "Travelling", sub: "Between settlements — movement, rations and daily events apply" },
+    dungeon: { icon: Skull, color: palette.crimson, label: "In Dungeon", sub: "Any Temple/Curse boons applied now will clear on exit" },
+  }[dungeonState];
+
   return (
     <div className="space-y-4">
+      <Panel style={{ background: `${statusMeta.color}15`, border: `1px solid ${statusMeta.color}` }}>
+        <div className="flex items-center gap-2 mb-3">
+          <statusMeta.icon size={16} color={statusMeta.color} />
+          <div>
+            <div style={{ fontFamily: "Cinzel, serif", fontWeight: 700, fontSize: 13, color: palette.ink }}>{statusMeta.label}</div>
+            <div style={{ fontSize: 11, color: palette.inkSoft }}>{statusMeta.sub}</div>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          {dungeonState === "settlement" && (
+            <button
+              onClick={() => setDungeonState("travel")}
+              className="flex-1 text-xs py-2 rounded font-semibold"
+              style={{ background: palette.gold, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+            >
+              Depart Settlement
+            </button>
+          )}
+          {dungeonState === "travel" && (
+            <>
+              <button
+                onClick={() => setDungeonState("settlement")}
+                className="flex-1 text-xs py-2 rounded font-semibold"
+                style={{ background: palette.forest, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+              >
+                Arrive at Settlement
+              </button>
+              <button
+                onClick={() => setDungeonState("dungeon")}
+                className="flex-1 text-xs py-2 rounded font-semibold"
+                style={{ background: palette.crimson, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+              >
+                Enter Dungeon
+              </button>
+            </>
+          )}
+          {dungeonState === "dungeon" && (
+            <button
+              onClick={() => setShowExitConfirm(true)}
+              className="flex-1 text-xs py-2 rounded font-semibold"
+              style={{ background: palette.forest, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+            >
+              Exit Dungeon
+            </button>
+          )}
+        </div>
+        {exitClearedNote && dungeonState !== "dungeon" && (
+          <div className="text-xs mt-2" style={{ color: palette.inkSoft, fontStyle: "italic" }}>✓ {exitClearedNote}</div>
+        )}
+        {showExitConfirm && (
+          <div className="mt-3 rounded p-3" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+            <div style={{ fontFamily: "Cinzel, serif", fontWeight: 700, fontSize: 12.5, color: palette.crimsonDark, marginBottom: 4 }}>Exit Dungeon?</div>
+            <div style={{ fontSize: 11.5, color: palette.ink, marginBottom: 10, lineHeight: 1.5 }}>
+              This will clear every "until next dungeon exit" temporary effect (Temple boons, Curses) from all heroes. This can't be undone.
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowExitConfirm(false)}
+                className="flex-1 text-xs py-1.5 rounded font-semibold"
+                style={{ background: palette.parchmentDark, color: palette.ink, fontFamily: "Cinzel, serif" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmExitDungeon}
+                className="flex-1 text-xs py-1.5 rounded font-semibold"
+                style={{ background: palette.crimson, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+              >
+                Exit &amp; Clear
+              </button>
+            </div>
+          </div>
+        )}
+      </Panel>
+
       <Panel>
         <SectionTitle icon={Map}>Movement</SectionTitle>
         <div className="flex gap-2 mb-2">

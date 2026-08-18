@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.48.0] — 2026-08-18
+
+### Added
+- Hero sheet: "+ Learn Spell (Wizards' Guild)" and "+ Learn Prayer (Inner Sanctum)" buttons, shown only for professions that can actually learn spells (Wizard, Druid) or prayers (Warrior Priest) — jumps straight to the Guilds tab, opens the correct guild box, and pre-selects the hero, matching the existing "+ Add Talent / Perk" button's pattern
+
 ## [1.47.0] — 2026-08-17
 
 ### Added

@@ -3577,6 +3577,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.48.0",
+    date: "2026-08-18",
+    sections: {
+      "Added": [
+        "Hero sheet: \"+ Learn Spell (Wizards' Guild)\" and \"+ Learn Prayer (Inner Sanctum)\" buttons, shown only for professions that can actually learn spells (Wizard, Druid) or prayers (Warrior Priest) — jumps straight to the Guilds tab, opens the correct guild box, and pre-selects the hero, matching the existing \"+ Add Talent / Perk\" button's pattern",
+      ],
+    },
+  },
+  {
     version: "1.47.0",
     date: "2026-08-17",
     sections: {
@@ -7033,6 +7042,26 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
             </button>
           )}
 
+          {goToTab && CASTER_SKILL[hero.profession] && (
+            <button
+              onClick={() => goToTab("guilds", { guild: "wizards", hero: hero.id })}
+              className="w-full flex items-center justify-center gap-1.5 text-xs py-1.5 rounded font-semibold mt-2"
+              style={{ background: "#5B6FA8", color: palette.parchment, fontFamily: "Cinzel, serif" }}
+            >
+              <Plus size={13} /> Learn Spell (Wizards' Guild)
+            </button>
+          )}
+
+          {goToTab && PRAYER_SKILL[hero.profession] && (
+            <button
+              onClick={() => goToTab("guilds", { guild: "sanctum", hero: hero.id })}
+              className="w-full flex items-center justify-center gap-1.5 text-xs py-1.5 rounded font-semibold mt-2"
+              style={{ background: palette.crimson, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+            >
+              <Plus size={13} /> Learn Prayer (Inner Sanctum)
+            </button>
+          )}
+
           {(hero.talents.length > 0 || hero.perks.length > 0 || hero.spells.length > 0 || hero.prayers.length > 0 || hero.specialRules.length > 0 || (hero.legendaryItems || []).length > 0) && (
             <div className="mt-2">
               <AttachedItemList
@@ -9156,7 +9185,7 @@ function GuildShopList({ title, desc, items, heroes, party, setParty, updateHero
   );
 }
 
-function GuildsTab({ party, setParty, heroes, updateHero, addLog }) {
+function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKey, initialHero }) {
   const guildSettlements = SETTLEMENTS.filter((s) => s.services.includes("Guilds") || s.services.includes("Inner Sanctum"));
   const [settlementName, setSettlementName] = useState(
     guildSettlements.some((s) => s.name === party.settlementName) ? party.settlementName : (guildSettlements[0]?.name || "")
@@ -9166,6 +9195,7 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog }) {
   const hasInnerSanctum = settlement?.services.includes("Inner Sanctum");
   const [openGuild, setOpenGuild] = useState(null);
   const toggle = (key) => setOpenGuild(openGuild === key ? null : key);
+  const guildBoxRef = useRef(null);
 
   // ---------- Moved from Settlements tab: Wizards' Guild (Learn a Spell, Charge, Identify)
   // and Inner Sanctum (Learn a Prayer) — same logic, now living here for consistency. ----------
@@ -9182,6 +9212,31 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog }) {
   const [learnSpellName, setLearnSpellName] = useState("");
   const [learnSpellGrimoire, setLearnSpellGrimoire] = useState(false);
   const [learnSpellResult, setLearnSpellResult] = useState(null);
+
+  // Deep link from a hero sheet's "Learn Spell" / "Learn Prayer" button — opens the right
+  // guild box, jumps to a settlement that has it if the current one doesn't, and
+  // pre-selects the hero so the player lands straight on the form.
+  useEffect(() => {
+    if (!initialGuildKey) return;
+    const needsSettlementSwitch =
+      (initialGuildKey === "wizards" && !hasGuilds) || (initialGuildKey === "sanctum" && !hasInnerSanctum);
+    if (needsSettlementSwitch) {
+      const fallback = guildSettlements.find((s) =>
+        initialGuildKey === "wizards" ? s.services.includes("Guilds") : s.services.includes("Inner Sanctum")
+      );
+      if (fallback) setSettlementName(fallback.name);
+    }
+    setOpenGuild(initialGuildKey);
+    if (initialHero) {
+      if (initialGuildKey === "wizards") setLearnSpellHero(initialHero);
+      if (initialGuildKey === "sanctum") setLearnPrayerHero(initialHero);
+    }
+    // Scroll the opened box into view once it's rendered (mobile-first: the box can be
+    // well below the fold after tab navigation).
+    const t = setTimeout(() => guildBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialGuildKey, initialHero]);
   const confirmLearnSpell = () => {
     const hero = heroes.find((h) => h.id === learnSpellHero);
     const spell = SPELLS.find((s) => s.name === learnSpellName);
@@ -9444,7 +9499,7 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog }) {
           </button>
 
           {openGuild === g.key && (
-            <div className="px-4 pb-4 pt-1" style={{ borderTop: `1px solid ${palette.line}` }}>
+            <div ref={g.key === openGuild ? guildBoxRef : null} className="px-4 pb-4 pt-1" style={{ borderTop: `1px solid ${palette.line}` }}>
 
               {g.key === "fighters" && (
                 <>
@@ -14380,9 +14435,13 @@ export default function App() {
   };
   const [compendiumInitialCat, setCompendiumInitialCat] = useState("talents");
   const [compendiumInitialHero, setCompendiumInitialHero] = useState("");
+  const [guildsInitialKey, setGuildsInitialKey] = useState("");
+  const [guildsInitialHero, setGuildsInitialHero] = useState("");
   const goToTab = (targetTab, opts) => {
     if (targetTab === "compendium" && opts?.cat) setCompendiumInitialCat(opts.cat);
     if (targetTab === "compendium" && opts?.hero) setCompendiumInitialHero(opts.hero);
+    if (targetTab === "guilds" && opts?.guild) setGuildsInitialKey(opts.guild);
+    if (targetTab === "guilds" && opts?.hero) setGuildsInitialHero(opts.hero);
     setTab(targetTab);
   };
   const [loaded, setLoaded] = useState(false);
@@ -14737,7 +14796,7 @@ export default function App() {
           <SettlementTab party={party} setParty={setParty} heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} goToGuilds={() => setTab("guilds")} />
         )}
         {tab === "guilds" && (
-          <GuildsTab party={party} setParty={setParty} heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />
+          <GuildsTab party={party} setParty={setParty} heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} initialGuildKey={guildsInitialKey} initialHero={guildsInitialHero} />
         )}
         {tab === "heroes" && (
           <HeroesTab heroes={heroes} updateHero={updateHero} removeHero={removeHero} addHero={addHero} addLog={addLog} pushToast={pushToast} party={party} setParty={setParty} goToTab={goToTab} />

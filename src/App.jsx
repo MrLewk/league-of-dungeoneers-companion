@@ -94,6 +94,10 @@ const defaultHero = () => ({
   mentalConditions: [], // [{id, name, detail, effect}] — see MENTAL_CONDITIONS_TABLE
   alchemyComponents: [], // [{id, name, type: "Ingredient"|"Part", qty, exquisiteQty}]
   alchemyRecipes: [], // [{id, potionName, strength, components: [name,...]}] — custom, on top of COMMON_RECIPES
+  startingStatsRolled: false, // has "Roll Starting Stats & HP" been used at least once?
+  startingEquipmentApplied: false, // has "Apply Starting Equipment" been used at least once?
+  startingTalentsApplied: false, // has "Apply Starting Talents/Perks" been used, or is there nothing fixed to apply?
+  creationToolsShown: false, // manual override — re-reveals the creation tools panel after auto-hide
   bankBalances: { chamberlings: 0, smartfall: 0, vault: 0 },
   ap: 2,
   backpack: [],
@@ -3577,6 +3581,16 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.49.0",
+    date: "2026-08-20",
+    sections: {
+      "Added": [
+        "Alchemy tab: \"+ Add Component Manually\" on the Components panel, for ingredients or parts found in-story that weren't auto-gathered or harvested — pick a name from the rulebook's own list, or choose \"Other\" to type a custom name, with quantity and an Exquisite toggle",
+        "Hero sheet: the Roll Starting Stats, Apply Starting Equipment, and Apply Starting Talents/Perks tools now auto-collapse into a small \"Show creation tools again\" link once all three have been used, keeping a finished hero's sheet uncluttered — tapping the link brings them back any time",
+      ],
+    },
+  },
+  {
     version: "1.48.0",
     date: "2026-08-18",
     sections: {
@@ -5181,6 +5195,10 @@ function normalizeHero(h) {
     backgroundClaimed: h.backgroundClaimed || false,
     alchemyComponents: h.alchemyComponents || [],
     alchemyRecipes: h.alchemyRecipes || [],
+    startingStatsRolled: h.startingStatsRolled || false,
+    startingEquipmentApplied: h.startingEquipmentApplied || false,
+    startingTalentsApplied: h.startingTalentsApplied || false,
+    creationToolsShown: h.creationToolsShown || false,
     bankBalances: { ...base.bankBalances, ...(h.bankBalances || {}) },
     ap: h.ap != null ? h.ap : 2,
     armour: {
@@ -5373,7 +5391,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
       patch.backpackUpgrade = startingCfg.backpackUpgrade;
       lines.push(`${startingCfg.backpackUpgrade} Backpack`);
     }
-    update({ ...hero, ...patch });
+    update({ ...hero, ...patch, startingEquipmentApplied: true });
     const line = `Starting equipment applied: ${lines.join(", ")}.${startingCfg.manualNote ? ` ${startingCfg.manualNote}` : ""}`;
     setStartEquipResult({ ok: true, line });
     addLog(`${hero.name}: ${line}`);
@@ -5381,17 +5399,32 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
 
   const [startTalentsResult, setStartTalentsResult] = useState(null);
   const professionGrants = PROFESSION_STARTING_TALENTS[hero.profession];
+  // "Done" means every fixed Talent/Perk this profession grants is present AND every
+  // choice slot (e.g. Warrior's Mighty Blow/Braveheart pick) has been filled — used to
+  // auto-hide the hero creation tools panel once nothing is left to do here.
+  const startingTalentsFullyDone = (talentsList, perksList) => {
+    if (!professionGrants) return true;
+    const fixedDone = professionGrants.talents.every((t) => talentsList.includes(t)) && professionGrants.perks.every((p) => perksList.includes(p));
+    const choicesDone = professionGrants.choices.every((choice) => {
+      const list = choice.kind === "talent" ? talentsList : perksList;
+      const validNames = choice.options || (choice.filterType ? (choice.kind === "talent" ? TALENTS : PERKS).filter((i) => i.type === choice.filterType).map((i) => i.name) : []);
+      return validNames.some((n) => list.includes(n));
+    });
+    return fixedDone && choicesDone;
+  };
   const applyStartingTalentsPerks = () => {
     if (!professionGrants) return;
     const hasFixedGrants = professionGrants.talents.length > 0 || professionGrants.perks.length > 0;
     if (!hasFixedGrants) {
       setStartTalentsResult({ ok: true, line: professionGrants.pickNote || "This profession has no fixed starting Talents/Perks." });
+      set({ startingTalentsApplied: startingTalentsFullyDone(hero.talents, hero.perks) });
       return;
     }
     const newTalents = professionGrants.talents.filter((t) => !hero.talents.includes(t));
     const newPerks = professionGrants.perks.filter((p) => !hero.perks.includes(p));
     if (newTalents.length === 0 && newPerks.length === 0) {
       setStartTalentsResult({ ok: true, line: "Already has this profession's starting Talents/Perks." });
+      set({ startingTalentsApplied: startingTalentsFullyDone(hero.talents, hero.perks) });
       return;
     }
     let workingHero = hero;
@@ -5401,7 +5434,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
       talents = [...talents, tName];
     });
     const perks = [...hero.perks, ...newPerks];
-    update({ ...workingHero, talents, perks });
+    update({ ...workingHero, talents, perks, startingTalentsApplied: startingTalentsFullyDone(talents, perks) });
     const granted = [...newTalents, ...newPerks].join(", ");
     const line = `Starting Talents/Perks applied: ${granted}.`;
     setStartTalentsResult({ ok: true, line });
@@ -5413,12 +5446,14 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     if (choice.kind === "talent") {
       if (hero.talents.includes(name)) return;
       const patch = talentEffectPatch(hero, name, 1);
-      update({ ...hero, ...patch, talents: [...hero.talents, name] });
+      const nextTalents = [...hero.talents, name];
+      update({ ...hero, ...patch, talents: nextTalents, startingTalentsApplied: startingTalentsFullyDone(nextTalents, hero.perks) });
       if (TALENT_EFFECTS[name]) addLog(`${hero.name}: gained Talent "${name}" (${TALENT_EFFECTS[name].label}, applied automatically).`);
       else addLog(`${hero.name}: gained Talent "${name}" (${choice.label}).`);
     } else {
       if (hero.perks.includes(name)) return;
-      update({ ...hero, perks: [...hero.perks, name] });
+      const nextPerks = [...hero.perks, name];
+      update({ ...hero, perks: nextPerks, startingTalentsApplied: startingTalentsFullyDone(hero.talents, nextPerks) });
       addLog(`${hero.name}: gained Perk "${name}" (${choice.label}).`);
     }
   };
@@ -5623,7 +5658,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     // Lucky (Halfling) — starts with 1 Luck Point; non-halflings start at 0.
     const luckPatch = speciesData.name === "Halfling" ? { luck: { cur: Math.max(hero.luck.cur, 1), max: Math.max(hero.luck.max, 1) } } : {};
 
-    update({ ...hero, stats: newStats, skills: nextSkills, hp: { cur: hpRoll, max: hpRoll }, creationPoints: 15, creationPointsSpent: { STR: 0, CON: 0, DEX: 0, WIS: 0, RES: 0 }, talents, ...luckPatch, ...manaPatch });
+    update({ ...hero, stats: newStats, skills: nextSkills, hp: { cur: hpRoll, max: hpRoll }, creationPoints: 15, creationPointsSpent: { STR: 0, CON: 0, DEX: 0, WIS: 0, RES: 0 }, talents, ...luckPatch, ...manaPatch, startingStatsRolled: true });
   };
 
   const recalcSkills = () => set({ skills: computeProfessionSkills(hero) });
@@ -6007,6 +6042,31 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               {PROFESSIONS.find((p) => p.name === hero.profession)?.desc}
             </p>
           )}
+          {speciesData && speciesData.note && (
+            <p className="text-xs mt-1" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+              {speciesData.note}
+            </p>
+          )}
+          {(() => {
+            const anyToolApplicable = !!startingCfg || !!professionGrants || !!speciesData;
+            if (!anyToolApplicable) return null;
+            const allCreationDone = (!startingCfg || hero.startingEquipmentApplied) && (!professionGrants || hero.startingTalentsApplied) && (!speciesData || hero.startingStatsRolled);
+            const showCreationTools = !allCreationDone || hero.creationToolsShown;
+            if (!showCreationTools) {
+              return (
+                <div className="mt-2 rounded p-1.5 text-center" style={{ background: "#00000006" }}>
+                  <button
+                    onClick={() => set({ creationToolsShown: true })}
+                    className="text-[10px] font-semibold underline"
+                    style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}
+                  >
+                    Show creation tools again
+                  </button>
+                </div>
+              );
+            }
+            return (
+              <>
           {startingCfg && (
             <div className="mt-2 rounded p-2" style={{ background: "#00000008" }}>
               <p className="text-xs font-semibold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Starting Equipment</p>
@@ -6142,11 +6202,6 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               )}
             </div>
           )}
-          {speciesData && speciesData.note && (
-            <p className="text-xs mt-1" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-              {speciesData.note}
-            </p>
-          )}
           {speciesData && (
             <button
               onClick={rollStartingStats}
@@ -6156,6 +6211,9 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               <Dice5 size={12} /> Roll Starting Stats & HP ({speciesData.name})
             </button>
           )}
+              </>
+            );
+          })()}
         </div>
         <div className="flex gap-1">
           {confirmDelete ? (
@@ -10026,6 +10084,23 @@ function AlchemyTab({ heroes, updateHero, addLog }) {
     updateHero({ ...hero, alchemyComponents: next });
     return next;
   };
+
+  // ---------- Manual "+ Add Component" (found in-story, not auto-gathered/harvested) ----------
+  const [manualType, setManualType] = useState("Ingredient");
+  const [manualName, setManualName] = useState("");
+  const [manualOtherName, setManualOtherName] = useState("");
+  const [manualQty, setManualQty] = useState(1);
+  const [manualExquisite, setManualExquisite] = useState(false);
+  const manualNameOptions = manualType === "Ingredient" ? ALCHEMY_INGREDIENT_NAMES : ALCHEMY_PART_NAMES;
+  const addManualComponent = () => {
+    if (!activeHero) return;
+    const name = manualName === "__other__" ? manualOtherName.trim() : manualName;
+    if (!name) return;
+    const qty = Math.max(1, Number(manualQty) || 1);
+    addComponent(activeHero, name, manualType, qty, manualExquisite);
+    addLog(`${activeHero.name} manually adds ${qty} ${name}${manualExquisite ? " (Exquisite)" : ""} to their components.`);
+    setManualName(""); setManualOtherName(""); setManualQty(1); setManualExquisite(false);
+  };
   const consumeComponents = (hero, names, exquisiteFlags) => {
     let next = hero.alchemyComponents;
     names.forEach((name) => {
@@ -10525,6 +10600,62 @@ function AlchemyTab({ heroes, updateHero, addLog }) {
                   ))}
                 </div>
               )}
+
+              <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${palette.line}` }}>
+                <p className="text-[10px] uppercase font-semibold mb-1.5" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>+ Add Component Manually</p>
+                <p className="text-[10px] mb-1.5 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>For components found in-story that the app didn't harvest automatically — e.g. a quest reward or GM-awarded item.</p>
+                <div className="flex gap-1.5 mb-1.5">
+                  <select
+                    value={manualType}
+                    onChange={(e) => { setManualType(e.target.value); setManualName(""); }}
+                    className="text-xs rounded px-2 py-1"
+                    style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                  >
+                    <option value="Ingredient">Ingredient</option>
+                    <option value="Part">Part</option>
+                  </select>
+                  <input
+                    type="number"
+                    min="1"
+                    value={manualQty}
+                    onChange={(e) => setManualQty(e.target.value)}
+                    className="w-16 text-xs rounded px-2 py-1"
+                    style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                  />
+                </div>
+                <select
+                  value={manualName}
+                  onChange={(e) => setManualName(e.target.value)}
+                  className="w-full text-xs rounded px-2 py-1 mb-1.5"
+                  style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                >
+                  <option value="">Choose a name…</option>
+                  {manualNameOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+                  <option value="__other__">Other (type below)…</option>
+                </select>
+                {manualName === "__other__" && (
+                  <input
+                    type="text"
+                    placeholder="Component name…"
+                    value={manualOtherName}
+                    onChange={(e) => setManualOtherName(e.target.value)}
+                    className="w-full text-xs rounded px-2 py-1 mb-1.5"
+                    style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+                  />
+                )}
+                <label className="flex items-center gap-1.5 text-xs mb-1.5" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
+                  <input type="checkbox" checked={manualExquisite} onChange={(e) => setManualExquisite(e.target.checked)} />
+                  Exquisite
+                </label>
+                <button
+                  onClick={addManualComponent}
+                  disabled={!manualName || (manualName === "__other__" && !manualOtherName.trim())}
+                  className="w-full text-xs px-2 py-1.5 rounded font-semibold disabled:opacity-50"
+                  style={{ background: palette.crimsonDark, color: palette.parchment }}
+                >
+                  Add to Components
+                </button>
+              </div>
             </Panel>
           )}
         </div>

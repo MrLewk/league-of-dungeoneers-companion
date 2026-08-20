@@ -3,6 +3,12 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.49.0] — 2026-08-20
+
+### Added
+- Alchemy tab: "+ Add Component Manually" on the Components panel, for ingredients or parts found in-story that weren't auto-gathered or harvested — pick a name from the rulebook's own list, or choose "Other" to type a custom name, with quantity and an Exquisite toggle
+- Hero sheet: the Roll Starting Stats, Apply Starting Equipment, and Apply Starting Talents/Perks tools now auto-collapse into a small "Show creation tools again" link once all three have been used, keeping a finished hero's sheet uncluttered — tapping the link brings them back any time
+
 ## [1.48.0] — 2026-08-18
 
 ### Added

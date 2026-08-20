@@ -3,6 +3,21 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.50.0] — 2026-08-20
+
+### Added
+- Stacking Armour: hero sheet now supports the Stackable special rule — a "+ Stack Armour" button appears on any equipped Stackable piece, offering only other Stackable pieces of a different tier at that location. Outer/inner layering (higher tier outer, Bracers always outer regardless of tier), combined DEF (inner halved, rounded down), and total ENC are all calculated automatically
+- Combat tab: new "Resolve a Hit" tool — enter incoming damage against a hero's actual equipped armour at a location (single piece or stacked) and it walks through the full resolution automatically: outer DEF, outer DUR loss (only if it didn't fully absorb), inner DEF, inner DUR loss, remainder to HP. A piece that reaches 0 DUR breaks beyond repair and is removed automatically, with a toast confirming it
+- Weapon and Armour pickers now group options into "In Your Backpack" and "All Items (reference)", so it's easy to see what's already owned versus the full rulebook list
+- Heroes tab: hero-switcher bar is now sticky, staying pinned while scrolling through a hero's sheet — switching heroes no longer requires scrolling back to the top
+- Every tab now gets an auto-generated, sticky jump-to-section nav bar (built from that page's own section headings) once it has more than one section, plus a floating back-to-top button once scrolled down
+- Hero sheet: a small "Close" link now appears next to the re-shown creation tools panel, letting it be collapsed again after tapping "Show creation tools again"
+
+### Fixed
+- Hero sheet: the "all creation tools done" check now computes live from the hero's actual Talents/Perks instead of a cached flag, fixing a bug where using the Compendium tab's "Attach to hero" to add a starting Perk (the natural path for Wizards, whose pick is any of 5 Arcane Perks) never marked that step as done, leaving the creation tools panel stuck open
+- Turn tab: the Initiative Bag now persists at the party level instead of resetting when switching tabs — matches the rulebook, where drawn tokens for still-living models return to the bag and get reused across multiple turns of the same battle, not rebuilt each turn
+- Armour data: Padded Vest was missing its Stackable tag
+
 ## [1.49.0] — 2026-08-20
 
 ### Added

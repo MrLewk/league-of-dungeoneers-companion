@@ -3,7 +3,7 @@ import {
   Plus, Minus, Trash2, Flame, Heart, Zap, Brain, Sparkles, Dice5,
   Swords, Shield, BookOpen, Users, Skull,
   RotateCcw, Coins, Wheat, ScrollText, Pencil, Check, X, FolderOpen, Loader2, Map, Download, Upload,
-  Landmark, Bed, ClipboardList, Timer, Flashlight, FlaskConical, Library
+  Landmark, Bed, ClipboardList, Timer, Flashlight, FlaskConical, Library, ChevronUp, ShieldAlert
 } from "lucide-react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
@@ -76,11 +76,11 @@ const defaultHero = () => ({
   },
   weapon: { name: "", dmg: "", enc: 0, dur: { cur: 6, max: 6 } },
   armour: {
-    head: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 } },
-    arms: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 } },
-    torso: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 } },
-    legs: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 } },
-    shield: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 } },
+    head: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 }, stacked: null },
+    arms: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 }, stacked: null },
+    torso: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 }, stacked: null },
+    legs: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 }, stacked: null },
+    shield: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 }, stacked: null },
   },
   talents: [],
   perks: [],
@@ -435,7 +435,7 @@ function backpackEncBonus(hero) {
 function encumbranceOver(hero) {
   const totalEnc =
     (Number(hero.weapon.enc) || 0) +
-    Object.values(hero.armour).reduce((s, p) => s + (Number(p.enc) || 0), 0) +
+    Object.values(hero.armour).reduce((s, p) => s + (Number(p.enc) || 0) + (p.stacked ? Number(p.stacked.enc) || 0 : 0), 0) +
     hero.backpack.reduce((s, i) => s + (Number(i.enc) || 0), 0);
   return totalEnc > (Number(hero.stats.STR) || 0) + backpackEncBonus(hero);
 }
@@ -487,6 +487,13 @@ const defaultParty = () => ({
     randomActive: null, // currently-rolled Random Quest name, or null
     sideActive: null, // currently-rolled Side Quest name, or null
   },
+  // Initiative Bag — lives at party level (not local component state) because per the
+  // rulebook it's meant to persist across multiple turns of the same battle (drawn tokens
+  // for still-living models return to the bag and get reused each round), not reset every
+  // turn. Living here means it also survives switching tabs mid-combat.
+  initiativeSetup: { enemyCount: 1, namedMonsterCount: 0, largeMonsterCount: 0, perfectHearing: false, swiftLeader: false, sneaky: false, doorBashed: false, ambushed: false },
+  initiativeBag: null, // array of "hero"/"enemy" tokens still in the bag, or null before first build
+  initiativeDrawOrder: [], // tokens drawn so far, in order
 });
 
 // Fills in any fields missing from a party saved before this update.
@@ -498,6 +505,7 @@ function normalizeParty(p) {
   merged.transport = { ...defaultParty().transport, ...(p?.transport || {}) };
   merged.storage = { ...defaultParty().storage, ...(p?.storage || {}) };
   merged.magicWorkshop = { ...defaultParty().magicWorkshop, ...(p?.magicWorkshop || {}) };
+  merged.initiativeSetup = { ...defaultParty().initiativeSetup, ...(p?.initiativeSetup || {}) };
   merged.quests = { ...defaultParty().quests, ...(p?.quests || {}) };
   merged.quests.completed = { ...(p?.quests?.completed || {}) };
   return merged;
@@ -1093,7 +1101,7 @@ const PROFESSION_WEAPON_CLASS_LIMIT = {
 // pick one for more than one slot, only count its ENC on one of them.
 const ARMOUR_AND_SHIELDS = [
   { name: "Padded Cap", tier: 1, def: 2, enc: 1, covers: ["head"], special: "", cost: 30, avail: 4 },
-  { name: "Padded Vest", tier: 1, def: 2, enc: 3, covers: ["torso"], special: "", cost: 60, avail: 4 },
+  { name: "Padded Vest", tier: 1, def: 2, enc: 3, covers: ["torso"], special: "Stackable", cost: 60, avail: 4 },
   { name: "Padded Jacket", tier: 1, def: 2, enc: 5, covers: ["arms", "torso"], special: "Stackable", cost: 120, avail: 4 },
   { name: "Padded Pants", tier: 1, def: 2, enc: 4, covers: ["legs"], special: "Stackable", cost: 100, avail: 4 },
   { name: "Padded Coat", tier: 1, def: 2, enc: 6, covers: ["arms", "torso", "legs"], special: "", cost: 200, avail: 3 },
@@ -1126,6 +1134,25 @@ const ARMOUR_AND_SHIELDS = [
   { name: "Nightstalker Bracers", tier: 2, def: 4, enc: 3, covers: ["arms"], special: "High Quality (DUR 8)", cost: 150, avail: 3, dur: 8 },
 ];
 const NIGHTSTALKER_ARMOUR_NAMES = ["Nightstalker Cap", "Nightstalker Vest", "Nightstalker Jacket", "Nightstalker Pants", "Nightstalker Bracers"];
+
+// Stacking Armour special rule (rulebook, unreleased update page shared by the designer):
+// the higher-tier piece is normally the outer layer (full DEF, takes DUR hits first);
+// the lower-tier piece is the inner layer (half DEF, rounded down). Bracers are the one
+// exception — always worn as the outer layer regardless of tier, but only ever contribute
+// half DEF themselves (rounded down), same as a normal inner piece would.
+function resolveStackOrder(a, b) {
+  const aIsBracer = a.name.includes("Bracers");
+  const bIsBracer = b.name.includes("Bracers");
+  let outer, inner;
+  if (aIsBracer && !bIsBracer) { outer = a; inner = b; }
+  else if (bIsBracer && !aIsBracer) { outer = b; inner = a; }
+  else if (a.tier >= b.tier) { outer = a; inner = b; }
+  else { outer = b; inner = a; }
+  const outerIsBracer = outer.name.includes("Bracers");
+  const outerDef = outerIsBracer ? Math.floor(outer.def / 2) : outer.def;
+  const innerDef = Math.floor(inner.def / 2);
+  return { outer, inner, outerDef, innerDef, combinedDef: outerDef + innerDef, outerHalved: outerIsBracer };
+}
 
 // ---------- Guilds (p146-157) ----------
 // All six guilds only exist in Silver City. Fighters', Rangers', Alchemists', and The Dark
@@ -3581,6 +3608,25 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.50.0",
+    date: "2026-08-20",
+    sections: {
+      "Added": [
+        "Stacking Armour: hero sheet now supports the Stackable special rule — a \"+ Stack Armour\" button appears on any equipped Stackable piece, offering only other Stackable pieces of a different tier at that location. Outer/inner layering (higher tier outer, Bracers always outer regardless of tier), combined DEF (inner halved, rounded down), and total ENC are all calculated automatically",
+        "Combat tab: new \"Resolve a Hit\" tool — enter incoming damage against a hero's actual equipped armour at a location (single piece or stacked) and it walks through the full resolution automatically: outer DEF, outer DUR loss (only if it didn't fully absorb), inner DEF, inner DUR loss, remainder to HP. A piece that reaches 0 DUR breaks beyond repair and is removed automatically, with a toast confirming it",
+        "Weapon and Armour pickers now group options into \"In Your Backpack\" and \"All Items (reference)\", so it's easy to see what's already owned versus the full rulebook list",
+        "Heroes tab: hero-switcher bar is now sticky, staying pinned while scrolling through a hero's sheet — switching heroes no longer requires scrolling back to the top",
+        "Every tab now gets an auto-generated, sticky jump-to-section nav bar (built from that page's own section headings) once it has more than one section, plus a floating back-to-top button once scrolled down",
+        "Hero sheet: a small \"Close\" link now appears next to the re-shown creation tools panel, letting it be collapsed again after tapping \"Show creation tools again\"",
+      ],
+      "Fixed": [
+        "Hero sheet: the \"all creation tools done\" check now computes live from the hero's actual Talents/Perks instead of a cached flag, fixing a bug where using the Compendium tab's \"Attach to hero\" to add a starting Perk (the natural path for Wizards, whose pick is any of 5 Arcane Perks) never marked that step as done, leaving the creation tools panel stuck open",
+        "Turn tab: the Initiative Bag now persists at the party level instead of resetting when switching tabs — matches the rulebook, where drawn tokens for still-living models return to the bag and get reused across multiple turns of the same battle, not rebuilt each turn",
+        "Armour data: Padded Vest was missing its Stackable tag",
+      ],
+    },
+  },
+  {
     version: "1.49.0",
     date: "2026-08-20",
     sections: {
@@ -4969,6 +5015,108 @@ function Footer() {
   );
 }
 
+// Sticky sub-nav of chips, one per SectionTitle heading found inside containerRef's
+// current content. Re-scans whenever `tabKey` changes (a tab switch) since headings are
+// swapped out entirely. Tracks scroll position to highlight the section currently in view
+// and auto-scrolls the chip row to keep the active chip visible. Renders nothing if the
+// tab has 0-1 headings (a single chip isn't useful navigation).
+function SectionSubNav({ containerRef, tabKey }) {
+  const [sections, setSections] = useState([]);
+  const [activeId, setActiveId] = useState(null);
+  const barRef = useRef(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const root = containerRef.current;
+      if (!root) return;
+      const nodes = Array.from(root.querySelectorAll("[data-section-heading]"));
+      setSections(nodes.map((el) => ({ id: el.id, label: el.dataset.sectionHeading })).filter((s) => s.id));
+      setActiveId(nodes[0]?.id || null);
+    }, 60); // let the tab's own content finish mounting first
+    return () => clearTimeout(t);
+  }, [tabKey, containerRef]);
+
+  useEffect(() => {
+    if (sections.length < 2) return;
+    const onScroll = () => {
+      let current = sections[0]?.id || null;
+      for (const s of sections) {
+        const el = document.getElementById(s.id);
+        if (el && el.getBoundingClientRect().top <= 80) current = s.id;
+      }
+      setActiveId((prev) => (prev === current ? prev : current));
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [sections]);
+
+  useEffect(() => {
+    if (!activeId || !barRef.current) return;
+    const chip = barRef.current.querySelector(`[data-chip-id="${activeId}"]`);
+    chip?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  }, [activeId]);
+
+  if (sections.length < 2) return null;
+
+  return (
+    <div
+      ref={barRef}
+      className="sticky top-0 z-10 flex gap-1.5 overflow-x-auto py-1.5 mb-2 -mx-4 px-4"
+      style={{ background: palette.parchment, borderBottom: `1px solid ${palette.line}`, boxShadow: "0 2px 4px #00000015", scrollbarWidth: "thin" }}
+    >
+      {sections.map((s) => (
+        <button
+          key={s.id}
+          data-chip-id={s.id}
+          onClick={() => document.getElementById(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          className="shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold"
+          style={{
+            background: activeId === s.id ? palette.crimson : "#fff",
+            color: activeId === s.id ? palette.parchment : palette.inkSoft,
+            border: `1px solid ${activeId === s.id ? palette.crimson : palette.line}`,
+            fontFamily: "Crimson Pro, serif",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {s.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Floating "back to top" button — appears once scrolled down a bit, scrolls the window
+// back to the very top (above the app header) in one tap.
+function BackToTop() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 400);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  if (!visible) return null;
+  return (
+    <button
+      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+      className="fixed z-20 flex items-center justify-center rounded-full"
+      style={{
+        bottom: 18,
+        right: 16,
+        width: 40,
+        height: 40,
+        background: palette.crimson,
+        color: palette.parchment,
+        boxShadow: "0 3px 10px #00000050",
+      }}
+      title="Back to top"
+    >
+      <ChevronUp size={20} />
+    </button>
+  );
+}
+
 function LoadingOverlay({ label = "Loading…" }) {
   return (
     <div
@@ -5000,9 +5148,24 @@ function Panel({ children, style, className = "" }) {
   );
 }
 
+// Slugifies a heading's text into a URL/DOM-safe id (used by SectionTitle so the
+// section sub-nav can scroll to it) — lowercase, spaces/punctuation to hyphens.
+const slugify = (text) =>
+  String(text)
+    .toLowerCase()
+    .replace(/['']/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
 function SectionTitle({ icon: Icon, children }) {
+  const label = typeof children === "string" ? children : "";
   return (
-    <div className="flex items-center gap-2 mb-3">
+    <div
+      className="flex items-center gap-2 mb-3"
+      id={label ? `section-${slugify(label)}` : undefined}
+      data-section-heading={label || undefined}
+      style={{ scrollMarginTop: 54 }}
+    >
       {Icon && <Icon size={18} color={palette.crimson} />}
       <h3
         style={{ fontFamily: "Cinzel, serif", color: palette.crimson, letterSpacing: "0.03em" }}
@@ -5336,11 +5499,29 @@ const PROFESSION_STARTING_TALENTS = {
   Knight: { talents: ["Mounted Combat", "Natural Leader", "Tank", "Chivalrous"], perks: ["Heroic Force of Will", "Challenge"], choices: [], pickNote: "" },
 };
 
+// Whether a hero's starting Talents/Perks grant is fully satisfied — computed live from
+// hero.talents/hero.perks rather than a cached flag, so it stays correct no matter which
+// UI path (the Creation Tools inline picker, or the Compendium tab's "Attach to hero")
+// was used to actually add the Talent/Perk. A profession with no grant at all (or no
+// PROFESSION_STARTING_TALENTS entry) is trivially "done".
+const startingTalentsFullyDone = (profession, talentsList, perksList) => {
+  const professionGrants = PROFESSION_STARTING_TALENTS[profession];
+  if (!professionGrants) return true;
+  const fixedDone = professionGrants.talents.every((t) => talentsList.includes(t)) && professionGrants.perks.every((p) => perksList.includes(p));
+  const choicesDone = professionGrants.choices.every((choice) => {
+    const list = choice.kind === "talent" ? talentsList : perksList;
+    const validNames = choice.options || (choice.filterType ? (choice.kind === "talent" ? TALENTS : PERKS).filter((i) => i.type === choice.filterType).map((i) => i.name) : []);
+    return validNames.some((n) => list.includes(n));
+  });
+  return fixedDone && choicesDone;
+};
+
 function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, goToTab }) {
   const [sanityEvent, setSanityEvent] = useState(SANITY_EVENTS[0].label);
   const [pendingCondition, setPendingCondition] = useState(null);
   const [hateEnemyInput, setHateEnemyInput] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [stackPickerOpen, setStackPickerOpen] = useState({}); // loc -> bool, toggles the "Stack with…" picker
 
   const set = (patch) => update({ ...hero, ...patch });
   const [startWeaponChoice, setStartWeaponChoice] = useState("");
@@ -5399,32 +5580,23 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
 
   const [startTalentsResult, setStartTalentsResult] = useState(null);
   const professionGrants = PROFESSION_STARTING_TALENTS[hero.profession];
-  // "Done" means every fixed Talent/Perk this profession grants is present AND every
-  // choice slot (e.g. Warrior's Mighty Blow/Braveheart pick) has been filled — used to
-  // auto-hide the hero creation tools panel once nothing is left to do here.
-  const startingTalentsFullyDone = (talentsList, perksList) => {
-    if (!professionGrants) return true;
-    const fixedDone = professionGrants.talents.every((t) => talentsList.includes(t)) && professionGrants.perks.every((p) => perksList.includes(p));
-    const choicesDone = professionGrants.choices.every((choice) => {
-      const list = choice.kind === "talent" ? talentsList : perksList;
-      const validNames = choice.options || (choice.filterType ? (choice.kind === "talent" ? TALENTS : PERKS).filter((i) => i.type === choice.filterType).map((i) => i.name) : []);
-      return validNames.some((n) => list.includes(n));
-    });
-    return fixedDone && choicesDone;
-  };
+  // Note: the actual "is this done" check now lives in the module-level
+  // startingTalentsFullyDone(profession, talentsList, perksList) above — computed live
+  // wherever it's needed, rather than trusted from a cached hero.startingTalentsApplied
+  // flag, since that flag could silently go stale depending on which UI added the item.
   const applyStartingTalentsPerks = () => {
     if (!professionGrants) return;
     const hasFixedGrants = professionGrants.talents.length > 0 || professionGrants.perks.length > 0;
     if (!hasFixedGrants) {
       setStartTalentsResult({ ok: true, line: professionGrants.pickNote || "This profession has no fixed starting Talents/Perks." });
-      set({ startingTalentsApplied: startingTalentsFullyDone(hero.talents, hero.perks) });
+      set({ startingTalentsApplied: startingTalentsFullyDone(hero.profession, hero.talents, hero.perks) });
       return;
     }
     const newTalents = professionGrants.talents.filter((t) => !hero.talents.includes(t));
     const newPerks = professionGrants.perks.filter((p) => !hero.perks.includes(p));
     if (newTalents.length === 0 && newPerks.length === 0) {
       setStartTalentsResult({ ok: true, line: "Already has this profession's starting Talents/Perks." });
-      set({ startingTalentsApplied: startingTalentsFullyDone(hero.talents, hero.perks) });
+      set({ startingTalentsApplied: startingTalentsFullyDone(hero.profession, hero.talents, hero.perks) });
       return;
     }
     let workingHero = hero;
@@ -5434,7 +5606,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
       talents = [...talents, tName];
     });
     const perks = [...hero.perks, ...newPerks];
-    update({ ...workingHero, talents, perks, startingTalentsApplied: startingTalentsFullyDone(talents, perks) });
+    update({ ...workingHero, talents, perks, startingTalentsApplied: startingTalentsFullyDone(hero.profession, talents, perks) });
     const granted = [...newTalents, ...newPerks].join(", ");
     const line = `Starting Talents/Perks applied: ${granted}.`;
     setStartTalentsResult({ ok: true, line });
@@ -5447,13 +5619,13 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
       if (hero.talents.includes(name)) return;
       const patch = talentEffectPatch(hero, name, 1);
       const nextTalents = [...hero.talents, name];
-      update({ ...hero, ...patch, talents: nextTalents, startingTalentsApplied: startingTalentsFullyDone(nextTalents, hero.perks) });
+      update({ ...hero, ...patch, talents: nextTalents, startingTalentsApplied: startingTalentsFullyDone(hero.profession, nextTalents, hero.perks) });
       if (TALENT_EFFECTS[name]) addLog(`${hero.name}: gained Talent "${name}" (${TALENT_EFFECTS[name].label}, applied automatically).`);
       else addLog(`${hero.name}: gained Talent "${name}" (${choice.label}).`);
     } else {
       if (hero.perks.includes(name)) return;
       const nextPerks = [...hero.perks, name];
-      update({ ...hero, perks: nextPerks, startingTalentsApplied: startingTalentsFullyDone(hero.talents, nextPerks) });
+      update({ ...hero, perks: nextPerks, startingTalentsApplied: startingTalentsFullyDone(hero.profession, hero.talents, nextPerks) });
       addLog(`${hero.name}: gained Perk "${name}" (${choice.label}).`);
     }
   };
@@ -5515,7 +5687,34 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     const a = ARMOUR_AND_SHIELDS.find((x) => x.name === name);
     if (!a) return;
     const maxDur = a.dur || 6;
-    setArmourPiece(loc, { name: a.name, def: a.def, enc: a.enc, dur: { cur: maxDur, max: maxDur } });
+    // Picking a brand new primary piece for this location exits any existing stack — the
+    // old inner layer (if any) goes back to the backpack rather than being silently lost.
+    const oldStacked = hero.armour[loc].stacked;
+    const backpack = oldStacked
+      ? [...hero.backpack, { id: uid(), name: oldStacked.name, value: (ARMOUR_AND_SHIELDS.find((x) => x.name === oldStacked.name) || {}).cost || "", enc: oldStacked.enc, dur: `${oldStacked.dur.cur}/${oldStacked.dur.max}`, slot: "backpack" }]
+      : hero.backpack;
+    update({ ...hero, armour: { ...hero.armour, [loc]: { name: a.name, def: a.def, enc: a.enc, dur: { cur: maxDur, max: maxDur }, stacked: null } }, backpack });
+    if (oldStacked) addLog && addLog(`${hero.name}: swapping ${loc} armour also unstacks ${oldStacked.name} — moved to the backpack.`);
+  };
+
+  // Stacking Armour — adds a second, different-tier Stackable piece to the same location.
+  // The UI only offers Stackable pieces of a different tier (hard-filtered), so no
+  // validation is needed here beyond the piece existing.
+  const addStackedArmour = (loc, name) => {
+    const a = ARMOUR_AND_SHIELDS.find((x) => x.name === name);
+    if (!a) return;
+    const maxDur = a.dur || 6;
+    setArmourPiece(loc, { stacked: { name: a.name, def: a.def, enc: a.enc, tier: a.tier, dur: { cur: maxDur, max: maxDur } } });
+    addLog && addLog(`${hero.name}: stacks ${a.name} with ${hero.armour[loc].name} at ${loc}.`);
+  };
+  const removeStackedArmour = (loc) => {
+    const piece = hero.armour[loc];
+    const s = piece.stacked;
+    if (!s) return;
+    const ref = ARMOUR_AND_SHIELDS.find((a) => a.name === s.name);
+    const item = { id: uid(), name: s.name, value: ref ? ref.cost : "", enc: s.enc, dur: `${s.dur.cur}/${s.dur.max}`, slot: "backpack" };
+    update({ ...hero, armour: { ...hero.armour, [loc]: { ...piece, stacked: null } }, backpack: [...hero.backpack, item] });
+    addLog && addLog(`${hero.name} unstacks ${s.name} — moved to the backpack.`);
   };
 
   // Clearing an equipped weapon/armour piece doesn't destroy it — the hero still has the
@@ -5546,8 +5745,14 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
       dur: `${piece.dur.cur}/${piece.dur.max}`,
       slot: "backpack",
     };
-    update({ ...hero, armour: { ...hero.armour, [loc]: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 } } }, backpack: [...hero.backpack, item] });
-    addLog && addLog(`${hero.name} unequips ${item.name} — moved to the backpack.`);
+    // Clearing the primary piece also exits any stack — the inner layer returns to the
+    // backpack too, rather than being left dangling with no primary piece to attach to.
+    const s = piece.stacked;
+    const backpack = s
+      ? [...hero.backpack, item, { id: uid(), name: s.name, value: (ARMOUR_AND_SHIELDS.find((a) => a.name === s.name) || {}).cost || "", enc: s.enc, dur: `${s.dur.cur}/${s.dur.max}`, slot: "backpack" }]
+      : [...hero.backpack, item];
+    update({ ...hero, armour: { ...hero.armour, [loc]: { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 }, stacked: null } }, backpack });
+    addLog && addLog(`${hero.name} unequips ${item.name}${s ? ` (and unstacks ${s.name})` : ""} — moved to the backpack.`);
   };
 
   const extraSkillKey = CASTER_SKILL[hero.profession] || PRAYER_SKILL[hero.profession] || null;
@@ -5916,7 +6121,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
 
   const totalEnc =
     (Number(hero.weapon.enc) || 0) +
-    Object.values(hero.armour).reduce((sum, piece) => sum + (Number(piece.enc) || 0), 0) +
+    Object.values(hero.armour).reduce((sum, piece) => sum + (Number(piece.enc) || 0) + (piece.stacked ? Number(piece.stacked.enc) || 0 : 0), 0) +
     hero.backpack.reduce((sum, item) => sum + (Number(item.enc) || 0), 0);
   const carryCapacity = (Number(hero.stats.STR) || 0) + backpackEncBonus(hero);
   const isEncumbered = totalEnc > carryCapacity;
@@ -6050,7 +6255,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
           {(() => {
             const anyToolApplicable = !!startingCfg || !!professionGrants || !!speciesData;
             if (!anyToolApplicable) return null;
-            const allCreationDone = (!startingCfg || hero.startingEquipmentApplied) && (!professionGrants || hero.startingTalentsApplied) && (!speciesData || hero.startingStatsRolled);
+            const allCreationDone = (!startingCfg || hero.startingEquipmentApplied) && (!professionGrants || startingTalentsFullyDone(hero.profession, hero.talents, hero.perks)) && (!speciesData || hero.startingStatsRolled);
             const showCreationTools = !allCreationDone || hero.creationToolsShown;
             if (!showCreationTools) {
               return (
@@ -6210,6 +6415,17 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
             >
               <Dice5 size={12} /> Roll Starting Stats & HP ({speciesData.name})
             </button>
+          )}
+          {allCreationDone && hero.creationToolsShown && (
+            <div className="text-right mt-1">
+              <button
+                onClick={() => set({ creationToolsShown: false })}
+                className="text-[10px] font-semibold underline"
+                style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}
+              >
+                Close
+              </button>
+            </div>
           )}
               </>
             );
@@ -6763,9 +6979,26 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}
             >
               <option value="">Pick from table…</option>
-              {WEAPONS.map((w) => (
-                <option key={w.name} value={w.name}>{w.name} ({w.dmg}, Class {w.class})</option>
-              ))}
+              {(() => {
+                const ownedNames = new Set((hero.backpack || []).map((b) => b.name));
+                const owned = WEAPONS.filter((w) => ownedNames.has(w.name));
+                return (
+                  <>
+                    {owned.length > 0 && (
+                      <optgroup label="In Your Backpack">
+                        {owned.map((w) => (
+                          <option key={`b-${w.name}`} value={w.name}>{w.name} ({w.dmg}, Class {w.class})</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    <optgroup label="All Items (reference)">
+                      {WEAPONS.map((w) => (
+                        <option key={w.name} value={w.name}>{w.name} ({w.dmg}, Class {w.class})</option>
+                      ))}
+                    </optgroup>
+                  </>
+                );
+              })()}
             </select>
             <input
               value={hero.weapon.name}
@@ -6863,9 +7096,26 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                       style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}
                     >
                       <option value="">Pick from table…</option>
-                      {options.map((a) => (
-                        <option key={a.name} value={a.name}>{a.name} (Def {a.def}, {a.cost}c)</option>
-                      ))}
+                      {(() => {
+                        const ownedNames = new Set((hero.backpack || []).map((b) => b.name));
+                        const owned = options.filter((a) => ownedNames.has(a.name));
+                        return (
+                          <>
+                            {owned.length > 0 && (
+                              <optgroup label="In Your Backpack">
+                                {owned.map((a) => (
+                                  <option key={`b-${a.name}`} value={a.name}>{a.name} (Def {a.def}, {a.cost}c)</option>
+                                ))}
+                              </optgroup>
+                            )}
+                            <optgroup label="All Items (reference)">
+                              {options.map((a) => (
+                                <option key={a.name} value={a.name}>{a.name} (Def {a.def}, {a.cost}c)</option>
+                              ))}
+                            </optgroup>
+                          </>
+                        );
+                      })()}
                     </select>
                     <input
                       value={piece.name}
@@ -6924,6 +7174,73 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                         )}
                       </div>
                     )}
+
+                    {/* Stacking Armour — only offered when the equipped piece is itself Stackable
+                        and this location isn't already stacked. Picker is hard-filtered to
+                        Stackable pieces of a different tier, so nothing invalid can be picked. */}
+                    {ref && !piece.stacked && ref.special.includes("Stackable") && (
+                      stackPickerOpen[loc] ? (
+                        <div className="mt-1">
+                          <select
+                            value=""
+                            onChange={(e) => { if (e.target.value) { addStackedArmour(loc, e.target.value); setStackPickerOpen({ ...stackPickerOpen, [loc]: false }); } }}
+                            className="w-full text-xs rounded px-2 py-1"
+                            style={{ background: "#fff", border: `1px solid ${palette.forestDark}`, fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}
+                          >
+                            <option value="">Stack with… (Stackable, different tier)</option>
+                            {(() => {
+                              const validStack = options.filter((a) => a.special.includes("Stackable") && a.tier !== ref.tier && a.name !== piece.name);
+                              const ownedNames = new Set((hero.backpack || []).map((b) => b.name));
+                              const owned = validStack.filter((a) => ownedNames.has(a.name));
+                              return (
+                                <>
+                                  {owned.length > 0 && (
+                                    <optgroup label="In Your Backpack">
+                                      {owned.map((a) => <option key={`b-${a.name}`} value={a.name}>{a.name} (Tier {a.tier}, Def {a.def})</option>)}
+                                    </optgroup>
+                                  )}
+                                  <optgroup label="All Items (reference)">
+                                    {validStack.map((a) => <option key={a.name} value={a.name}>{a.name} (Tier {a.tier}, Def {a.def})</option>)}
+                                  </optgroup>
+                                </>
+                              );
+                            })()}
+                          </select>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setStackPickerOpen({ ...stackPickerOpen, [loc]: true })}
+                          className="w-full mt-1 text-[10px] py-1 rounded font-semibold"
+                          style={{ border: `1px dashed ${palette.forestDark}`, color: palette.forestDark, fontFamily: "Cinzel, serif" }}
+                        >
+                          + Stack Armour (different tier)
+                        </button>
+                      )
+                    )}
+
+                    {piece.stacked && (() => {
+                      const s = piece.stacked;
+                      const order = resolveStackOrder({ name: piece.name, def: piece.def, tier: ref?.tier ?? 0 }, s);
+                      const outerIsMain = order.outer.name === piece.name;
+                      return (
+                        <div className="mt-1.5 rounded p-1.5" style={{ background: "#28352A10", border: `1px solid ${palette.line}` }}>
+                          <div className="flex items-center justify-between text-[10px]" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.ink }}>
+                            <span>
+                              <b>{order.outer.name}</b> (outer, {order.outerHalved ? "½" : "full"} DEF {order.outerDef})
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] mt-0.5" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.inkSoft }}>
+                            <span><b>{order.inner.name}</b> (inner, ½ DEF {order.innerDef}, DUR {outerIsMain ? s.dur.cur : piece.dur.cur}/{outerIsMain ? s.dur.max : piece.dur.max})</span>
+                            <button onClick={() => removeStackedArmour(loc)} className="text-[10px] flex items-center gap-0.5 px-1 rounded" style={{ color: palette.crimson }}>
+                              <X size={10} /> Unstack
+                            </button>
+                          </div>
+                          <div className="text-[10px] mt-1 font-bold" style={{ color: palette.forestDark, fontFamily: "Crimson Pro, serif" }}>
+                            Combined DEF: {order.combinedDef} · Total ENC: {piece.enc + s.enc} · Hits resolve outer → inner → HP
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
@@ -11027,17 +11344,14 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog }) {
     setParty((prev) => ({ ...prev, lightSources: (prev.lightSources || []).filter((l) => l.id !== id) }));
   };
 
-  // Initiative Bag
-  const [enemyCount, setEnemyCount] = useState(1);
-  const [namedMonsterCount, setNamedMonsterCount] = useState(0);
-  const [largeMonsterCount, setLargeMonsterCount] = useState(0);
-  const [perfectHearing, setPerfectHearing] = useState(false);
-  const [swiftLeader, setSwiftLeader] = useState(false);
-  const [sneaky, setSneaky] = useState(false);
-  const [doorBashed, setDoorBashed] = useState(false);
-  const [ambushed, setAmbushed] = useState(false);
-  const [bag, setBag] = useState(null);
-  const [drawOrder, setDrawOrder] = useState([]);
+  // Initiative Bag — reads/writes party.initiativeSetup / initiativeBag / initiativeDrawOrder
+  // (not local component state) so it survives switching tabs mid-battle, matching how the
+  // rulebook actually wants it to persist across turns of the same fight.
+  const initSetup = party.initiativeSetup;
+  const setInitSetup = (patch) => setParty((prev) => ({ ...prev, initiativeSetup: { ...prev.initiativeSetup, ...patch } }));
+  const { enemyCount, namedMonsterCount, largeMonsterCount, perfectHearing, swiftLeader, sneaky, doorBashed, ambushed } = initSetup;
+  const bag = party.initiativeBag;
+  const drawOrder = party.initiativeDrawOrder;
 
   const heroTokenCount = heroes.length + (perfectHearing ? 1 : 0) + (swiftLeader ? 1 : 0);
   const enemyTokenCount =
@@ -11048,8 +11362,7 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog }) {
 
   const buildBag = () => {
     const tokens = [...Array(heroTokenCount).fill("hero"), ...Array(enemyTokenCount).fill("enemy")];
-    setBag(tokens);
-    setDrawOrder([]);
+    setParty((prev) => ({ ...prev, initiativeBag: tokens, initiativeDrawOrder: [] }));
     addLog(`Initiative bag built: ${heroTokenCount} hero token${heroTokenCount === 1 ? "" : "s"}, ${enemyTokenCount} enemy token${enemyTokenCount === 1 ? "" : "s"}.`);
   };
 
@@ -11057,8 +11370,11 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog }) {
     if (!bag || bag.length === 0) return;
     const idx = Math.floor(Math.random() * bag.length);
     const drawn = bag[idx];
-    setBag([...bag.slice(0, idx), ...bag.slice(idx + 1)]);
-    setDrawOrder((prev) => [...prev, drawn]);
+    setParty((prev) => ({
+      ...prev,
+      initiativeBag: [...prev.initiativeBag.slice(0, idx), ...prev.initiativeBag.slice(idx + 1)],
+      initiativeDrawOrder: [...prev.initiativeDrawOrder, drawn],
+    }));
   };
 
   return (
@@ -11094,33 +11410,33 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog }) {
       <Panel className="mb-4">
         <SectionTitle icon={Users}>Initiative Bag</SectionTitle>
         <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-          1 hero token per hero, 1 per enemy, plus modifiers below. Build the bag, then draw one token at a time for turn order.
+          1 hero token per hero, 1 per enemy, plus modifiers below. Build the bag, then draw one token at a time for turn order. Per the rulebook, tokens for models still standing return to the bag each round — this stays as-is across turns and tab switches; only rebuild the bag when a genuinely new battle starts.
         </p>
         <div className="grid grid-cols-3 gap-1.5 mb-2">
           <label className="text-[10px]" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
             Enemies
-            <input type="number" value={enemyCount} onChange={(e) => setEnemyCount(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+            <input type="number" value={enemyCount} onChange={(e) => setInitSetup({ enemyCount: Number(e.target.value) || 0 })} className="w-full rounded px-2 py-1 mt-0.5" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
           </label>
           <label className="text-[10px]" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
             Named +1 ea.
-            <input type="number" value={namedMonsterCount} onChange={(e) => setNamedMonsterCount(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+            <input type="number" value={namedMonsterCount} onChange={(e) => setInitSetup({ namedMonsterCount: Number(e.target.value) || 0 })} className="w-full rounded px-2 py-1 mt-0.5" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
           </label>
           <label className="text-[10px]" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
             Large +1 ea.
-            <input type="number" value={largeMonsterCount} onChange={(e) => setLargeMonsterCount(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+            <input type="number" value={largeMonsterCount} onChange={(e) => setInitSetup({ largeMonsterCount: Number(e.target.value) || 0 })} className="w-full rounded px-2 py-1 mt-0.5" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
           </label>
         </div>
         <div className="flex flex-wrap gap-1.5 mb-3">
           {[
-            ["Perfect Hearing (+1 hero)", perfectHearing, setPerfectHearing],
-            ["Swift Leader (+1 hero)", swiftLeader, setSwiftLeader],
-            ["Sneaky (+1 enemy)", sneaky, setSneaky],
-            ["Door bashed (+2 enemy)", doorBashed, setDoorBashed],
-            ["Ambushed (+3 enemy)", ambushed, setAmbushed],
-          ].map(([label, val, setter]) => (
+            ["Perfect Hearing (+1 hero)", "perfectHearing", perfectHearing],
+            ["Swift Leader (+1 hero)", "swiftLeader", swiftLeader],
+            ["Sneaky (+1 enemy)", "sneaky", sneaky],
+            ["Door bashed (+2 enemy)", "doorBashed", doorBashed],
+            ["Ambushed (+3 enemy)", "ambushed", ambushed],
+          ].map(([label, key, val]) => (
             <button
               key={label}
-              onClick={() => setter((v) => !v)}
+              onClick={() => setInitSetup({ [key]: !val })}
               className="text-[10px] px-2 py-1 rounded font-semibold active:scale-95 transition-transform"
               style={{ background: val ? palette.crimsonDark : "#00000010", color: val ? palette.parchment : palette.ink, fontFamily: "Crimson Pro, serif" }}
             >
@@ -11553,7 +11869,7 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
 }
 
 // ---------- Combat Calculator ----------
-function CombatCalc({ heroes, updateHero, addLog }) {
+function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
   const [mode, setMode] = useState("cc"); // cc | ranged | damage | check | spells | prayers
   const [base, setBase] = useState(30);
   const [enemyMod, setEnemyMod] = useState(0);
@@ -11615,6 +11931,101 @@ function CombatCalc({ heroes, updateHero, addLog }) {
 
   const [hitLocHero, setHitLocHero] = useState("");
   const [hitLocResult, setHitLocResult] = useState(null);
+
+  // ---- Resolve a Hit ----
+  // Walks incoming damage through a hero's actual equipped armour at a chosen location —
+  // single piece or stacked pair — per the rulebook's sequential resolution: outer DEF,
+  // then outer DUR (only if it didn't fully absorb), then inner DEF (halved, RDD), then
+  // inner DUR, then remainder to HP. A piece that reaches 0 DUR breaks beyond repair and
+  // is discarded entirely (per the designer).
+  const [rhHeroId, setRhHeroId] = useState("");
+  const [rhLoc, setRhLoc] = useState("head");
+  const [rhDamage, setRhDamage] = useState(0);
+  const [rhResult, setRhResult] = useState(null);
+  const rhHero = heroes.find((h) => h.id === rhHeroId);
+  const rhPiece = rhHero ? rhHero.armour[rhLoc] : null;
+  const rhRef = rhPiece?.name ? ARMOUR_AND_SHIELDS.find((a) => a.name === rhPiece.name) : null;
+
+  const resolveHit = () => {
+    if (!rhHero || !rhPiece) return;
+    let remaining = Math.max(0, Number(rhDamage) || 0);
+    const steps = [];
+    const breaks = [];
+    let outerLayer = null, innerLayer = null;
+
+    if (rhPiece.name && rhPiece.stacked) {
+      const order = resolveStackOrder({ name: rhPiece.name, def: rhPiece.def, tier: rhRef?.tier ?? 0 }, rhPiece.stacked);
+      const outerIsMain = order.outer.name === rhPiece.name;
+      outerLayer = { key: outerIsMain ? "main" : "stacked", name: order.outer.name, def: order.outerDef, dur: outerIsMain ? rhPiece.dur : rhPiece.stacked.dur };
+      innerLayer = { key: outerIsMain ? "stacked" : "main", name: order.inner.name, def: order.innerDef, dur: outerIsMain ? rhPiece.stacked.dur : rhPiece.dur };
+    } else if (rhPiece.name) {
+      outerLayer = { key: "main", name: rhPiece.name, def: rhPiece.def, dur: rhPiece.dur };
+    }
+
+    const newDur = {}; // key -> new cur
+    if (outerLayer) {
+      const before = remaining;
+      remaining = Math.max(0, remaining - outerLayer.def);
+      steps.push(`${outerLayer.name} (outer) absorbs ${Math.min(before, outerLayer.def)} DEF — ${before} → ${remaining} remaining.`);
+      if (remaining > 0) {
+        const nd = Math.max(0, outerLayer.dur.cur - 1);
+        newDur[outerLayer.key] = nd;
+        steps.push(`Didn't fully absorb → ${outerLayer.name} loses 1 DUR (${outerLayer.dur.cur}/${outerLayer.dur.max} → ${nd}/${outerLayer.dur.max}).`);
+        if (nd === 0) breaks.push(outerLayer);
+      } else {
+        steps.push(`Fully absorbed → ${outerLayer.name} takes no DUR loss.`);
+      }
+    }
+    if (innerLayer && remaining > 0) {
+      const before = remaining;
+      remaining = Math.max(0, remaining - innerLayer.def);
+      steps.push(`${innerLayer.name} (inner, ½ DEF) absorbs ${Math.min(before, innerLayer.def)} DEF — ${before} → ${remaining} remaining.`);
+      if (remaining > 0) {
+        const nd = Math.max(0, innerLayer.dur.cur - 1);
+        newDur[innerLayer.key] = nd;
+        steps.push(`Didn't fully absorb → ${innerLayer.name} loses 1 DUR (${innerLayer.dur.cur}/${innerLayer.dur.max} → ${nd}/${innerLayer.dur.max}).`);
+        if (nd === 0) breaks.push(innerLayer);
+      } else {
+        steps.push(`Fully absorbed → ${innerLayer.name} takes no DUR loss.`);
+      }
+    } else if (innerLayer) {
+      steps.push(`${innerLayer.name} (inner) never tested — outer fully absorbed the hit.`);
+    }
+    if (remaining > 0) steps.push(`${remaining} remaining damage applied to ${rhHero.name}'s HP.`);
+    else steps.push(`No damage reaches ${rhHero.name}'s HP.`);
+
+    setRhResult({ steps, remaining, newDur, breaks, outerLayer, innerLayer });
+  };
+
+  const applyResolvedHit = () => {
+    if (!rhResult || !rhHero) return;
+    const { remaining, newDur, breaks } = rhResult;
+    const mainBroke = breaks.some((b) => b.key === "main");
+    const stackedBroke = breaks.some((b) => b.key === "stacked");
+    const piece = rhHero.armour[rhLoc];
+    let nextPiece;
+    if (mainBroke) {
+      // Main piece breaks beyond repair — discarded entirely (per the designer). If there
+      // was a stacked inner piece and it didn't also break, it simply has nothing left to
+      // pair with, so it's released too rather than left as an orphaned single "stack".
+      nextPiece = { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 }, stacked: null };
+    } else if (stackedBroke) {
+      nextPiece = { ...piece, dur: { ...piece.dur, cur: newDur.main ?? piece.dur.cur }, stacked: null };
+    } else {
+      nextPiece = {
+        ...piece,
+        dur: { ...piece.dur, cur: newDur.main ?? piece.dur.cur },
+        stacked: piece.stacked ? { ...piece.stacked, dur: { ...piece.stacked.dur, cur: newDur.stacked ?? piece.stacked.dur.cur } } : null,
+      };
+    }
+    const newHp = { ...rhHero.hp, cur: Math.max(0, rhHero.hp.cur - remaining) };
+    updateHero({ ...rhHero, hp: newHp, armour: { ...rhHero.armour, [rhLoc]: nextPiece } });
+    addLog && addLog(`${rhHero.name}: resolved a hit at ${rhLoc} — ${remaining} damage to HP${breaks.length ? `, ${breaks.map((b) => b.name).join(" & ")} broke beyond repair` : ""}.`);
+    breaks.forEach((b) => pushToast && pushToast(`${b.name} broke beyond repair!`, `Removed from ${rhHero.name}'s ${rhLoc}.`));
+    setRhResult(null);
+    setRhDamage(0);
+  };
+
   const HIT_LOCATIONS = [
     { min: 1, max: 1, loc: "Head", note: "Costs 1 Sanity." },
     { min: 2, max: 2, loc: "Arms", note: "No automatic effect tracked here." },
@@ -11776,7 +12187,7 @@ function CombatCalc({ heroes, updateHero, addLog }) {
   return (
     <div>
       <div className="flex gap-1.5 mb-4 flex-wrap">
-        {[["cc", "Close Combat", Swords], ["ranged", "Ranged", Dice5], ["throw", "Throw Potion", FlaskConical], ["damage", "Damage", Shield], ["check", "Stat/Skill Check", Brain], ["spells", "Spells", Sparkles], ["scroll", "Read Scroll", ScrollText], ["prayers", "Prayers", Heart]].map(([key, label, Icon]) => (
+        {[["cc", "Close Combat", Swords], ["ranged", "Ranged", Dice5], ["throw", "Throw Potion", FlaskConical], ["damage", "Damage", Shield], ["resolveHit", "Resolve a Hit", ShieldAlert], ["check", "Stat/Skill Check", Brain], ["spells", "Spells", Sparkles], ["scroll", "Read Scroll", ScrollText], ["prayers", "Prayers", Heart]].map(([key, label, Icon]) => (
           <button
             key={key}
             onClick={() => { setMode(key); setResult(null); }}
@@ -12108,6 +12519,103 @@ function CombatCalc({ heroes, updateHero, addLog }) {
                 </div>
               )}
             </div>
+          )}
+        </Panel>
+      )}
+
+      {mode === "resolveHit" && (
+        <Panel className="mb-4">
+          <SectionTitle icon={ShieldAlert}>Resolve a Hit</SectionTitle>
+          <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
+            Walks incoming damage through a hero's actual equipped armour at a location — single piece or stacked — resolving DEF, DUR loss, and any HP that gets through, automatically. Works the same for single-layer and stacked locations.
+          </p>
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+              Hero
+              <select
+                value={rhHeroId}
+                onChange={(e) => { setRhHeroId(e.target.value); setRhResult(null); }}
+                className="w-full text-xs rounded px-2 py-1.5 mt-0.5"
+                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+              >
+                <option value="">Choose…</option>
+                {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+              </select>
+            </label>
+            <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+              Location
+              <select
+                value={rhLoc}
+                onChange={(e) => { setRhLoc(e.target.value); setRhResult(null); }}
+                className="w-full text-xs rounded px-2 py-1.5 mt-0.5"
+                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+              >
+                {[["head", "Head"], ["arms", "Arms"], ["torso", "Torso"], ["legs", "Legs"], ["shield", "Shield"]].map(([k, l]) => (
+                  <option key={k} value={k}>{l}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {rhHero && (
+            <div className="text-xs rounded p-2 mb-2" style={{ background: "#00000008", color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+              {rhPiece?.name ? (
+                <>
+                  <div>Equipped: <b style={{ color: palette.ink }}>{rhPiece.name}</b> — DEF {rhPiece.def} · DUR {rhPiece.dur.cur}/{rhPiece.dur.max}</div>
+                  {rhPiece.stacked && (
+                    <div>Stacked: <b style={{ color: palette.ink }}>{rhPiece.stacked.name}</b> — DEF {rhPiece.stacked.def} · DUR {rhPiece.stacked.dur.cur}/{rhPiece.stacked.dur.max}</div>
+                  )}
+                </>
+              ) : (
+                <div>Nothing equipped at this location — damage will apply straight to HP.</div>
+              )}
+            </div>
+          )}
+
+          <label className="text-xs block mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+            Incoming Damage
+            <input
+              type="number"
+              value={rhDamage}
+              onChange={(e) => { setRhDamage(Number(e.target.value) || 0); setRhResult(null); }}
+              className="w-full rounded px-2 py-1.5 mt-0.5 font-bold"
+              style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+            />
+          </label>
+
+          <button
+            onClick={resolveHit}
+            disabled={!rhHero}
+            className="w-full py-2 rounded font-bold text-sm mb-2"
+            style={{ background: palette.crimson, color: palette.parchment, fontFamily: "Cinzel, serif", opacity: rhHero ? 1 : 0.5 }}
+          >
+            Resolve →
+          </button>
+
+          {rhResult && (
+            <>
+              <div className="space-y-1 mb-2">
+                {rhResult.steps.map((s, i) => (
+                  <div key={i} className="text-[11px] rounded px-2 py-1" style={{ background: "#00000008", color: palette.ink, fontFamily: "Crimson Pro, serif", borderLeft: `3px solid ${palette.goldSoft}` }}>
+                    {s}
+                  </div>
+                ))}
+              </div>
+              <div className="text-center rounded p-3 mb-2" style={{ background: palette.charcoal }}>
+                <div className="text-xs uppercase" style={{ color: palette.goldSoft, fontFamily: "Cinzel, serif" }}>HP Lost</div>
+                <div className="text-3xl font-bold" style={{ color: palette.parchment, fontFamily: "JetBrains Mono, monospace" }}>{rhResult.remaining}</div>
+                {rhResult.breaks.length > 0 && (
+                  <div className="text-[10px] mt-1" style={{ color: "#E8A0A0" }}>{rhResult.breaks.map((b) => b.name).join(" & ")} will break beyond repair</div>
+                )}
+              </div>
+              <button
+                onClick={applyResolvedHit}
+                className="w-full py-2 rounded font-bold text-sm"
+                style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+              >
+                Apply to Hero
+              </button>
+            </>
           )}
         </Panel>
       )}
@@ -14445,7 +14953,7 @@ function HeroesTab({ heroes, updateHero, removeHero, addHero, addLog, pushToast,
 
   return (
     <div>
-      <div className="flex items-center gap-1.5 mb-3">
+      <div className="sticky top-0 z-10 flex items-center gap-1.5 mb-3 -mx-4 px-4 py-2" style={{ background: palette.parchment, borderBottom: `1px solid ${palette.line}`, boxShadow: "0 2px 4px #00000015" }}>
         <button
           onClick={handleAdd}
           className="shrink-0 flex items-center justify-center p-2 rounded-lg font-bold"
@@ -14523,6 +15031,7 @@ export default function App() {
   const [log, setLog] = useState([]);
   const [tab, setTab] = useState("party");
   const navRef = useRef(null);
+  const mainContentRef = useRef(null);
   const dragState = useRef({ dragging: false, moved: false, startX: 0, scrollLeft: 0 });
   const onNavPointerDown = (e) => {
     const el = navRef.current;
@@ -14826,6 +15335,7 @@ export default function App() {
       <UpdateToast />
       <LevelUpToastStack toasts={toasts} dismissToast={dismissToast} />
       <InstallBanner />
+      <BackToTop />
 
       <header style={{ background: palette.charcoal, borderBottom: `4px solid ${palette.crimson}` }} className="px-4 py-4">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
@@ -14917,7 +15427,8 @@ export default function App() {
         ))}
       </nav>
 
-      <main className="max-w-2xl mx-auto px-4 pb-16 pt-2">
+      <main ref={mainContentRef} className="max-w-2xl mx-auto px-4 pb-16 pt-2">
+        <SectionSubNav containerRef={mainContentRef} tabKey={tab} />
         {tab === "party" && <PartyPanel party={party} setParty={setParty} log={log} addLog={addLog} heroes={heroes} updateHero={updateHero} pushToast={pushToast} />}
         {tab === "turn" && <TurnTab party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />}
         {tab === "travel" && (
@@ -14932,7 +15443,7 @@ export default function App() {
         {tab === "heroes" && (
           <HeroesTab heroes={heroes} updateHero={updateHero} removeHero={removeHero} addHero={addHero} addLog={addLog} pushToast={pushToast} party={party} setParty={setParty} goToTab={goToTab} />
         )}
-        {tab === "combat" && <CombatCalc heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
+        {tab === "combat" && <CombatCalc heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} pushToast={pushToast} />}
         {tab === "alchemy" && <AlchemyTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
         {tab === "actions" && <ActionsTray party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />}
         {tab === "dice" && <DiceTray party={party} setParty={setParty} heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}

@@ -3608,6 +3608,16 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.50.2",
+    date: "2026-08-20",
+    sections: {
+      "Fixed": [
+        "Resolve a Hit: the Head/Torso Sanity and Quick Slot prompts now appear whenever that location is selected — whether picked manually from the Location dropdown or via \"Roll 1d6 Hit Location\" — instead of only showing up after rolling. Manually selecting Head or Torso was silently skipping the prompt entirely",
+        "Resolve a Hit: the Hit Location roll's flavour note now clears when the Location is changed afterward, instead of lingering and no longer matching what's selected",
+      ],
+    },
+  },
+  {
     version: "1.50.1",
     date: "2026-08-20",
     sections: {
@@ -12467,7 +12477,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
               Location
               <select
                 value={rhLoc}
-                onChange={(e) => { setRhLoc(e.target.value); setRhResult(null); setRhApplied(null); }}
+                onChange={(e) => { setRhLoc(e.target.value); setRhResult(null); setRhApplied(null); setHitLocResult(null); }}
                 className="w-full text-xs rounded px-2 py-1.5 mt-0.5"
                 style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
               >
@@ -12487,50 +12497,53 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
               >
                 <Dice5 size={13} /> Roll 1d6 Hit Location
               </button>
-              {hitLocResult && (
+              {/* The roll's flavour note only makes sense if it matches whatever's currently
+                  selected — if the player rolls Head, then manually switches to Legs, the old
+                  note is stale and shouldn't linger. The Sanity/Quick Slot action buttons below,
+                  though, key off rhLoc directly so they show up either way — rolled or manually
+                  picked — since a Head or Torso hit has the same consequence regardless of how
+                  the location was chosen. */}
+              {hitLocResult && hitLocResult.loc.toLowerCase() === rhLoc && (
                 <div className="text-xs rounded p-2 mt-1.5" style={{ background: "#00000008", color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
                   <b>{hitLocResult.loc}</b> ({hitLocResult.roll}) — {hitLocResult.note}
-                  {hitLocResult.loc === "Head" && (
-                    <button
-                      onClick={() => {
-                        updateHero({ ...rhHero, sanity: { ...rhHero.sanity, cur: Math.max(0, rhHero.sanity.cur - 1) } });
-                        addLog && addLog(`${rhHero.name} is struck in the head: −1 Sanity.`);
-                        setHitLocResult(null);
-                      }}
-                      className="block mt-2 px-2 py-1 rounded text-xs font-bold"
-                      style={{ background: palette.crimson, color: palette.parchment }}
-                    >
-                      Apply −1 Sanity
-                    </button>
-                  )}
-                  {hitLocResult.loc === "Torso" && (() => {
-                    const quickItems = rhHero.backpack.filter((it) => it.slot === "quickslot");
-                    return (
-                      <button
-                        onClick={() => {
-                          const slotRoll = rollDie(10);
-                          if (slotRoll > quickItems.length) {
-                            addLog && addLog(`${rhHero.name}: torso hit, Quick Slot roll ${slotRoll} — no item in that slot, no effect.`);
-                            setHitLocResult(null);
-                            return;
-                          }
-                          const item = quickItems[slotRoll - 1];
-                          const curDur = Number(String(item.dur || "").split("/")[0]) || 0;
-                          const newDur = Math.max(0, curDur - 1);
-                          const maxPart = String(item.dur || "").split("/")[1] || "";
-                          updateHero({ ...rhHero, backpack: rhHero.backpack.map((it) => it.id === item.id ? { ...it, dur: maxPart ? `${newDur}/${maxPart}` : String(newDur) } : it) });
-                          addLog && addLog(`${rhHero.name}: torso hit, Quick Slot roll ${slotRoll} — ${item.name} takes 1 Durability damage.`);
-                          setHitLocResult(null);
-                        }}
-                        className="block mt-2 px-2 py-1 rounded text-xs font-bold"
-                        style={{ background: palette.crimson, color: palette.parchment }}
-                      >
-                        Roll 1d10 vs Quick Slots ({quickItems.length} used)
-                      </button>
-                    );
-                  })()}
                 </div>
               )}
+              {rhLoc === "head" && (
+                <button
+                  onClick={() => {
+                    updateHero({ ...rhHero, sanity: { ...rhHero.sanity, cur: Math.max(0, rhHero.sanity.cur - 1) } });
+                    addLog && addLog(`${rhHero.name} is struck in the head: −1 Sanity.`);
+                  }}
+                  className="w-full mt-1.5 px-2 py-1.5 rounded text-xs font-bold"
+                  style={{ background: palette.crimson, color: palette.parchment }}
+                >
+                  Head hit — Apply −1 Sanity
+                </button>
+              )}
+              {rhLoc === "torso" && (() => {
+                const quickItems = rhHero.backpack.filter((it) => it.slot === "quickslot");
+                return (
+                  <button
+                    onClick={() => {
+                      const slotRoll = rollDie(10);
+                      if (slotRoll > quickItems.length) {
+                        addLog && addLog(`${rhHero.name}: torso hit, Quick Slot roll ${slotRoll} — no item in that slot, no effect.`);
+                        return;
+                      }
+                      const item = quickItems[slotRoll - 1];
+                      const curDur = Number(String(item.dur || "").split("/")[0]) || 0;
+                      const newDur = Math.max(0, curDur - 1);
+                      const maxPart = String(item.dur || "").split("/")[1] || "";
+                      updateHero({ ...rhHero, backpack: rhHero.backpack.map((it) => it.id === item.id ? { ...it, dur: maxPart ? `${newDur}/${maxPart}` : String(newDur) } : it) });
+                      addLog && addLog(`${rhHero.name}: torso hit, Quick Slot roll ${slotRoll} — ${item.name} takes 1 Durability damage.`);
+                    }}
+                    className="w-full mt-1.5 px-2 py-1.5 rounded text-xs font-bold"
+                    style={{ background: palette.crimson, color: palette.parchment }}
+                  >
+                    Torso hit — Roll 1d10 vs Quick Slots ({quickItems.length} used)
+                  </button>
+                );
+              })()}
             </div>
           )}
 

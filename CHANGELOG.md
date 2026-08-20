@@ -3,6 +3,12 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.50.2] — 2026-08-20
+
+### Fixed
+- Resolve a Hit: the Head/Torso Sanity and Quick Slot prompts now appear whenever that location is selected — whether picked manually from the Location dropdown or via "Roll 1d6 Hit Location" — instead of only showing up after rolling. Manually selecting Head or Torso was silently skipping the prompt entirely
+- Resolve a Hit: the Hit Location roll's flavour note now clears when the Location is changed afterward, instead of lingering and no longer matching what's selected
+
 ## [1.50.1] — 2026-08-20
 
 ### Fixed

@@ -3608,6 +3608,21 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.50.1",
+    date: "2026-08-20",
+    sections: {
+      "Fixed": [
+        "Sticky sub-nav and back-to-top button now correctly track the app's actual scroll container (a pre-existing CSS quirk means #root, not window, is what scrolls) — the back-to-top button was never appearing, and the sub-nav's active-section highlight was stuck on the first item regardless of scroll position",
+        "Sticky section sub-nav now rescans whenever a tab's own internal sub-navigation changes its content (e.g. Combat's Close Combat/Ranged/Throw Potion/etc. buttons), not just when switching the outer app tab",
+        "Campaigns tab: saved campaigns list now sits under a \"Saved Campaigns\" heading, so it shows up in the section sub-nav like every other list",
+        "Combat tab: \"Resolve a Hit\" now shows a persistent inline confirmation after applying a hit, instead of silently resetting to blank",
+      ],
+      "Changed": [
+        "Combat tab: the \"Damage\" mode has been folded into \"Resolve a Hit\" — Weapon DMG/Damage Bonus/Natural Armour calculation and the Hit Location roller (with its Head/Torso Sanity and Quick Slot side-effects) are now part of the same tool that resolves damage against a hero's actual equipped armour, instead of two separate, overlapping calculators",
+      ],
+    },
+  },
+  {
     version: "1.50.0",
     date: "2026-08-20",
     sections: {
@@ -5020,24 +5035,42 @@ function Footer() {
 // swapped out entirely. Tracks scroll position to highlight the section currently in view
 // and auto-scrolls the chip row to keep the active chip visible. Renders nothing if the
 // tab has 0-1 headings (a single chip isn't useful navigation).
+// The app's actual scrolling element. #root (not window) is what scrolls — an existing
+// quirk from index.css (overflow-x: hidden with no explicit overflow-y makes the browser
+// auto-set overflow-y: auto). Sticky positioning doesn't care which one scrolls, but scroll
+// *events* and *position* do, so anything scroll-driven needs to target this specifically.
+const getScrollRoot = () => document.getElementById("root") || document.scrollingElement || document.documentElement;
+
 function SectionSubNav({ containerRef, tabKey }) {
   const [sections, setSections] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const barRef = useRef(null);
 
+  // Rescans on tab change AND whenever the tab's own content changes shape — e.g. Combat's
+  // internal Close Combat/Ranged/Throw Potion/etc. buttons swap out headings without the
+  // outer app tab ever changing, so a MutationObserver catches that where a tabKey-only
+  // dependency wouldn't.
   useEffect(() => {
-    const t = setTimeout(() => {
-      const root = containerRef.current;
-      if (!root) return;
+    const root = containerRef.current;
+    if (!root) return;
+    const rescan = () => {
       const nodes = Array.from(root.querySelectorAll("[data-section-heading]"));
-      setSections(nodes.map((el) => ({ id: el.id, label: el.dataset.sectionHeading })).filter((s) => s.id));
-      setActiveId(nodes[0]?.id || null);
-    }, 60); // let the tab's own content finish mounting first
-    return () => clearTimeout(t);
+      setSections((prev) => {
+        const next = nodes.map((el) => ({ id: el.id, label: el.dataset.sectionHeading })).filter((s) => s.id);
+        const same = prev.length === next.length && prev.every((p, i) => p.id === next[i].id);
+        return same ? prev : next;
+      });
+      setActiveId((prev) => (nodes.some((n) => n.id === prev) ? prev : nodes[0]?.id || null));
+    };
+    const t = setTimeout(rescan, 60); // let the tab's own content finish mounting first
+    const observer = new MutationObserver(() => rescan());
+    observer.observe(root, { childList: true, subtree: true });
+    return () => { clearTimeout(t); observer.disconnect(); };
   }, [tabKey, containerRef]);
 
   useEffect(() => {
     if (sections.length < 2) return;
+    const scrollRoot = getScrollRoot();
     const onScroll = () => {
       let current = sections[0]?.id || null;
       for (const s of sections) {
@@ -5046,9 +5079,9 @@ function SectionSubNav({ containerRef, tabKey }) {
       }
       setActiveId((prev) => (prev === current ? prev : current));
     };
-    window.addEventListener("scroll", onScroll, { passive: true });
+    scrollRoot.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
-    return () => window.removeEventListener("scroll", onScroll);
+    return () => scrollRoot.removeEventListener("scroll", onScroll);
   }, [sections]);
 
   useEffect(() => {
@@ -5086,20 +5119,21 @@ function SectionSubNav({ containerRef, tabKey }) {
   );
 }
 
-// Floating "back to top" button — appears once scrolled down a bit, scrolls the window
-// back to the very top (above the app header) in one tap.
+// Floating "back to top" button — appears once scrolled down a bit, scrolls the app's real
+// scroll container (#root, not window — see getScrollRoot) back to the top in one tap.
 function BackToTop() {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
-    const onScroll = () => setVisible(window.scrollY > 400);
-    window.addEventListener("scroll", onScroll, { passive: true });
+    const scrollRoot = getScrollRoot();
+    const onScroll = () => setVisible(scrollRoot.scrollTop > 400);
+    scrollRoot.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
-    return () => window.removeEventListener("scroll", onScroll);
+    return () => scrollRoot.removeEventListener("scroll", onScroll);
   }, []);
   if (!visible) return null;
   return (
     <button
-      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+      onClick={() => getScrollRoot().scrollTo({ top: 0, behavior: "smooth" })}
       className="fixed z-20 flex items-center justify-center rounded-full"
       style={{
         bottom: 18,
@@ -11922,14 +11956,11 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
     setResult({ r, outcome, isBloodlust: r <= 5, isDoubleZero: r === 100 });
   };
 
-  // Damage calc
+  // Damage calc (feeds into Resolve a Hit's "Calculate from Weapon" section)
   const [weaponDmg, setWeaponDmg] = useState(0);
   const [db, setDb] = useState(0);
   const [na, setNa] = useState(0);
-  const [armour, setArmour] = useState(0);
-  const dmgTotal = Math.max(0, Number(weaponDmg || 0) + Number(db || 0) - Number(na || 0) - Number(armour || 0));
 
-  const [hitLocHero, setHitLocHero] = useState("");
   const [hitLocResult, setHitLocResult] = useState(null);
 
   // ---- Resolve a Hit ----
@@ -11942,12 +11973,18 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
   const [rhLoc, setRhLoc] = useState("head");
   const [rhDamage, setRhDamage] = useState(0);
   const [rhResult, setRhResult] = useState(null);
+  const [rhApplied, setRhApplied] = useState(null); // last-applied confirmation, shown inline until the next Resolve
+  const rhResultRef = useRef(null);
+  useEffect(() => {
+    if (rhResult) rhResultRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [rhResult]);
   const rhHero = heroes.find((h) => h.id === rhHeroId);
   const rhPiece = rhHero ? rhHero.armour[rhLoc] : null;
   const rhRef = rhPiece?.name ? ARMOUR_AND_SHIELDS.find((a) => a.name === rhPiece.name) : null;
 
   const resolveHit = () => {
     if (!rhHero || !rhPiece) return;
+    setRhApplied(null);
     let remaining = Math.max(0, Number(rhDamage) || 0);
     const steps = [];
     const breaks = [];
@@ -12022,6 +12059,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
     updateHero({ ...rhHero, hp: newHp, armour: { ...rhHero.armour, [rhLoc]: nextPiece } });
     addLog && addLog(`${rhHero.name}: resolved a hit at ${rhLoc} — ${remaining} damage to HP${breaks.length ? `, ${breaks.map((b) => b.name).join(" & ")} broke beyond repair` : ""}.`);
     breaks.forEach((b) => pushToast && pushToast(`${b.name} broke beyond repair!`, `Removed from ${rhHero.name}'s ${rhLoc}.`));
+    setRhApplied({ heroName: rhHero.name, remaining, newHpCur: newHp.cur, newHpMax: newHp.max, breaks: breaks.map((b) => b.name) });
     setRhResult(null);
     setRhDamage(0);
   };
@@ -12036,6 +12074,9 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
     const r = rollDie(6);
     const entry = HIT_LOCATIONS.find((e) => r >= e.min && r <= e.max);
     setHitLocResult({ roll: r, loc: entry.loc, note: entry.note });
+    setRhLoc(entry.loc.toLowerCase());
+    setRhResult(null);
+    setRhApplied(null);
   };
 
   // Quick stat/skill check
@@ -12187,7 +12228,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
   return (
     <div>
       <div className="flex gap-1.5 mb-4 flex-wrap">
-        {[["cc", "Close Combat", Swords], ["ranged", "Ranged", Dice5], ["throw", "Throw Potion", FlaskConical], ["damage", "Damage", Shield], ["resolveHit", "Resolve a Hit", ShieldAlert], ["check", "Stat/Skill Check", Brain], ["spells", "Spells", Sparkles], ["scroll", "Read Scroll", ScrollText], ["prayers", "Prayers", Heart]].map(([key, label, Icon]) => (
+        {[["cc", "Close Combat", Swords], ["ranged", "Ranged", Dice5], ["throw", "Throw Potion", FlaskConical], ["resolveHit", "Resolve a Hit", ShieldAlert], ["check", "Stat/Skill Check", Brain], ["spells", "Spells", Sparkles], ["scroll", "Read Scroll", ScrollText], ["prayers", "Prayers", Heart]].map(([key, label, Icon]) => (
           <button
             key={key}
             onClick={() => { setMode(key); setResult(null); }}
@@ -12203,7 +12244,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
         ))}
       </div>
 
-      {(mode === "cc" || mode === "ranged" || mode === "damage") && heroes.some((h) => combatTalentsAndPerks(h).length > 0) && (
+      {(mode === "cc" || mode === "ranged" || mode === "resolveHit") && heroes.some((h) => combatTalentsAndPerks(h).length > 0) && (
         <Panel className="mb-4">
           <SectionTitle icon={Swords}>Combat Talents & Perks</SectionTitle>
           <p className="text-xs mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
@@ -12403,84 +12444,57 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
         </Panel>
       )}
 
-      {mode === "damage" && (
+      {mode === "resolveHit" && (
         <Panel className="mb-4">
-          <SectionTitle icon={Shield}>Damage Taken</SectionTitle>
+          <SectionTitle icon={ShieldAlert}>Resolve a Hit</SectionTitle>
           <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
-            Damage = Weapon DMG + DB − Natural Armour − Armour
+            Walks incoming damage through a hero's actual equipped armour at a location — single piece or stacked — resolving DEF, DUR loss, and any HP that gets through, automatically. Optionally roll where the hit lands and/or calculate the raw damage from Weapon DMG + DB − NA below.
           </p>
-          {heroes && heroes.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {heroes.map((h) => (
-                <button
-                  key={h.id}
-                  onClick={() => setDb(damageBonus(h.stats.STR))}
-                  className="text-xs px-2 py-1 rounded"
-                  style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Crimson Pro, serif" }}
-                  title={`Fill DB from ${h.name}'s STR (${h.stats.STR})`}
-                >
-                  {h.name}'s DB ({damageBonus(h.stats.STR)})
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            {[
-              ["Weapon DMG rolled", weaponDmg, setWeaponDmg],
-              ["Damage Bonus (DB)", db, setDb],
-              ["Natural Armour (NA)", na, setNa],
-              ["Armour", armour, setArmour],
-            ].map(([label, val, setter]) => (
-              <label key={label} className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-                {label}
-                <input
-                  type="number"
-                  value={val}
-                  onChange={(e) => setter(Number(e.target.value) || 0)}
-                  className="w-full rounded px-2 py-1 mt-1 font-bold"
-                  style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
-                />
-              </label>
-            ))}
-          </div>
-          <div className="text-center rounded p-3" style={{ background: palette.charcoal }}>
-            <div className="text-xs uppercase" style={{ color: palette.goldSoft, fontFamily: "Cinzel, serif" }}>HP Lost</div>
-            <div className="text-3xl font-bold" style={{ color: palette.parchment, fontFamily: "JetBrains Mono, monospace" }}>{dmgTotal}</div>
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+              Hero
+              <select
+                value={rhHeroId}
+                onChange={(e) => { setRhHeroId(e.target.value); setRhResult(null); setRhApplied(null); setHitLocResult(null); }}
+                className="w-full text-xs rounded px-2 py-1.5 mt-0.5"
+                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+              >
+                <option value="">Choose…</option>
+                {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+              </select>
+            </label>
+            <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+              Location
+              <select
+                value={rhLoc}
+                onChange={(e) => { setRhLoc(e.target.value); setRhResult(null); setRhApplied(null); }}
+                className="w-full text-xs rounded px-2 py-1.5 mt-0.5"
+                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+              >
+                {[["head", "Head"], ["arms", "Arms"], ["torso", "Torso"], ["legs", "Legs"], ["shield", "Shield"]].map(([k, l]) => (
+                  <option key={k} value={k}>{l}</option>
+                ))}
+              </select>
+            </label>
           </div>
 
-          {heroes && heroes.length > 0 && (
-            <div className="mt-4 pt-3" style={{ borderTop: `1px solid ${palette.line}` }}>
-              <SectionTitle icon={Skull}>Hit Location (when a hero is struck)</SectionTitle>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {heroes.map((h) => (
-                  <button
-                    key={h.id}
-                    onClick={() => setHitLocHero(h.id)}
-                    className="text-xs px-2 py-1 rounded-full"
-                    style={{ background: hitLocHero === h.id ? palette.crimson : "#00000010", color: hitLocHero === h.id ? palette.parchment : palette.ink }}
-                  >
-                    {h.name}
-                  </button>
-                ))}
-              </div>
+          {rhHero && (
+            <div className="mb-2">
               <button
                 onClick={rollHitLocation}
-                disabled={!hitLocHero}
-                className="w-full flex items-center justify-center gap-2 py-2 rounded font-bold text-sm mb-2"
-                style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif", opacity: hitLocHero ? 1 : 0.5 }}
+                className="w-full flex items-center justify-center gap-2 py-1.5 rounded font-semibold text-xs"
+                style={{ background: "#00000010", color: palette.ink, fontFamily: "Crimson Pro, serif" }}
               >
-                <Dice5 size={14} /> Roll 1d6 Hit Location
+                <Dice5 size={13} /> Roll 1d6 Hit Location
               </button>
               {hitLocResult && (
-                <div className="text-xs rounded p-2" style={{ background: "#00000008", color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
+                <div className="text-xs rounded p-2 mt-1.5" style={{ background: "#00000008", color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
                   <b>{hitLocResult.loc}</b> ({hitLocResult.roll}) — {hitLocResult.note}
                   {hitLocResult.loc === "Head" && (
                     <button
                       onClick={() => {
-                        const h = heroes.find((x) => x.id === hitLocHero);
-                        if (!h) return;
-                        updateHero({ ...h, sanity: { ...h.sanity, cur: Math.max(0, h.sanity.cur - 1) } });
-                        addLog && addLog(`${h.name} is struck in the head: −1 Sanity.`);
+                        updateHero({ ...rhHero, sanity: { ...rhHero.sanity, cur: Math.max(0, rhHero.sanity.cur - 1) } });
+                        addLog && addLog(`${rhHero.name} is struck in the head: −1 Sanity.`);
                         setHitLocResult(null);
                       }}
                       className="block mt-2 px-2 py-1 rounded text-xs font-bold"
@@ -12490,14 +12504,13 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
                     </button>
                   )}
                   {hitLocResult.loc === "Torso" && (() => {
-                    const h = heroes.find((x) => x.id === hitLocHero);
-                    const quickItems = h ? h.backpack.filter((it) => it.slot === "quickslot") : [];
+                    const quickItems = rhHero.backpack.filter((it) => it.slot === "quickslot");
                     return (
                       <button
                         onClick={() => {
                           const slotRoll = rollDie(10);
                           if (slotRoll > quickItems.length) {
-                            addLog && addLog(`${h.name}: torso hit, Quick Slot roll ${slotRoll} — no item in that slot, no effect.`);
+                            addLog && addLog(`${rhHero.name}: torso hit, Quick Slot roll ${slotRoll} — no item in that slot, no effect.`);
                             setHitLocResult(null);
                             return;
                           }
@@ -12505,8 +12518,8 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
                           const curDur = Number(String(item.dur || "").split("/")[0]) || 0;
                           const newDur = Math.max(0, curDur - 1);
                           const maxPart = String(item.dur || "").split("/")[1] || "";
-                          updateHero({ ...h, backpack: h.backpack.map((it) => it.id === item.id ? { ...it, dur: maxPart ? `${newDur}/${maxPart}` : String(newDur) } : it) });
-                          addLog && addLog(`${h.name}: torso hit, Quick Slot roll ${slotRoll} — ${item.name} takes 1 Durability damage.`);
+                          updateHero({ ...rhHero, backpack: rhHero.backpack.map((it) => it.id === item.id ? { ...it, dur: maxPart ? `${newDur}/${maxPart}` : String(newDur) } : it) });
+                          addLog && addLog(`${rhHero.name}: torso hit, Quick Slot roll ${slotRoll} — ${item.name} takes 1 Durability damage.`);
                           setHitLocResult(null);
                         }}
                         className="block mt-2 px-2 py-1 rounded text-xs font-bold"
@@ -12520,42 +12533,6 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
               )}
             </div>
           )}
-        </Panel>
-      )}
-
-      {mode === "resolveHit" && (
-        <Panel className="mb-4">
-          <SectionTitle icon={ShieldAlert}>Resolve a Hit</SectionTitle>
-          <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
-            Walks incoming damage through a hero's actual equipped armour at a location — single piece or stacked — resolving DEF, DUR loss, and any HP that gets through, automatically. Works the same for single-layer and stacked locations.
-          </p>
-          <div className="grid grid-cols-2 gap-2 mb-2">
-            <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-              Hero
-              <select
-                value={rhHeroId}
-                onChange={(e) => { setRhHeroId(e.target.value); setRhResult(null); }}
-                className="w-full text-xs rounded px-2 py-1.5 mt-0.5"
-                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-              >
-                <option value="">Choose…</option>
-                {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
-              </select>
-            </label>
-            <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-              Location
-              <select
-                value={rhLoc}
-                onChange={(e) => { setRhLoc(e.target.value); setRhResult(null); }}
-                className="w-full text-xs rounded px-2 py-1.5 mt-0.5"
-                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-              >
-                {[["head", "Head"], ["arms", "Arms"], ["torso", "Torso"], ["legs", "Legs"], ["shield", "Shield"]].map(([k, l]) => (
-                  <option key={k} value={k}>{l}</option>
-                ))}
-              </select>
-            </label>
-          </div>
 
           {rhHero && (
             <div className="text-xs rounded p-2 mb-2" style={{ background: "#00000008", color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
@@ -12572,12 +12549,58 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
             </div>
           )}
 
+          <div className="rounded p-2 mb-2" style={{ background: "#00000006" }}>
+            <p className="text-[10px] uppercase font-semibold mb-1.5" style={{ color: palette.inkSoft, fontFamily: "Cinzel, serif" }}>
+              Calculate from Weapon (optional)
+            </p>
+            {heroes && heroes.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {heroes.map((h) => (
+                  <button
+                    key={h.id}
+                    onClick={() => setDb(damageBonus(h.stats.STR))}
+                    className="text-[10px] px-2 py-1 rounded"
+                    style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Crimson Pro, serif" }}
+                    title={`Fill DB from ${h.name}'s STR (${h.stats.STR})`}
+                  >
+                    {h.name}'s DB ({damageBonus(h.stats.STR)})
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="grid grid-cols-3 gap-2 mb-2">
+              {[
+                ["Weapon DMG", weaponDmg, setWeaponDmg],
+                ["DB", db, setDb],
+                ["Natural Armour", na, setNa],
+              ].map(([label, val, setter]) => (
+                <label key={label} className="text-[10px]" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                  {label}
+                  <input
+                    type="number"
+                    value={val}
+                    onChange={(e) => setter(Number(e.target.value) || 0)}
+                    className="w-full rounded px-2 py-1 mt-0.5 font-bold"
+                    style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+                  />
+                </label>
+              ))}
+            </div>
+            <button
+              onClick={() => { setRhDamage(Math.max(0, Number(weaponDmg || 0) + Number(db || 0) - Number(na || 0))); setRhResult(null); setRhApplied(null); }}
+              className="w-full text-xs py-1.5 rounded font-semibold"
+              style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
+            >
+              ↓ Use {Math.max(0, Number(weaponDmg || 0) + Number(db || 0) - Number(na || 0))} as Incoming Damage
+            </button>
+          </div>
+
           <label className="text-xs block mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
             Incoming Damage
             <input
               type="number"
               value={rhDamage}
-              onChange={(e) => { setRhDamage(Number(e.target.value) || 0); setRhResult(null); }}
+              onChange={(e) => { setRhDamage(Number(e.target.value) || 0); setRhResult(null); setRhApplied(null); }}
               className="w-full rounded px-2 py-1.5 mt-0.5 font-bold"
               style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
             />
@@ -12592,8 +12615,17 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
             Resolve →
           </button>
 
+          {rhApplied && (
+            <div className="rounded p-2 mb-2 flex items-start gap-2" style={{ background: "#28352A18", border: `1px solid ${palette.forestDark}` }}>
+              <Check size={15} color={palette.forestDark} style={{ marginTop: 1, flexShrink: 0 }} />
+              <div className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+                <b>Applied.</b> {rhApplied.remaining} damage to {rhApplied.heroName}'s HP ({rhApplied.newHpCur}/{rhApplied.newHpMax} now){rhApplied.breaks.length > 0 ? ` — ${rhApplied.breaks.join(" & ")} broke beyond repair.` : "."}
+              </div>
+            </div>
+          )}
+
           {rhResult && (
-            <>
+            <div ref={rhResultRef}>
               <div className="space-y-1 mb-2">
                 {rhResult.steps.map((s, i) => (
                   <div key={i} className="text-[11px] rounded px-2 py-1" style={{ background: "#00000008", color: palette.ink, fontFamily: "Crimson Pro, serif", borderLeft: `3px solid ${palette.goldSoft}` }}>
@@ -12615,7 +12647,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
               >
                 Apply to Hero
               </button>
-            </>
+            </div>
           )}
         </Panel>
       )}
@@ -14856,6 +14888,7 @@ function CampaignsTab({ campaigns, activeId, onNew, onLoad, onRename, onDelete, 
       </Panel>
 
       <div className="space-y-2">
+        <SectionTitle icon={Library}>Saved Campaigns</SectionTitle>
         {sorted.length === 0 && (
           <Panel><p className="text-sm" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>No campaigns yet.</p></Panel>
         )}

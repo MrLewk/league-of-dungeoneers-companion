@@ -3,6 +3,17 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.50.1] — 2026-08-20
+
+### Fixed
+- Sticky sub-nav and back-to-top button now correctly track the app's actual scroll container (a pre-existing CSS quirk means `#root`, not `window`, is what scrolls) — the back-to-top button was never appearing, and the sub-nav's active-section highlight was stuck on the first item regardless of scroll position
+- Sticky section sub-nav now rescans whenever a tab's own internal sub-navigation changes its content (e.g. Combat's Close Combat/Ranged/Throw Potion/etc. buttons), not just when switching the outer app tab
+- Campaigns tab: saved campaigns list now sits under a "Saved Campaigns" heading, so it shows up in the section sub-nav like every other list
+- Combat tab: "Resolve a Hit" now shows a persistent inline confirmation after applying a hit, instead of silently resetting to blank
+
+### Changed
+- Combat tab: the "Damage" mode has been folded into "Resolve a Hit" — Weapon DMG/Damage Bonus/Natural Armour calculation and the Hit Location roller (with its Head/Torso Sanity and Quick Slot side-effects) are now part of the same tool that resolves damage against a hero's actual equipped armour, instead of two separate, overlapping calculators
+
 ## [1.50.0] — 2026-08-20
 
 ### Added

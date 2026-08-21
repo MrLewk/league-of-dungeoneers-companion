@@ -3,6 +3,17 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.51.0] — 2026-08-21
+
+### Added
+- Personal coin pouches: each hero now has their own coin pouch (starting at 150c), matching the rulebook's Setup section — separate from the Party Pot, which is now used for shared costs (gambling, estate, transport, guild training, inn, drinking & carousing, settlement events)
+- Hero sheet: "Pool to Party" and "Take from Party" buttons transfer coins between a hero's own pouch and the Party Pot
+- Hero sheet: "Lend" lets a hero send coins directly to another hero's pouch (amount + hero picker), matching the rulebook's separate "lend money" mechanic
+- Hero-specific costs — buying gear at a guild shop, learning a spell or prayer, repairing an item, and buying a potion — now show a "Pay from" picker (Party Pot or any hero's pouch), defaulting to the hero's own pouch, with each option showing its balance and blocking the transaction if it can't cover the cost
+- Existing campaigns migrate automatically on next load: the old shared coin total splits evenly across current heroes into their new personal pouches, with any remainder (from an uneven split) staying in the Party Pot — total party wealth is unchanged, just redistributed
+- Half-Ogre's "Stupid" racial talent now auto-populates on "Roll Starting Stats," matching how Elf and Dwarf traits already worked — previously had to be added manually from the Compendium
+- Hero name field now shows a pencil icon and an underline on focus, making it clearer it's editable (renaming a hero already worked, it just wasn't obvious)
+
 ## [1.50.2] — 2026-08-20
 
 ### Fixed

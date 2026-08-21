@@ -102,6 +102,7 @@ const defaultHero = () => ({
   ap: 2,
   backpack: [],
   notes: "",
+  coins: 150, // personal pouch — per the rulebook, each hero starts with their own 150c (Setup, p.?), separate from the shared Party Pot
 });
 
 // Starting stats per species — base + dice roll, from the official character-creation
@@ -115,7 +116,7 @@ const SPECIES_DATA = [
   { name: "Gnome", hp: { base: 4, count: 1, size: 6 }, stats: { STR: 20, CON: 20, DEX: 30, WIS: 40, RES: 40 }, note: "Cannot use Longbows or Elven bows (height). Artificer: once specialised, pays half cost for blacksmithing/crafting services." },
   { name: "Duckfolk", hp: { base: 6, count: 1, size: 6 }, stats: { STR: 25, CON: 25, DEX: 30, WIS: 30, RES: 40 }, max: { STR: 55, CON: 60, DEX: 70, WIS: 70, RES: 80 }, note: "Short arms — cannot use Longbows or Elven bows.", expansion: "The False Prophet" },
   { name: "Frogling", hp: { base: 4, count: 1, size: 6 }, stats: { STR: 20, CON: 35, DEX: 40, WIS: 30, RES: 25 }, note: "Cannot use Longbows or Elven bows (height)." },
-  { name: "Half-Ogre", hp: { base: 10, count: 2, size: 6 }, stats: { STR: 50, CON: 40, DEX: 25, WIS: 15, RES: 40 }, max: { STR: 80, CON: 60, DEX: 60, WIS: 60, RES: 60 }, note: "+2 Sanity. May only take the Warrior, Barbarian, or Rogue profession.", expansion: "The False Prophet" },
+  { name: "Half-Ogre", hp: { base: 10, count: 2, size: 6 }, stats: { STR: 50, CON: 40, DEX: 25, WIS: 15, RES: 40 }, max: { STR: 80, CON: 60, DEX: 60, WIS: 60, RES: 60 }, note: "+2 Sanity. May only take the Warrior, Barbarian, or Rogue profession. Trait: Stupid — applied automatically when you roll starting stats.", expansion: "The False Prophet" },
   { name: "Pale Goblin", hp: { base: 5, count: 1, size: 6 }, stats: { STR: 25, CON: 20, DEX: 40, WIS: 30, RES: 35 }, note: "Cannot use Longbows or Elven bows (height)." },
   { name: "Pale Orc", hp: { base: 8, count: 1, size: 6 }, stats: { STR: 40, CON: 35, DEX: 25, WIS: 20, RES: 30 }, note: "Cannot use Longbows or Elven bows (height)." },
 ];
@@ -451,7 +452,9 @@ function quickSlotCapacity(hero) {
 }
 
 const defaultParty = () => ({
-  threat: 2, threatFloor: 2, morale: 0, food: 4, coins: 150,
+  threat: 2, threatFloor: 2, morale: 0, food: 4,
+  coins: 0, // Party Pot — shared coins, built up via "Pool to Party" from a hero's personal pouch; starts empty since new heroes now start with their own 150c
+  coinsMigrated: true, // marks that this party has already gone through the one-time party-pot -> per-hero coins split (new parties don't need it)
   settlementName: "",
   dungeonState: "settlement", // "settlement" | "travel" | "dungeon" — drives the Travel tab status badge and the auto-clear of tempEffects on dungeon exit
   settlementAP: {}, // heroId -> { spent: number, log: [{label, cost}] }
@@ -509,6 +512,24 @@ function normalizeParty(p) {
   merged.quests = { ...defaultParty().quests, ...(p?.quests || {}) };
   merged.quests.completed = { ...(p?.quests?.completed || {}) };
   return merged;
+}
+
+// One-time migration for campaigns saved before personal hero coin pouches existed.
+// Splits the old single party.coins total evenly across the current heroes (any
+// remainder from an uneven split stays in the Party Pot) so total party wealth is
+// unchanged — it's a redistribution, not a windfall. Runs once per campaign: after
+// migrating, party.coinsMigrated is set so this never re-runs and clobbers real coins.
+// Must run on raw loaded data, before normalizeHero fills in a default `coins` of 150.
+function migrateHeroCoins(rawHeroes, rawParty) {
+  const heroes = rawHeroes || [];
+  if (rawParty?.coinsMigrated || heroes.length === 0) {
+    return { heroes, party: { ...(rawParty || {}), coinsMigrated: true } };
+  }
+  const total = Number(rawParty?.coins) || 0;
+  const each = Math.floor(total / heroes.length);
+  const remainder = total - each * heroes.length;
+  const migratedHeroes = heroes.map((h) => ({ ...h, coins: each }));
+  return { heroes: migratedHeroes, party: { ...(rawParty || {}), coins: remainder, coinsMigrated: true } };
 }
 
 const SANITY_EVENTS = [
@@ -3608,6 +3629,21 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.51.0",
+    date: "2026-08-21",
+    sections: {
+      "Added": [
+        "Personal coin pouches: each hero now has their own coin pouch (starting at 150c), matching the rulebook's Setup section — separate from the Party Pot, which is now used for shared costs (gambling, estate, transport, guild training, inn, drinking & carousing, settlement events)",
+        "Hero sheet: \"Pool to Party\" and \"Take from Party\" buttons transfer coins between a hero's own pouch and the Party Pot",
+        "Hero sheet: \"Lend\" lets a hero send coins directly to another hero's pouch (amount + hero picker), matching the rulebook's separate \"lend money\" mechanic",
+        "Hero-specific costs — buying gear at a guild shop, learning a spell or prayer, repairing an item, and buying a potion — now show a \"Pay from\" picker (Party Pot or any hero's pouch), defaulting to the hero's own pouch, with each option showing its balance and blocking the transaction if it can't cover the cost",
+        "Existing campaigns migrate automatically on next load: the old shared coin total splits evenly across current heroes into their new personal pouches, with any remainder (from an uneven split) staying in the Party Pot — total party wealth is unchanged, just redistributed",
+        "Half-Ogre's \"Stupid\" racial talent now auto-populates on \"Roll Starting Stats,\" matching how Elf and Dwarf traits already worked — previously had to be added manually from the Compendium",
+        "Hero name field now shows a pencil icon and an underline on focus, making it clearer it's editable (renaming a hero already worked, it just wasn't obvious)",
+      ],
+    },
+  },
+  {
     version: "1.50.2",
     date: "2026-08-20",
     sections: {
@@ -5201,6 +5237,46 @@ const slugify = (text) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
+// Pay-from helpers for hero-specific costs (buying gear, learning spells/prayers,
+// sell & repair, potions) — the rulebook lets a hero buy from their own pouch, or
+// spend whatever's been pooled into the Party Pot ("pool money with the other heroes,
+// if desired"). `source` is either "party" or a hero id.
+function canAffordFrom(amount, source, party, heroes) {
+  if (source === "party") return amount <= (party?.coins || 0);
+  const hero = (heroes || []).find((h) => h.id === source);
+  return hero ? amount <= (Number(hero.coins) || 0) : false;
+}
+function spendFrom(amount, source, party, setParty, heroes, updateHero) {
+  if (source === "party") {
+    setParty((prev) => ({ ...prev, coins: prev.coins - amount }));
+    return;
+  }
+  const hero = (heroes || []).find((h) => h.id === source);
+  if (hero) updateHero({ ...hero, coins: (Number(hero.coins) || 0) - amount });
+}
+function payerLabel(source, party, heroes) {
+  if (source === "party") return "Party Pot";
+  const hero = (heroes || []).find((h) => h.id === source);
+  return hero ? `${hero.name}'s Pouch` : "Party Pot";
+}
+// Small "Pay from" dropdown — Party Pot plus every hero's personal pouch, each showing
+// its current balance so it's obvious upfront whether it can cover the cost.
+function PayFromSelect({ value, onChange, party, heroes }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full text-xs rounded px-2 py-1 mb-1.5"
+      style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+    >
+      <option value="party">Party Pot ({party.coins}c)</option>
+      {(heroes || []).map((h) => (
+        <option key={h.id} value={h.id}>{h.name}'s Pouch ({h.coins}c)</option>
+      ))}
+    </select>
+  );
+}
+
 function SectionTitle({ icon: Icon, children }) {
   const label = typeof children === "string" ? children : "";
   return (
@@ -5560,14 +5636,45 @@ const startingTalentsFullyDone = (profession, talentsList, perksList) => {
   return fixedDone && choicesDone;
 };
 
-function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, goToTab }) {
+function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, goToTab, otherHeroes, updateHero }) {
   const [sanityEvent, setSanityEvent] = useState(SANITY_EVENTS[0].label);
   const [pendingCondition, setPendingCondition] = useState(null);
   const [hateEnemyInput, setHateEnemyInput] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [stackPickerOpen, setStackPickerOpen] = useState({}); // loc -> bool, toggles the "Stack with…" picker
+  const [lendOpen, setLendOpen] = useState(false);
+  const [lendAmount, setLendAmount] = useState("");
+  const [lendToId, setLendToId] = useState("");
 
   const set = (patch) => update({ ...hero, ...patch });
+
+  // Personal Pouch <-> Party Pot transfers, and lending directly between heroes' pouches
+  // — the app's implementation of the rulebook's Setup line "you may buy further
+  // equipment... lend money, or pool money with the other heroes, if desired."
+  const poolToParty = () => {
+    const amt = Number(hero.coins) || 0;
+    if (amt <= 0) return;
+    set({ coins: 0 });
+    setParty((prev) => ({ ...prev, coins: prev.coins + amt }));
+    addLog && addLog(`${hero.name} pools ${amt}c into the Party Pot.`);
+  };
+  const takeFromParty = (amt) => {
+    const n = Math.max(0, Math.min(Number(amt) || 0, party.coins));
+    if (n <= 0) return;
+    setParty((prev) => ({ ...prev, coins: prev.coins - n }));
+    set({ coins: (Number(hero.coins) || 0) + n });
+    addLog && addLog(`${hero.name} takes ${n}c from the Party Pot.`);
+  };
+  const confirmLend = () => {
+    const amt = Math.max(0, Math.min(Number(lendAmount) || 0, Number(hero.coins) || 0));
+    const target = (otherHeroes || []).find((h) => h.id === lendToId);
+    if (amt <= 0 || !target) return;
+    set({ coins: (Number(hero.coins) || 0) - amt });
+    updateHero && updateHero(target.id, { ...target, coins: (Number(target.coins) || 0) + amt });
+    addLog && addLog(`${hero.name} lends ${amt}c to ${target.name}.`);
+    setLendOpen(false); setLendAmount(""); setLendToId("");
+  };
+
   const [startWeaponChoice, setStartWeaponChoice] = useState("");
   const [startRelicGod, setStartRelicGod] = useState("");
   const [startRelicType, setStartRelicType] = useState("Ring");
@@ -5893,7 +6000,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     // Species starting Traits that map to an unconditional Talent bonus — applied once
     // (won't stack on reroll). Hate Goblins (Dwarf) and Jack of All Trades (Human) need
     // a chosen enemy/category respectively, so those stay manual via the Compendium.
-    const speciesTraitTalents = { Elf: ["Night Vision", "Perfect Hearing"], Dwarf: ["Night Vision"] }[speciesData.name] || [];
+    const speciesTraitTalents = { Elf: ["Night Vision", "Perfect Hearing"], Dwarf: ["Night Vision"], "Half-Ogre": ["Stupid"] }[speciesData.name] || [];
     let talents = hero.talents;
     let workingHero = { ...hero, stats: newStats, skills: nextSkills };
     speciesTraitTalents.forEach((tName) => {
@@ -6206,12 +6313,20 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     <Panel className="mb-3">
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1">
-          <input
-            value={hero.name}
-            onChange={(e) => set({ name: e.target.value })}
-            className="w-full bg-transparent border-none text-lg font-bold outline-none"
-            style={{ fontFamily: "Cinzel, serif", color: palette.ink }}
-          />
+          <div
+            className="flex items-center gap-1.5 group"
+            style={{ borderBottom: "1.5px solid transparent" }}
+            onFocus={(e) => { e.currentTarget.style.borderBottomColor = palette.gold; }}
+            onBlur={(e) => { e.currentTarget.style.borderBottomColor = "transparent"; }}
+          >
+            <input
+              value={hero.name}
+              onChange={(e) => set({ name: e.target.value })}
+              className="w-full bg-transparent border-none text-lg font-bold outline-none py-0.5"
+              style={{ fontFamily: "Cinzel, serif", color: palette.ink }}
+            />
+            <Pencil size={14} className="flex-shrink-0 opacity-70 group-hover:opacity-100 transition-opacity" style={{ color: palette.goldSoft }} />
+          </div>
           <div className="flex gap-2 mt-1 flex-wrap">
             <select
               value={hero.species}
@@ -7516,6 +7631,81 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
             </div>
           )}
         </div>
+
+        <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${palette.line}` }}>
+          <SectionTitle icon={Coins}>Personal Pouch</SectionTitle>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={hero.coins}
+              onChange={(e) => set({ coins: Math.max(0, Number(e.target.value) || 0) })}
+              className="text-lg font-semibold rounded px-2 py-1 w-24"
+              style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace", color: palette.ink }}
+            />
+            <span className="text-xs" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>coins</span>
+          </div>
+          <div className="flex gap-1.5 mt-2 flex-wrap">
+            <button
+              onClick={poolToParty}
+              disabled={!hero.coins}
+              className="text-xs px-2 py-1.5 rounded font-semibold flex-1 min-w-[100px]"
+              style={{ background: "#fff", border: `1px solid ${palette.line}`, color: palette.ink, opacity: hero.coins ? 1 : 0.5 }}
+            >
+              ↑ Pool to Party
+            </button>
+            <button
+              onClick={() => {
+                const amt = window.prompt(`Take how many coins from the Party Pot (${party.coins}c available)?`, Math.min(150, party.coins) || "");
+                if (amt !== null) takeFromParty(amt);
+              }}
+              disabled={!party.coins}
+              className="text-xs px-2 py-1.5 rounded font-semibold flex-1 min-w-[100px]"
+              style={{ background: "#fff", border: `1px solid ${palette.line}`, color: palette.ink, opacity: party.coins ? 1 : 0.5 }}
+            >
+              ↓ Take from Party
+            </button>
+            <button
+              onClick={() => setLendOpen((v) => !v)}
+              disabled={!hero.coins || !(otherHeroes || []).length}
+              className="text-xs px-2 py-1.5 rounded font-semibold flex-1 min-w-[100px]"
+              style={{ background: "#fff", border: `1px solid ${palette.line}`, color: palette.ink, opacity: hero.coins && (otherHeroes || []).length ? 1 : 0.5 }}
+            >
+              ⇄ Lend
+            </button>
+          </div>
+          {lendOpen && (
+            <div className="mt-2 p-2 rounded" style={{ background: "#00000006" }}>
+              <p className="text-xs font-semibold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Lend from {hero.name}'s Pouch</p>
+              <input
+                type="number"
+                value={lendAmount}
+                onChange={(e) => setLendAmount(e.target.value)}
+                placeholder="Amount"
+                className="w-full text-xs rounded px-2 py-1 mb-1.5"
+                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+              />
+              <select
+                value={lendToId}
+                onChange={(e) => setLendToId(e.target.value)}
+                className="w-full text-xs rounded px-2 py-1 mb-1.5"
+                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+              >
+                <option value="">To…</option>
+                {(otherHeroes || []).map((h) => (
+                  <option key={h.id} value={h.id}>{h.name} ({h.coins}c)</option>
+                ))}
+              </select>
+              <button
+                onClick={confirmLend}
+                disabled={!lendAmount || !lendToId || Number(lendAmount) > (Number(hero.coins) || 0)}
+                className="w-full text-xs px-2 py-1.5 rounded font-semibold"
+                style={{ background: palette.crimsonDark, color: palette.parchment, opacity: (!lendAmount || !lendToId || Number(lendAmount) > (Number(hero.coins) || 0)) ? 0.5 : 1 }}
+              >
+                Confirm — Move {Number(lendAmount) || 0}c
+              </button>
+            </div>
+          )}
+        </div>
     </Panel>
   );
 }
@@ -7585,6 +7775,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
   const [eventResolution, setEventResolution] = useState(null);
   const [scrollOffers, setScrollOffers] = useState(null);
   const [scrollBuyHero, setScrollBuyHero] = useState("");
+  const [scrollPaySource, setScrollPaySource] = useState("");
   const [questResult, setQuestResult] = useState(null);
   const [activityHero, setActivityHero] = useState(heroes[0]?.id || "");
   const [activityChoice, setActivityChoice] = useState(SETTLEMENT_ACTIVITIES[0].name);
@@ -7598,6 +7789,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
   const [repairKey, setRepairKey] = useState("");
   const [repairPrice, setRepairPrice] = useState(0);
   const [repairPoints, setRepairPoints] = useState(1);
+  const [repairPaySource, setRepairPaySource] = useState("party");
   const [repairResult, setRepairResult] = useState(null);
   const [resolverActivity, setResolverActivity] = useState("Pray");
   const resolvePanelRef = useRef(null);
@@ -7690,11 +7882,17 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
     if (!scrollBuyHero) return;
     const hero = heroes.find((h) => h.id === scrollBuyHero);
     if (!hero) return;
-    if (party.coins < 100) { addLog(`Can't afford a Scroll of ${spellName}: 100c needed, party only has ${party.coins}c.`); return; }
-    setParty((prev) => ({ ...prev, coins: prev.coins - 100 }));
-    updateHero({ ...hero, backpack: [...hero.backpack, { id: uid(), name: `Scroll of ${spellName}`, value: "", enc: 1, dur: "1" }] });
+    const source = scrollPaySource || scrollBuyHero;
+    if (!canAffordFrom(100, source, party, heroes)) { addLog(`Can't afford a Scroll of ${spellName}: 100c needed, ${payerLabel(source, party, heroes)} doesn't have enough.`); return; }
+    const newBackpack = { id: uid(), name: `Scroll of ${spellName}`, value: "", enc: 1, dur: "1" };
+    if (source === hero.id) {
+      updateHero({ ...hero, backpack: [...hero.backpack, newBackpack], coins: (Number(hero.coins) || 0) - 100 });
+    } else {
+      updateHero({ ...hero, backpack: [...hero.backpack, newBackpack] });
+      spendFrom(100, source, party, setParty, heroes, updateHero);
+    }
     setScrollOffers((prev) => prev.map((o) => (o.spell === spellName ? { ...o, bought: true } : o)));
-    addLog(`${hero.name} buys a Scroll of ${spellName} for 100c.`);
+    addLog(`${hero.name} buys a Scroll of ${spellName} for 100c (paid from ${payerLabel(source, party, heroes)}).`);
   };
 
   const rollEvent = () => {
@@ -8017,6 +8215,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
     if (item) {
       setRepairPrice(item.defaultPrice);
       setRepairPoints(Math.min(1, item.maxPoints) || 1);
+      setRepairPaySource(item.heroId); // defaults to the owning hero's own pouch, per the rulebook
     }
   };
 
@@ -8029,28 +8228,37 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
     const points = Math.min(repairPoints, item.maxPoints);
     const perPoint = repairCostPerPoint(repairPrice);
     const total = perPoint * points;
-    if (total > party.coins) {
-      setRepairResult({ ok: false, line: `Can't afford it: repairing ${points} point${points === 1 ? "" : "s"} costs ${total}c, party only has ${party.coins}c.` });
+    if (!canAffordFrom(total, repairPaySource, party, heroes)) {
+      setRepairResult({ ok: false, line: `Can't afford it: repairing ${points} point${points === 1 ? "" : "s"} costs ${total}c, ${payerLabel(repairPaySource, party, heroes)} doesn't have enough.` });
       return;
     }
     const hero = heroes.find((h) => h.id === item.heroId);
     if (!hero) return;
     let itemName, newCur, maxDur;
+    let heroPatch = {};
     if (item.kind === "weapon") {
       newCur = Math.min(hero.weapon.dur.max, hero.weapon.dur.cur + points);
       maxDur = hero.weapon.dur.max;
       itemName = hero.weapon.name;
-      updateHero({ ...hero, weapon: { ...hero.weapon, dur: { ...hero.weapon.dur, cur: newCur } } });
+      heroPatch = { weapon: { ...hero.weapon, dur: { ...hero.weapon.dur, cur: newCur } } };
     } else {
       const piece = hero.armour[item.loc];
       newCur = Math.min(piece.dur.max, piece.dur.cur + points);
       maxDur = piece.dur.max;
       itemName = piece.name;
-      updateHero({ ...hero, armour: { ...hero.armour, [item.loc]: { ...piece, dur: { ...piece.dur, cur: newCur } } } });
+      heroPatch = { armour: { ...hero.armour, [item.loc]: { ...piece, dur: { ...piece.dur, cur: newCur } } } };
     }
-    setParty((prev) => ({ ...prev, coins: prev.coins - total }));
-    setRepairResult({ ok: true, line: `Repaired ${points} point${points === 1 ? "" : "s"} on ${itemName} for ${total}c (now ${newCur}/${maxDur}). Party now has ${party.coins - total}c.` });
-    addLog(`Repaired ${points} durability point${points === 1 ? "" : "s"} on ${hero.name}'s ${itemName} for ${total}c.`);
+    // If paying from the repaired item's own owner, merge the coin deduction into the
+    // same updateHero call — two separate calls here would race against each other's
+    // stale `hero` snapshot and the second would silently clobber the first.
+    if (repairPaySource === hero.id) {
+      updateHero({ ...hero, ...heroPatch, coins: (Number(hero.coins) || 0) - total });
+    } else {
+      updateHero({ ...hero, ...heroPatch });
+      spendFrom(total, repairPaySource, party, setParty, heroes, updateHero);
+    }
+    setRepairResult({ ok: true, line: `Repaired ${points} point${points === 1 ? "" : "s"} on ${itemName} for ${total}c, paid from ${payerLabel(repairPaySource, party, heroes)}.` });
+    addLog(`Repaired ${points} durability point${points === 1 ? "" : "s"} on ${hero.name}'s ${itemName} for ${total}c (paid from ${payerLabel(repairPaySource, party, heroes)}).`);
     setRepairKey("");
   };
 
@@ -8668,7 +8876,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
                           Buying hero
                           <select
                             value={scrollBuyHero}
-                            onChange={(e) => setScrollBuyHero(e.target.value)}
+                            onChange={(e) => { setScrollBuyHero(e.target.value); setScrollPaySource(e.target.value); }}
                             className="w-full text-xs rounded px-2 py-1 mt-0.5"
                             style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
                           >
@@ -8676,6 +8884,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
                             {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
                           </select>
                         </label>
+                        {scrollBuyHero && <PayFromSelect value={scrollPaySource || scrollBuyHero} onChange={setScrollPaySource} party={party} heroes={heroes} />}
                         {scrollOffers.map((o) => (
                           <div key={o.spell} className="flex items-center justify-between text-xs rounded px-2 py-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
                             <span style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>{o.spell} (Lvl {o.lvl}, {o.school})</span>
@@ -9241,6 +9450,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
                   <input type="number" value={repairPoints} onChange={(e) => setRepairPoints(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
                 </label>
               </div>
+              <PayFromSelect value={repairPaySource} onChange={setRepairPaySource} party={party} heroes={heroes} />
               <div className="flex items-center justify-between">
                 <span className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
                   Costs <b style={{ color: palette.ink }}>{repairCostPerPoint(repairPrice) * Math.min(repairPoints, selectedRepairItem.maxPoints)}c</b> ({repairCostPerPoint(repairPrice)}c/point)
@@ -9554,6 +9764,7 @@ function SkillTrainingBox({ guildKey, skillKeys, heroes, party, setParty, update
 // chosen hero's backpack on success. Used by every guild's "Buying Special Equipment".
 function GuildShopList({ title, desc, items, heroes, party, setParty, updateHero, addLog, sourceLabel }) {
   const [hero, setHero] = useState(heroes[0]?.id || "");
+  const [paySource, setPaySource] = useState(heroes[0]?.id || "party");
   const [result, setResult] = useState(null);
 
   const buy = (item) => {
@@ -9566,29 +9777,34 @@ function GuildShopList({ title, desc, items, heroes, party, setParty, updateHero
       addLog(`${h.name} checks for ${item.name} at the ${sourceLabel} — ${line}`);
       return;
     }
-    if (party.coins < item.cost) {
-      const line = `Rolled ${roll} vs Availability ${item.avail} — in stock, but the party can't afford ${item.cost}c (has ${party.coins}c).`;
+    if (!canAffordFrom(item.cost, paySource, party, heroes)) {
+      const line = `Rolled ${roll} vs Availability ${item.avail} — in stock, but ${payerLabel(paySource, party, heroes)} can't afford ${item.cost}c.`;
       setResult({ ok: false, line });
       return;
     }
-    setParty((prev) => ({ ...prev, coins: prev.coins - item.cost }));
-    updateHero({
-      ...h,
-      backpack: [...h.backpack, { id: uid(), name: item.name, value: item.cost, enc: item.enc ?? "", dur: item.dur ? `${item.dur}/${item.dur}` : "", slot: "backpack" }],
-    });
-    const line = `Rolled ${roll} vs Availability ${item.avail} — in stock! Bought ${item.name} for ${item.cost}c (party now has ${party.coins - item.cost}c).`;
+    const newBackpack = { id: uid(), name: item.name, value: item.cost, enc: item.enc ?? "", dur: item.dur ? `${item.dur}/${item.dur}` : "", slot: "backpack" };
+    // Merge the coin deduction into the same updateHero call when paying from the
+    // buying hero's own pouch, so it doesn't race a second updateHero call on stale state.
+    if (paySource === h.id) {
+      updateHero({ ...h, backpack: [...h.backpack, newBackpack], coins: (Number(h.coins) || 0) - item.cost });
+    } else {
+      updateHero({ ...h, backpack: [...h.backpack, newBackpack] });
+      spendFrom(item.cost, paySource, party, setParty, heroes, updateHero);
+    }
+    const line = `Rolled ${roll} vs Availability ${item.avail} — in stock! Bought ${item.name} for ${item.cost}c, paid from ${payerLabel(paySource, party, heroes)}.`;
     setResult({ ok: true, line });
-    addLog(`${h.name} buys ${item.name} at the ${sourceLabel} for ${item.cost}c.`);
+    addLog(`${h.name} buys ${item.name} at the ${sourceLabel} for ${item.cost}c (paid from ${payerLabel(paySource, party, heroes)}).`);
   };
 
   return (
     <div className="subsection mb-4">
       <p className="text-[11px] font-bold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>{title}</p>
       {desc && <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>{desc}</p>}
-      <select value={hero} onChange={(e) => { setHero(e.target.value); setResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-2" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+      <select value={hero} onChange={(e) => { setHero(e.target.value); setPaySource(e.target.value || "party"); setResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-2" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
         <option value="">Choose a hero…</option>
         {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
       </select>
+      <PayFromSelect value={paySource} onChange={setPaySource} party={party} heroes={heroes} />
       {items.map((item) => (
         <GuildRow
           key={item.name}
@@ -9631,6 +9847,7 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
   const [learnSpellName, setLearnSpellName] = useState("");
   const [learnSpellGrimoire, setLearnSpellGrimoire] = useState(false);
   const [learnSpellResult, setLearnSpellResult] = useState(null);
+  const [learnSpellPaySource, setLearnSpellPaySource] = useState("");
 
   // Deep link from a hero sheet's "Learn Spell" / "Learn Prayer" button — opens the right
   // guild box, jumps to a settlement that has it if the current one doesn't, and
@@ -9662,11 +9879,20 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
     if (!hero || !spell) { setLearnSpellResult({ ok: false, line: "Pick a hero and a spell first." }); return; }
     if ((hero.spells || []).includes(spell.name)) { setLearnSpellResult({ ok: false, line: `${hero.name} already knows ${spell.name}.` }); return; }
     const cost = learnSpellGrimoire ? 0 : learnCost(spell.lvl);
-    if (cost > 0 && party.coins < cost) { setLearnSpellResult({ ok: false, line: `Can't afford it: ${cost}c needed, party only has ${party.coins}c.` }); return; }
-    if (cost > 0) setParty((prev) => ({ ...prev, coins: prev.coins - cost }));
-    updateHero({ ...hero, spells: [...(hero.spells || []), spell.name] });
+    const source = learnSpellPaySource || learnSpellHero;
+    if (cost > 0 && !canAffordFrom(cost, source, party, heroes)) { setLearnSpellResult({ ok: false, line: `Can't afford it: ${cost}c needed, ${payerLabel(source, party, heroes)} doesn't have enough.` }); return; }
+    if (cost > 0) {
+      if (source === hero.id) {
+        updateHero({ ...hero, spells: [...(hero.spells || []), spell.name], coins: (Number(hero.coins) || 0) - cost });
+      } else {
+        spendFrom(cost, source, party, setParty, heroes, updateHero);
+        updateHero({ ...hero, spells: [...(hero.spells || []), spell.name] });
+      }
+    } else {
+      updateHero({ ...hero, spells: [...(hero.spells || []), spell.name] });
+    }
     logSettlementAP(hero.id, "Learn a Spell", 3);
-    const line = `${hero.name} learns ${spell.name} (Level ${spell.lvl}) at the Wizards' Guild${cost > 0 ? ` for ${cost}c` : " for free (found via Grimoire)"}. Takes 3 days.`;
+    const line = `${hero.name} learns ${spell.name} (Level ${spell.lvl}) at the Wizards' Guild${cost > 0 ? ` for ${cost}c, paid from ${payerLabel(source, party, heroes)}` : " for free (found via Grimoire)"}. Takes 3 days.`;
     setLearnSpellResult({ ok: true, line });
     addLog(line);
     setLearnSpellName("");
@@ -9707,17 +9933,23 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
   const [learnPrayerHero, setLearnPrayerHero] = useState("");
   const [learnPrayerName, setLearnPrayerName] = useState("");
   const [learnPrayerResult, setLearnPrayerResult] = useState(null);
+  const [learnPrayerPaySource, setLearnPrayerPaySource] = useState("");
   const confirmLearnPrayer = () => {
     const hero = heroes.find((h) => h.id === learnPrayerHero);
     const prayer = PRAYERS.find((p) => p.name === learnPrayerName);
     if (!hero || !prayer) { setLearnPrayerResult({ ok: false, line: "Pick a hero and a prayer first." }); return; }
     if ((hero.prayers || []).includes(prayer.name)) { setLearnPrayerResult({ ok: false, line: `${hero.name} already knows ${prayer.name}.` }); return; }
     const cost = learnCost(prayer.lvl);
-    if (party.coins < cost) { setLearnPrayerResult({ ok: false, line: `Can't afford it: ${cost}c needed, party only has ${party.coins}c.` }); return; }
-    setParty((prev) => ({ ...prev, coins: prev.coins - cost }));
-    updateHero({ ...hero, prayers: [...(hero.prayers || []), prayer.name] });
+    const source = learnPrayerPaySource || learnPrayerHero;
+    if (!canAffordFrom(cost, source, party, heroes)) { setLearnPrayerResult({ ok: false, line: `Can't afford it: ${cost}c needed, ${payerLabel(source, party, heroes)} doesn't have enough.` }); return; }
+    if (source === hero.id) {
+      updateHero({ ...hero, prayers: [...(hero.prayers || []), prayer.name], coins: (Number(hero.coins) || 0) - cost });
+    } else {
+      spendFrom(cost, source, party, setParty, heroes, updateHero);
+      updateHero({ ...hero, prayers: [...(hero.prayers || []), prayer.name] });
+    }
     logSettlementAP(hero.id, "Learn a Prayer", 1);
-    const line = `${hero.name} learns ${prayer.name} (Level ${prayer.lvl}) at the Inner Sanctum for ${cost}c. Takes 1 day.`;
+    const line = `${hero.name} learns ${prayer.name} (Level ${prayer.lvl}) at the Inner Sanctum for ${cost}c, paid from ${payerLabel(source, party, heroes)}. Takes 1 day.`;
     setLearnPrayerResult({ ok: true, line });
     addLog(line);
     setLearnPrayerName("");
@@ -9850,6 +10082,7 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
   const [potName, setPotName] = useState(ALCHEMISTS_GUILD_POTIONS[0]?.name || "");
   const [potStrength, setPotStrength] = useState("Standard");
   const [potResult, setPotResult] = useState(null);
+  const [potPaySource, setPotPaySource] = useState(heroes[0]?.id || "party");
   const potEntry = ALCHEMISTS_GUILD_POTIONS.find((p) => p.name === potName);
   const potStrengthOptions = potEntry ? ["Weak", "Standard", "Supreme"].filter((s) => potEntry[s.toLowerCase()] != null) : [];
   const buyPotion = () => {
@@ -9863,12 +10096,17 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
       roll = rollDie(6);
       if (roll > avail) { setPotResult({ ok: false, line: `Rolled ${roll} vs Availability ${avail} — not in stock this visit.` }); return; }
     }
-    if (party.coins < cost) { setPotResult({ ok: false, line: `Can't afford it: ${cost}c needed, party only has ${party.coins}c.` }); return; }
-    setParty((prev) => ({ ...prev, coins: prev.coins - cost }));
-    updateHero({ ...h, backpack: [...h.backpack, { id: uid(), name: `${potName} (${potStrength})`, value: cost, enc: 1, dur: "1/1", slot: "backpack" }] });
-    const line = `${roll != null ? `Rolled ${roll} vs Availability ${avail} — ` : "Weak potions are always in stock — "}bought ${potName} (${potStrength}) for ${cost}c.`;
+    if (!canAffordFrom(cost, potPaySource, party, heroes)) { setPotResult({ ok: false, line: `Can't afford it: ${cost}c needed, ${payerLabel(potPaySource, party, heroes)} doesn't have enough.` }); return; }
+    const newBackpack = { id: uid(), name: `${potName} (${potStrength})`, value: cost, enc: 1, dur: "1/1", slot: "backpack" };
+    if (potPaySource === h.id) {
+      updateHero({ ...h, backpack: [...h.backpack, newBackpack], coins: (Number(h.coins) || 0) - cost });
+    } else {
+      updateHero({ ...h, backpack: [...h.backpack, newBackpack] });
+      spendFrom(cost, potPaySource, party, setParty, heroes, updateHero);
+    }
+    const line = `${roll != null ? `Rolled ${roll} vs Availability ${avail} — ` : "Weak potions are always in stock — "}bought ${potName} (${potStrength}) for ${cost}c, paid from ${payerLabel(potPaySource, party, heroes)}.`;
     setPotResult({ ok: true, line });
-    addLog(`${h.name} buys a ${potName} (${potStrength}) at the Alchemists' Guild for ${cost}c.`);
+    addLog(`${h.name} buys a ${potName} (${potStrength}) at the Alchemists' Guild for ${cost}c (paid from ${payerLabel(potPaySource, party, heroes)}).`);
   };
 
   // ---------- Dark Guild: Nightstalker armour shop items (from ARMOUR_AND_SHIELDS) ----------
@@ -9980,13 +10218,16 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
                     </p>
                     <select
                       value={learnSpellHero}
-                      onChange={(e) => { setLearnSpellHero(e.target.value); setLearnSpellName(""); setLearnSpellResult(null); }}
+                      onChange={(e) => { setLearnSpellHero(e.target.value); setLearnSpellPaySource(e.target.value); setLearnSpellName(""); setLearnSpellResult(null); }}
                       className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
                       style={{ background: "#fff", border: `1px solid ${palette.line}` }}
                     >
                       <option value="">Choose a hero…</option>
                       {heroes.filter((h) => CASTER_SKILL[h.profession]).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
                     </select>
+                    {learnSpellHero && !learnSpellGrimoire && (
+                      <PayFromSelect value={learnSpellPaySource || learnSpellHero} onChange={setLearnSpellPaySource} party={party} heroes={heroes} />
+                    )}
                     {learnSpellHero && (() => {
                       const hero = heroes.find((h) => h.id === learnSpellHero);
                       const available = SPELLS.filter((s) => s.lvl <= hero.level && !(hero.spells || []).includes(s.name));
@@ -10122,7 +10363,7 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
                   <div className="subsection mb-4">
                     <p className="text-[11px] font-bold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Buy a Potion</p>
                     <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>Weak is always in stock (no roll needed). Standard needs Availability 5, Supreme needs Availability 4.</p>
-                    <select value={potHero} onChange={(e) => { setPotHero(e.target.value); setPotResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                    <select value={potHero} onChange={(e) => { setPotHero(e.target.value); setPotPaySource(e.target.value || "party"); setPotResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
                       <option value="">Choose a hero…</option>
                       {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
                     </select>
@@ -10134,6 +10375,7 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
                         {potStrengthOptions.map((s) => <option key={s} value={s}>{s} ({potEntry[s.toLowerCase()]}c)</option>)}
                       </select>
                     )}
+                    {potHero && <PayFromSelect value={potPaySource} onChange={setPotPaySource} party={party} heroes={heroes} />}
                     <button onClick={buyPotion} disabled={!potHero || potStrengthOptions.length === 0} className="w-full text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: (!potHero || potStrengthOptions.length === 0) ? "#00000020" : palette.crimsonDark, color: palette.parchment, opacity: (!potHero || potStrengthOptions.length === 0) ? 0.5 : 1 }}>Roll &amp; Buy</button>
                     <GuildResultBox result={potResult} />
                   </div>
@@ -10162,13 +10404,14 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
                     </p>
                     <select
                       value={learnPrayerHero}
-                      onChange={(e) => { setLearnPrayerHero(e.target.value); setLearnPrayerName(""); setLearnPrayerResult(null); }}
+                      onChange={(e) => { setLearnPrayerHero(e.target.value); setLearnPrayerPaySource(e.target.value); setLearnPrayerName(""); setLearnPrayerResult(null); }}
                       className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
                       style={{ background: "#fff", border: `1px solid ${palette.line}` }}
                     >
                       <option value="">Choose a hero…</option>
                       {heroes.filter((h) => PRAYER_SKILL[h.profession]).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
                     </select>
+                    {learnPrayerHero && <PayFromSelect value={learnPrayerPaySource || learnPrayerHero} onChange={setLearnPrayerPaySource} party={party} heroes={heroes} />}
                     {learnPrayerHero && (() => {
                       const hero = heroes.find((h) => h.id === learnPrayerHero);
                       const available = PRAYERS.filter((p) => p.lvl <= hero.level && !(hero.prayers || []).includes(p.name));
@@ -11887,7 +12130,7 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
         <Panel>
           <div className="flex items-center gap-2 mb-2">
             <Coins size={16} color={palette.gold} />
-            <span style={{ fontFamily: "Cinzel, serif", color: palette.ink }} className="text-sm font-bold">Coins</span>
+            <span style={{ fontFamily: "Cinzel, serif", color: palette.ink }} className="text-sm font-bold">Party Pot</span>
           </div>
           <input
             type="number"
@@ -11896,6 +12139,7 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
             className="w-full rounded px-2 py-1 font-bold"
             style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
           />
+          <p className="text-[10px] mt-1" style={{ color: palette.inkSoft }}>Shared — pooled from heroes' pouches, or used directly for party-wide costs.</p>
         </Panel>
       </div>
 
@@ -15052,6 +15296,8 @@ function HeroesTab({ heroes, updateHero, removeHero, addHero, addLog, pushToast,
           party={party}
           setParty={setParty}
           goToTab={goToTab}
+          otherHeroes={heroes.filter((h) => h.id !== selectedHero.id)}
+          updateHero={updateHero}
         />
       ) : (
         <Panel>
@@ -15202,8 +15448,9 @@ export default function App() {
           const activeId = activeIdRes && idx.find((c) => c.id === activeIdRes) ? activeIdRes : idx[0].id;
           const cRes = await window.storage.get(campaignKey(activeId), false);
           const data = cRes && cRes.value ? JSON.parse(cRes.value) : { heroes: [defaultHero()], party: defaultParty(), log: [] };
-          setHeroes((data.heroes || [defaultHero()]).map(normalizeHero));
-          setParty(normalizeParty(data.party));
+          const migrated = migrateHeroCoins(data.heroes || [defaultHero()], data.party);
+          setHeroes(migrated.heroes.map(normalizeHero));
+          setParty(normalizeParty(migrated.party));
           setLog(data.log || []);
           setCampaignId(activeId);
           if (!activeIdRes) await window.storage.set(ACTIVE_KEY, activeId, false);
@@ -15248,11 +15495,14 @@ export default function App() {
     try {
       const id = uid();
       const data = importedData
-        ? {
-            heroes: (importedData.heroes || [defaultHero()]).map(normalizeHero),
-            party: normalizeParty(importedData.party),
-            log: importedData.log || [],
-          }
+        ? (() => {
+            const migrated = migrateHeroCoins(importedData.heroes || [defaultHero()], importedData.party);
+            return {
+              heroes: migrated.heroes.map(normalizeHero),
+              party: normalizeParty(migrated.party),
+              log: importedData.log || [],
+            };
+          })()
         : { heroes: [defaultHero()], party: defaultParty(), log: [] };
       await window.storage.set(campaignKey(id), JSON.stringify(data), false);
       const idx = await readIndex();
@@ -15275,10 +15525,11 @@ export default function App() {
     try {
       const res = await window.storage.get(campaignKey(id), false);
       const data = res && res.value ? JSON.parse(res.value) : { heroes: [defaultHero()], party: defaultParty(), log: [] };
+      const migrated = migrateHeroCoins(data.heroes || [defaultHero()], data.party);
       await window.storage.set(ACTIVE_KEY, id, false);
       setCampaignId(id);
-      setHeroes((data.heroes || [defaultHero()]).map(normalizeHero));
-      setParty(normalizeParty(data.party));
+      setHeroes(migrated.heroes.map(normalizeHero));
+      setParty(normalizeParty(migrated.party));
       setLog(data.log || []);
       setTab("party");
     } catch (e) {

@@ -3629,6 +3629,18 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.51.1",
+    date: "2026-08-21",
+    sections: {
+      "Fixed": [
+        "Pool to Party moved a hero's entire pouch with no way to send a partial amount — now opens the same amount-entry panel as Lend, so any amount up to the full pouch can be pooled",
+        "Take from Party used a plain browser prompt instead of matching the app's UI — now uses the same inline amount panel as Pool and Lend",
+        "Lend's amount field could be typed into the negative — all three pouch-transfer amount fields now clamp to zero or above",
+        "Pool, Take, and Lend now show a confirmation message after a successful transfer, instead of no feedback at all",
+      ],
+    },
+  },
+  {
     version: "1.51.0",
     date: "2026-08-21",
     sections: {
@@ -5642,37 +5654,50 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
   const [hateEnemyInput, setHateEnemyInput] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [stackPickerOpen, setStackPickerOpen] = useState({}); // loc -> bool, toggles the "Stack with…" picker
-  const [lendOpen, setLendOpen] = useState(false);
-  const [lendAmount, setLendAmount] = useState("");
+  const [pouchAction, setPouchAction] = useState(null); // "pool" | "take" | "lend" | null — only one panel open at a time
+  const [pouchAmount, setPouchAmount] = useState("");
   const [lendToId, setLendToId] = useState("");
+  const [pouchResult, setPouchResult] = useState(null);
 
   const set = (patch) => update({ ...hero, ...patch });
 
   // Personal Pouch <-> Party Pot transfers, and lending directly between heroes' pouches
   // — the app's implementation of the rulebook's Setup line "you may buy further
   // equipment... lend money, or pool money with the other heroes, if desired."
-  const poolToParty = () => {
-    const amt = Number(hero.coins) || 0;
+  const openPouchAction = (action) => {
+    setPouchAction((cur) => (cur === action ? null : action));
+    setPouchAmount("");
+    setLendToId("");
+    setPouchResult(null);
+  };
+  const confirmPool = () => {
+    const amt = Math.max(0, Math.min(Number(pouchAmount) || 0, Number(hero.coins) || 0));
     if (amt <= 0) return;
-    set({ coins: 0 });
+    set({ coins: (Number(hero.coins) || 0) - amt });
     setParty((prev) => ({ ...prev, coins: prev.coins + amt }));
     addLog && addLog(`${hero.name} pools ${amt}c into the Party Pot.`);
+    setPouchResult(`Pooled ${amt}c into the Party Pot.`);
+    setPouchAmount("");
   };
-  const takeFromParty = (amt) => {
-    const n = Math.max(0, Math.min(Number(amt) || 0, party.coins));
-    if (n <= 0) return;
-    setParty((prev) => ({ ...prev, coins: prev.coins - n }));
-    set({ coins: (Number(hero.coins) || 0) + n });
-    addLog && addLog(`${hero.name} takes ${n}c from the Party Pot.`);
+  const confirmTake = () => {
+    const amt = Math.max(0, Math.min(Number(pouchAmount) || 0, party.coins));
+    if (amt <= 0) return;
+    setParty((prev) => ({ ...prev, coins: prev.coins - amt }));
+    set({ coins: (Number(hero.coins) || 0) + amt });
+    addLog && addLog(`${hero.name} takes ${amt}c from the Party Pot.`);
+    setPouchResult(`Took ${amt}c from the Party Pot.`);
+    setPouchAmount("");
   };
   const confirmLend = () => {
-    const amt = Math.max(0, Math.min(Number(lendAmount) || 0, Number(hero.coins) || 0));
+    const amt = Math.max(0, Math.min(Number(pouchAmount) || 0, Number(hero.coins) || 0));
     const target = (otherHeroes || []).find((h) => h.id === lendToId);
     if (amt <= 0 || !target) return;
     set({ coins: (Number(hero.coins) || 0) - amt });
     updateHero && updateHero(target.id, { ...target, coins: (Number(target.coins) || 0) + amt });
     addLog && addLog(`${hero.name} lends ${amt}c to ${target.name}.`);
-    setLendOpen(false); setLendAmount(""); setLendToId("");
+    setPouchResult(`Lent ${amt}c to ${target.name}.`);
+    setPouchAmount("");
+    setLendToId("");
   };
 
   const [startWeaponChoice, setStartWeaponChoice] = useState("");
@@ -7646,7 +7671,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
           </div>
           <div className="flex gap-1.5 mt-2 flex-wrap">
             <button
-              onClick={poolToParty}
+              onClick={() => openPouchAction("pool")}
               disabled={!hero.coins}
               className="text-xs px-2 py-1.5 rounded font-semibold flex-1 min-w-[100px]"
               style={{ background: "#fff", border: `1px solid ${palette.line}`, color: palette.ink, opacity: hero.coins ? 1 : 0.5 }}
@@ -7654,10 +7679,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               ↑ Pool to Party
             </button>
             <button
-              onClick={() => {
-                const amt = window.prompt(`Take how many coins from the Party Pot (${party.coins}c available)?`, Math.min(150, party.coins) || "");
-                if (amt !== null) takeFromParty(amt);
-              }}
+              onClick={() => openPouchAction("take")}
               disabled={!party.coins}
               className="text-xs px-2 py-1.5 rounded font-semibold flex-1 min-w-[100px]"
               style={{ background: "#fff", border: `1px solid ${palette.line}`, color: palette.ink, opacity: party.coins ? 1 : 0.5 }}
@@ -7665,7 +7687,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               ↓ Take from Party
             </button>
             <button
-              onClick={() => setLendOpen((v) => !v)}
+              onClick={() => openPouchAction("lend")}
               disabled={!hero.coins || !(otherHeroes || []).length}
               className="text-xs px-2 py-1.5 rounded font-semibold flex-1 min-w-[100px]"
               style={{ background: "#fff", border: `1px solid ${palette.line}`, color: palette.ink, opacity: hero.coins && (otherHeroes || []).length ? 1 : 0.5 }}
@@ -7673,13 +7695,61 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               ⇄ Lend
             </button>
           </div>
-          {lendOpen && (
+          {pouchAction === "pool" && (
             <div className="mt-2 p-2 rounded" style={{ background: "#00000006" }}>
-              <p className="text-xs font-semibold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Lend from {hero.name}'s Pouch</p>
+              <p className="text-xs font-semibold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Pool from {hero.name}'s Pouch ({hero.coins}c available)</p>
               <input
                 type="number"
-                value={lendAmount}
-                onChange={(e) => setLendAmount(e.target.value)}
+                min="0"
+                max={hero.coins}
+                value={pouchAmount}
+                onChange={(e) => setPouchAmount(Math.max(0, Number(e.target.value) || 0))}
+                placeholder="Amount"
+                className="w-full text-xs rounded px-2 py-1 mb-1.5"
+                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+              />
+              <button
+                onClick={confirmPool}
+                disabled={!pouchAmount || Number(pouchAmount) <= 0 || Number(pouchAmount) > (Number(hero.coins) || 0)}
+                className="w-full text-xs px-2 py-1.5 rounded font-semibold"
+                style={{ background: palette.crimsonDark, color: palette.parchment, opacity: (!pouchAmount || Number(pouchAmount) <= 0 || Number(pouchAmount) > (Number(hero.coins) || 0)) ? 0.5 : 1 }}
+              >
+                Confirm — Move {Number(pouchAmount) || 0}c to Party Pot
+              </button>
+            </div>
+          )}
+          {pouchAction === "take" && (
+            <div className="mt-2 p-2 rounded" style={{ background: "#00000006" }}>
+              <p className="text-xs font-semibold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Take into {hero.name}'s Pouch ({party.coins}c in Party Pot)</p>
+              <input
+                type="number"
+                min="0"
+                max={party.coins}
+                value={pouchAmount}
+                onChange={(e) => setPouchAmount(Math.max(0, Number(e.target.value) || 0))}
+                placeholder="Amount"
+                className="w-full text-xs rounded px-2 py-1 mb-1.5"
+                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+              />
+              <button
+                onClick={confirmTake}
+                disabled={!pouchAmount || Number(pouchAmount) <= 0 || Number(pouchAmount) > party.coins}
+                className="w-full text-xs px-2 py-1.5 rounded font-semibold"
+                style={{ background: palette.crimsonDark, color: palette.parchment, opacity: (!pouchAmount || Number(pouchAmount) <= 0 || Number(pouchAmount) > party.coins) ? 0.5 : 1 }}
+              >
+                Confirm — Take {Number(pouchAmount) || 0}c from Party Pot
+              </button>
+            </div>
+          )}
+          {pouchAction === "lend" && (
+            <div className="mt-2 p-2 rounded" style={{ background: "#00000006" }}>
+              <p className="text-xs font-semibold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Lend from {hero.name}'s Pouch ({hero.coins}c available)</p>
+              <input
+                type="number"
+                min="0"
+                max={hero.coins}
+                value={pouchAmount}
+                onChange={(e) => setPouchAmount(Math.max(0, Number(e.target.value) || 0))}
                 placeholder="Amount"
                 className="w-full text-xs rounded px-2 py-1 mb-1.5"
                 style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
@@ -7697,13 +7767,18 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               </select>
               <button
                 onClick={confirmLend}
-                disabled={!lendAmount || !lendToId || Number(lendAmount) > (Number(hero.coins) || 0)}
+                disabled={!pouchAmount || Number(pouchAmount) <= 0 || !lendToId || Number(pouchAmount) > (Number(hero.coins) || 0)}
                 className="w-full text-xs px-2 py-1.5 rounded font-semibold"
-                style={{ background: palette.crimsonDark, color: palette.parchment, opacity: (!lendAmount || !lendToId || Number(lendAmount) > (Number(hero.coins) || 0)) ? 0.5 : 1 }}
+                style={{ background: palette.crimsonDark, color: palette.parchment, opacity: (!pouchAmount || Number(pouchAmount) <= 0 || !lendToId || Number(pouchAmount) > (Number(hero.coins) || 0)) ? 0.5 : 1 }}
               >
-                Confirm — Move {Number(lendAmount) || 0}c
+                Confirm — Move {Number(pouchAmount) || 0}c
               </button>
             </div>
+          )}
+          {pouchResult && (
+            <p className="text-xs mt-2 font-semibold" style={{ color: palette.forestDark, fontFamily: "Crimson Pro, serif" }}>
+              ✓ {pouchResult}
+            </p>
           )}
         </div>
     </Panel>

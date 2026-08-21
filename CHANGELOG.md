@@ -3,6 +3,14 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.51.1] — 2026-08-21
+
+### Fixed
+- Pool to Party moved a hero's entire pouch with no way to send a partial amount — now opens the same amount-entry panel as Lend, so any amount up to the full pouch can be pooled
+- Take from Party used a plain browser prompt instead of matching the app's UI — now uses the same inline amount panel as Pool and Lend
+- Lend's amount field could be typed into the negative — all three pouch-transfer amount fields now clamp to zero or above
+- Pool, Take, and Lend now show a confirmation message after a successful transfer, instead of no feedback at all
+
 ## [1.51.0] — 2026-08-21
 
 ### Added

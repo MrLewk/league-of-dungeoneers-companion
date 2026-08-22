@@ -1111,7 +1111,7 @@ const WEAPONS = [
   { name: "Crossbow", dmg: "1d10+3", enc: 15, class: 6, special: "AP(1)", cost: 250, avail: 3, reload: 2 },
   { name: "Crossbow Pistol", dmg: "1d8+1", enc: 5, class: 2, special: "Secondary Weapon", cost: 350, avail: 2, reload: 2 },
   { name: "Elven Bow", dmg: "1d10+2", enc: 7, class: 4, special: "AP(1)", cost: 700, avail: 2, reload: 1 },
-  { name: "Longbow", dmg: "1d10", enc: 10, class: 4, special: "AP(1)", cost: 100, avail: 4, reload: 1 },
+  { name: "Longbow", dmg: "1d10", enc: 10, class: 6, special: "AP(1)", cost: 100, avail: 4, reload: 1 },
   { name: "Shortbow", dmg: "1d8", enc: 5, class: 6, special: "", cost: 100, avail: 4, reload: 1 },
   { name: "Sling", dmg: "1d6", enc: 1, class: 6, special: "Unlimited Ammo", cost: 40, avail: 4, reload: null },
   { name: "Net", dmg: "-", enc: 2, class: 2, special: "Ensnare, Dual Wield +0", cost: 100, avail: 3, reload: null },
@@ -3722,6 +3722,17 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.52.1",
+    date: "2026-08-22",
+    sections: {
+      "Fixed": [
+        "Longbow was set to weapon Class 4 instead of Class 6 — confirmed against the official von Braus FAQ (\"No, it is supposed to be class 6\"). This also corrects its two-handed STR requirement to 20, matching Class 6's rules",
+        "Close Combat/Ranged To-Hit calculator: the Enemy TO HIT/DEFENCE field was subtracting the value you entered, but the Bestiary's own To Hit stat is already stored pre-signed (e.g. a Bandit is \"-5\") to match what's printed on the monster card. Typing that printed value in was flipping its effect and raising your effective CS/RS instead of lowering it. The field is now added directly, so entering the card's value works correctly",
+        "Close Combat/Ranged To-Hit calculator now has a \"Fill enemy To Hit/Defence from Bestiary\" picker, sourced straight from the Monster Table, so the correct signed value can be selected instead of typed in",
+      ],
+    },
+  },
   {
     version: "1.52.0",
     date: "2026-08-22",
@@ -12526,6 +12537,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
   const [checked, setChecked] = useState({});
   const [result, setResult] = useState(null);
   const [heroPick, setHeroPick] = useState("");
+  const [enemyPick, setEnemyPick] = useState("");
 
   const [throwBase, setThrowBase] = useState(30);
   const [throwChecked, setThrowChecked] = useState({});
@@ -12552,7 +12564,10 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
   const mods = mode === "cc" ? CC_ATTACK_MODS : RANGED_ATTACK_MODS;
   const sumChecked = mods.reduce((s, m) => (checked[m.label] ? s + m.value : s), 0);
   const halfHeightPenalty = mode === "ranged" ? -10 * Number(halfHeight || 0) : 0;
-  const effective = clamp(base + sumChecked + halfHeightPenalty - Number(enemyMod || 0), 0, 100);
+  // Enemy To Hit / Defence is stored (and printed on the monster card/Bestiary) as an
+  // already-signed modifier — e.g. a Bandit is "-5", meaning -5 to the attacker's roll.
+  // It's added directly, not subtracted; subtracting a negative would flip its effect.
+  const effective = clamp(base + sumChecked + halfHeightPenalty + Number(enemyMod || 0), 0, 100);
 
   const applyHeroSkill = (heroId) => {
     setHeroPick(heroId);
@@ -12560,6 +12575,13 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
     if (!h) return;
     const penalty = encumbranceOver(h) ? -10 : 0;
     setBase((mode === "cc" ? h.skills.cs : h.skills.rs) + penalty);
+  };
+
+  const applyEnemyToHit = (name) => {
+    setEnemyPick(name);
+    const m = MONSTER_TABLE.find((x) => x.name === name);
+    if (!m) return;
+    setEnemyMod(m.toHit);
   };
 
   const roll = () => {
@@ -12930,16 +12952,33 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
               />
             </label>
             <label className="text-xs flex-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-              Enemy {mode === "cc" ? "TO HIT (X)" : "DEFENCE (X)"}
+              Enemy {mode === "cc" ? "TO HIT" : "DEFENCE"} mod
               <input
                 type="number"
                 value={enemyMod}
-                onChange={(e) => setEnemyMod(Number(e.target.value) || 0)}
+                onChange={(e) => { setEnemyPick(""); setEnemyMod(Number(e.target.value) || 0); }}
                 className="w-full rounded px-2 py-1 mt-1 font-bold"
                 style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
               />
             </label>
           </div>
+          <label className="text-xs block mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+            Fill enemy {mode === "cc" ? "To Hit" : "Defence"} from Bestiary
+            <select
+              value={enemyPick}
+              onChange={(e) => applyEnemyToHit(e.target.value)}
+              className="w-full rounded px-2 py-1 mt-1"
+              style={{ border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", background: "#fff" }}
+            >
+              <option value="">Pick a monster…</option>
+              {MONSTER_TABLE.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => (
+                <option key={m.name} value={m.name}>{m.name} ({m.toHit > 0 ? "+" : ""}{m.toHit})</option>
+              ))}
+            </select>
+          </label>
+          <p className="text-[10px] -mt-2 mb-3 italic" style={{ color: palette.inkSoft }}>
+            Enter as printed on the card (e.g. -10) — it's added to the roll directly, so a negative value lowers the effective {mode === "cc" ? "CS" : "RS"} as expected.
+          </p>
           {mode === "ranged" && (
             <label className="text-xs block mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
               Half-height obstacles/models in LOS (−10 each)

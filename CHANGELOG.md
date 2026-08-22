@@ -3,6 +3,13 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.52.1] — 2026-08-22
+
+### Fixed
+- Longbow was set to weapon Class 4 instead of Class 6 — confirmed against the official von Braus FAQ ("No, it is supposed to be class 6"). This also corrects its two-handed STR requirement to 20, matching Class 6's rules
+- Close Combat/Ranged To-Hit calculator: the Enemy TO HIT/DEFENCE field was subtracting the value you entered, but the Bestiary's own To Hit stat is already stored pre-signed (e.g. a Bandit is "-5") to match what's printed on the monster card. Typing that printed value in was flipping its effect and raising your effective CS/RS instead of lowering it. The field is now added directly, so entering the card's value works correctly
+- Close Combat/Ranged To-Hit calculator now has a "Fill enemy To Hit/Defence from Bestiary" picker, sourced straight from the Monster Table, so the correct signed value can be selected instead of typed in
+
 ## [1.52.0] — 2026-08-22
 
 ### Added

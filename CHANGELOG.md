@@ -3,6 +3,19 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.52.0] — 2026-08-22
+
+### Added
+- Dwarf and Elf character creation now has a Subspecies picker (Advanced Bestiary): Nozhrak, Derthzak, Noarzth, Fizrtheg, Dergthaz, Glanrak, and Kiirahkz for Dwarves; Wald-adjaar'ii, Mondel-adjaar'ii, and Sethel-adjaar'ii for Elves — each with a note card and one-tap buttons to grant the Talent(s)/skill bonus it comes with. Wood Elves can also take a Pudoa'ii (now in the Weapon picker) instead of their profession's usual starting weapon
+- Duckfolk, Frogling, Gnome, Pale Orc, and Pale Goblin now have their full Traits and profession limitations from the Advanced Bestiary, auto-applied on "Roll Starting Stats" the same way Elf/Dwarf/Half-Ogre traits already were. Half-Ogre's "+2 Sanity" is now a real, formal Tough Mind talent instead of just a note. Duckfolk's base stats corrected (CON 25→20, DEX 30→40)
+- Stat Maximum caps added for all 10 species (previously only Duckfolk and Half-Ogre had them) — also corrects two existing errors (Duckfolk WIS was 70, should be 80; Half-Ogre CON/RES were 60, should be 80)
+- 10 new Talents/Perks added to the Compendium: Battle Hardened, Cat and Dog, Jumper, Linked to the Void, Natural Illusionist, Now You See Me…, Shunned, Slippery, Weak with Destruction Magic, Natural Swimmers
+- Legendary Items with a real Weapon/Armour type (Breastplate of Rannulf, Armour of the Father, Golden Khopesh, Bow of Divine Twilight, and 6 others) can now be equipped directly into the hero's actual gear slot — swaps out whatever was worn before, and fills in the item's real DMG/DEF/ENC at 8 DUR (the Magic Items rule). Previously these just sat as a description card with no way to equip them
+- Legendary Items are now immune to the Durability loss step in Resolve a Hit, matching the rulebook ("never run out of magic and can't be damaged") — ordinary magic gear is unaffected
+
+### Fixed
+- Alchemist Belt now actually expands Quick Slots from 3 to 9 as the rulebook states — the extra 6 slots are restricted to potions/vials only, with a clear message if a non-bottle item is moved there instead. Previously the belt had no effect on Quick Slot capacity at all
+
 ## [1.51.1] — 2026-08-21
 
 ### Fixed

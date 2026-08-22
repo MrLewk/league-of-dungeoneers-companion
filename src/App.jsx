@@ -50,6 +50,8 @@ const defaultHero = () => ({
   id: uid(),
   name: "New Hero",
   species: "",
+  subspecies: "",
+  subspeciesBonusApplied: [],
   profession: "",
   level: 1,
   xp: 0,
@@ -108,17 +110,38 @@ const defaultHero = () => ({
 // Starting stats per species — base + dice roll, from the official character-creation
 // tool (base game + Frogling/Pale expansions). Basic stats and HP are rolled the same
 // way: base + dice. Note text is condensed from that tool's per-species creation rules.
+// Subspecies (Advanced Bestiary, races/character-creation content — in scope; monster
+// content from the same book is not). Each entry is optional flavour on top of the base
+// species. `grantsTalent`/`grantsTalentChoice` surface an "+ Add" button in the hero
+// creation panel; a couple (Miner, Prospector, Tunnel Fighter, Charming, Survivalist,
+// Pathfinder, Tough Mind) were originally cited to "FP page X" in the source doc but
+// already exist as fully-defined Talents in this app's Compendium (built earlier for
+// other reasons), so they grant for real rather than needing a manual FP look-up.
+const DWARF_SUBSPECIES = [
+  { id: "nozhrak", name: "Nozhrak (Black Dwarfs, Blackbeards)", note: "Whenever using an Armour Repair Kit or a Whetstone, the effect is 1d6 instead of 1d3." },
+  { id: "derthzak", name: "Derthzak (Grey Dwarfs, Greybeards)", note: "May add the Miner Talent.", grantsTalent: "Miner" },
+  { id: "noarzth", name: "Noarzth (Gold Dwarfs, Goldbeards)", note: "May add the Prospector Talent.", grantsTalent: "Prospector" },
+  { id: "fizrtheg", name: "Fizrtheg (Red Dwarfs, Redbeards)", note: "May add +10 to the Healing Skill.", skillBonus: { skill: "heal", amount: 10 } },
+  { id: "dergthaz", name: "Dergthaz (Shield Dwarfs, Longbeards)", note: "May add the Tunnel Fighter Talent.", grantsTalent: "Tunnel Fighter" },
+  { id: "glanrak", name: "Glanrak (Emerald Dwarfs, Greenbeards)", note: "Whenever the party sells gems or jewellery, they get 120% of the listed price. This price may still be negotiated using the Barter skill." },
+  { id: "kiirahkz", name: "Kiirahkz (Deep Dwarfs, Deeplings)", note: "May add +20 to Foraging when harvesting mushrooms. Starts the game with a cask of dwarven beer and may fetch a new cask for free when visiting a dwarven settlement.", skillBonus: { skill: "foraging", amount: 20 } },
+];
+const ELF_SUBSPECIES = [
+  { id: "wald-adjaarii", name: "Wald-adjaar'ii (Wood Elves)", note: "May add the Survivalist or Pathfinder Talent.", grantsTalentChoice: ["Survivalist", "Pathfinder"] },
+  { id: "mondel-adjaarii", name: "Mondel-adjaar'ii (Moon Elves)", note: "May add the Charming Talent.", grantsTalent: "Charming" },
+  { id: "sethel-adjaarii", name: "Sethel-adjaar'ii (High Elves)", note: "May add the Tough Mind Talent.", grantsTalent: "Tough Mind" },
+];
 const SPECIES_DATA = [
-  { name: "Human", hp: { base: 7, count: 1, size: 6 }, stats: { STR: 30, CON: 30, DEX: 30, WIS: 30, RES: 30 }, note: "Jack of All Trades: roll a random Talent from a chosen category at creation (pick manually from the Compendium)." },
-  { name: "Elf", hp: { base: 6, count: 1, size: 6 }, stats: { STR: 25, CON: 20, DEX: 40, WIS: 35, RES: 30 }, note: "Traits: Perfect Hearing, Night Vision — both applied automatically when you roll starting stats." },
-  { name: "Halfling", hp: { base: 5, count: 1, size: 6 }, stats: { STR: 20, CON: 20, DEX: 40, WIS: 30, RES: 40 }, note: "Cannot use Longbows or Elven bows (height). May buy Cooking Gear for 50c at the start of the game. Trait: Lucky — starts with 1 Luck Point, set automatically when you roll starting stats." },
-  { name: "Dwarf", hp: { base: 8, count: 1, size: 6 }, stats: { STR: 40, CON: 30, DEX: 25, WIS: 25, RES: 30 }, note: "Cannot use Longbows or Elven bows (height). Traits: Hate Goblins, Night Vision — Night Vision is applied automatically when you roll starting stats; Hate Goblins needs a chosen enemy, so add the Hate Talent manually from the Compendium." },
-  { name: "Gnome", hp: { base: 4, count: 1, size: 6 }, stats: { STR: 20, CON: 20, DEX: 30, WIS: 40, RES: 40 }, note: "Cannot use Longbows or Elven bows (height). Artificer: once specialised, pays half cost for blacksmithing/crafting services." },
-  { name: "Duckfolk", hp: { base: 6, count: 1, size: 6 }, stats: { STR: 25, CON: 25, DEX: 30, WIS: 30, RES: 40 }, max: { STR: 55, CON: 60, DEX: 70, WIS: 70, RES: 80 }, note: "Short arms — cannot use Longbows or Elven bows.", expansion: "The False Prophet" },
-  { name: "Frogling", hp: { base: 4, count: 1, size: 6 }, stats: { STR: 20, CON: 35, DEX: 40, WIS: 30, RES: 25 }, note: "Cannot use Longbows or Elven bows (height)." },
-  { name: "Half-Ogre", hp: { base: 10, count: 2, size: 6 }, stats: { STR: 50, CON: 40, DEX: 25, WIS: 15, RES: 40 }, max: { STR: 80, CON: 60, DEX: 60, WIS: 60, RES: 60 }, note: "+2 Sanity. May only take the Warrior, Barbarian, or Rogue profession. Trait: Stupid — applied automatically when you roll starting stats.", expansion: "The False Prophet" },
-  { name: "Pale Goblin", hp: { base: 5, count: 1, size: 6 }, stats: { STR: 25, CON: 20, DEX: 40, WIS: 30, RES: 35 }, note: "Cannot use Longbows or Elven bows (height)." },
-  { name: "Pale Orc", hp: { base: 8, count: 1, size: 6 }, stats: { STR: 40, CON: 35, DEX: 25, WIS: 20, RES: 30 }, note: "Cannot use Longbows or Elven bows (height)." },
+  { name: "Human", hp: { base: 7, count: 1, size: 6 }, stats: { STR: 30, CON: 30, DEX: 30, WIS: 30, RES: 30 }, max: { STR: 70, CON: 65, DEX: 70, WIS: 80, RES: 80 }, note: "Jack of All Trades: roll a random Talent from a chosen category at creation (pick manually from the Compendium)." },
+  { name: "Elf", hp: { base: 6, count: 1, size: 6 }, stats: { STR: 25, CON: 20, DEX: 40, WIS: 35, RES: 30 }, max: { STR: 60, CON: 65, DEX: 80, WIS: 80, RES: 80 }, note: "Traits: Perfect Hearing, Night Vision — both applied automatically when you roll starting stats. May take a Pudoa'ii instead of the usual profession starting weapon — available in the Weapon picker like any other weapon.", subspecies: ELF_SUBSPECIES },
+  { name: "Halfling", hp: { base: 5, count: 1, size: 6 }, stats: { STR: 20, CON: 20, DEX: 40, WIS: 30, RES: 40 }, max: { STR: 40, CON: 60, DEX: 80, WIS: 80, RES: 80 }, note: "Cannot use Longbows or Elven bows (height). May buy Cooking Gear for 50c at the start of the game. Trait: Lucky — starts with 1 Luck Point, set automatically when you roll starting stats." },
+  { name: "Dwarf", hp: { base: 8, count: 1, size: 6 }, stats: { STR: 40, CON: 30, DEX: 25, WIS: 25, RES: 30 }, max: { STR: 80, CON: 70, DEX: 60, WIS: 80, RES: 80 }, note: "Cannot use Longbows or Elven bows (height). Traits: Hate Goblins, Night Vision — Night Vision is applied automatically when you roll starting stats; Hate Goblins needs a chosen enemy, so add the Hate Talent manually from the Compendium.", subspecies: DWARF_SUBSPECIES },
+  { name: "Gnome", hp: { base: 4, count: 1, size: 6 }, stats: { STR: 20, CON: 20, DEX: 30, WIS: 40, RES: 40 }, max: { STR: 40, CON: 50, DEX: 70, WIS: 80, RES: 80 }, note: "Cannot use Longbows or Elven bows (height). Cannot become Barbarians, Knights, or Warrior Priests. Artificer: once specialised, pays half cost for blacksmithing/crafting services. Traits: Linked to the Void, Slippery, Natural Illusionist, Now You See Me…, Weak with Destruction Magic — applied automatically when you roll starting stats." },
+  { name: "Duckfolk", hp: { base: 6, count: 1, size: 6 }, stats: { STR: 25, CON: 20, DEX: 40, WIS: 30, RES: 40 }, max: { STR: 55, CON: 60, DEX: 70, WIS: 80, RES: 80 }, note: "Short arms — cannot use Longbows or Elven bows. Traits: Magic Resistance, Natural Swimmer, Natural Killer — applied automatically when you roll starting stats.", expansion: "The False Prophet" },
+  { name: "Frogling", hp: { base: 4, count: 1, size: 6 }, stats: { STR: 20, CON: 35, DEX: 40, WIS: 30, RES: 25 }, max: { STR: 45, CON: 65, DEX: 80, WIS: 70, RES: 80 }, note: "Cannot use Longbows or Elven bows (height). Cannot become Barbarians, Knights, or Warrior Priests. Traits: Gatherer, Jumper, Natural Swimmer, Night Vision, Poisonous Spit, Shunned — applied automatically when you roll starting stats." },
+  { name: "Half-Ogre", hp: { base: 10, count: 2, size: 6 }, stats: { STR: 50, CON: 40, DEX: 25, WIS: 15, RES: 40 }, max: { STR: 80, CON: 80, DEX: 60, WIS: 60, RES: 80 }, note: "May only take the Warrior, Barbarian, or Rogue profession. Traits: Tough Mind, Stupid — both applied automatically when you roll starting stats.", expansion: "The False Prophet" },
+  { name: "Pale Goblin", hp: { base: 5, count: 1, size: 6 }, stats: { STR: 25, CON: 20, DEX: 40, WIS: 30, RES: 35 }, max: { STR: 60, CON: 65, DEX: 70, WIS: 70, RES: 80 }, note: "Cannot use Longbows or Elven bows (height). Cannot become Knights, Warrior Priests, or Wizards. Traits: Cat and Dog, Night Vision, Natural Killer, Shunned, Trapfinder — applied automatically when you roll starting stats." },
+  { name: "Pale Orc", hp: { base: 8, count: 1, size: 6 }, stats: { STR: 40, CON: 35, DEX: 25, WIS: 20, RES: 30 }, max: { STR: 75, CON: 70, DEX: 65, WIS: 70, RES: 80 }, note: "Cannot become Knights, Warrior Priests, or Wizards. Traits: Battle Hardened, Night Vision, Shunned, Tough Mind — applied automatically when you roll starting stats." },
 ];
 const SPECIES = SPECIES_DATA.map((s) => s.name);
 
@@ -443,12 +466,18 @@ function encumbranceOver(hero) {
 
 // Quick Slots — base 3, per the Actions/Equipment chapters. Combat Harness and Extended
 // Battle Belt each set a higher fixed total (not a stacking +N) if owned anywhere in the
-// hero's backpack or quick slots.
+// hero's backpack or quick slots. An Alchemist Belt adds 6 more Quick Slots on top of
+// that, but those 6 can only ever hold potions/vials (p195) — tracked separately so a
+// non-bottle item can never occupy one of the belt's reserved slots.
 function quickSlotCapacity(hero) {
   const names = (hero.backpack || []).map((it) => it.name);
   if (names.includes("Combat Harness")) return 5;
   if (names.includes("Extended Battle Belt")) return 4;
   return 3;
+}
+function alchemistBeltSlots(hero) {
+  const names = (hero.backpack || []).map((it) => it.name);
+  return names.includes("Alchemist Belt") ? 6 : 0;
 }
 
 const defaultParty = () => ({
@@ -1063,6 +1092,7 @@ function repairCostPerPoint(price) {
 // unless otherwise noted in the book — none of these are noted otherwise.
 const WEAPONS = [
   { name: "Dagger", dmg: "1d6", enc: 5, class: 1, special: "Dual Wield +1", cost: 10, avail: 4, reload: null },
+  { name: "Pudoa'ii", dmg: "2d4+2", enc: 10, class: 3, special: "Reach, AP (1). Elf-only alternate starting weapon.", cost: 350, avail: 2, reload: null },
   { name: "Rapier", dmg: "1d6+1", enc: 5, class: 1, special: "Fast, Dual Wield +2", cost: 130, avail: 3, reload: null },
   { name: "Javelin", dmg: "1d10", enc: 10, class: 2, special: "Reach, BFO, AP(1)", cost: 100, avail: 4, reload: null },
   { name: "Shortsword", dmg: "1d6+2", enc: 7, class: 2, special: "Dual Wield +2", cost: 70, avail: 4, reload: null },
@@ -1554,6 +1584,23 @@ const STANDARD_POTIONS_SUBTABLES = {
   ],
 };
 const ALCHEMISTS_GUILD_POTIONS = buildPotionCatalog();
+// Names treated as "bottles" for the Alchemist Belt's restricted Quick Slots (p195/
+// Equipment Appendix) — anything mixed from a recipe, rolled from the Potions Table,
+// or bought as a bottled consumable. Falls back to a substring check so a custom/
+// homebrew item named e.g. "Potion of Foo" still gets recognised without editing this list.
+const BOTTLED_ITEM_NAMES = new Set([
+  ...Object.keys(POTION_EFFECTS),
+  "Firebomb", "Acidic Bomb", "Bottle of Experience", "Bottle of the Void", "Liquid Fire",
+  "Weapons Oil", "Elixir of Speed", "Elixir of the Archer", "Alchemical Dust",
+  "Empty Bottle", "Healing Potion", "Potion of Cure Disease (Weak)", "Potion of Cure Poison (Weak)",
+  "Legendary Elixir", "Vial of Never Ending",
+]);
+function isBottledItem(name) {
+  if (!name) return false;
+  if (BOTTLED_ITEM_NAMES.has(name)) return true;
+  const n = name.toLowerCase();
+  return n.includes("potion") || n.includes("vial") || n.includes("elixir") || n.includes("bomb") || n.includes("bottle");
+}
 // Rolls a random potion for the given strength, re-rolling on Standard's "Roll again".
 function rollRandomPotion(strength) {
   if (strength === "Weak" || strength === "Supreme") {
@@ -2879,6 +2926,43 @@ const LEGENDARY_ITEM_EFFECTS = {
 function legendaryItemEffectPatch(hero, itemName, sign) {
   return applyEffectDelta(hero, LEGENDARY_ITEM_EFFECTS[itemName], sign);
 }
+// Equip data for Legendary Items that occupy a real Weapon/Armour slot (p201-211).
+// Base stats come from the ordinary Weapon/Armour tables where the book says "otherwise
+// a standard X"; DEF/DMG given directly in the book's own text are used as-is. Magic
+// weapons/armour get 8 DUR instead of the usual 6 (Magic Items rule, QRS). Armour of the
+// Father is profession-dependent, so it gets an `options` list instead of fixed stats.
+const LEGENDARY_EQUIP = {
+  "Bow of Divine Twilight": { slot: "weapon", dmg: "1d8", enc: 5, class: 6, reload: 1, special: "Reach. +5% Bloodlust chance (cumulative with Talents/Perks); a triggered Bloodlust shot also deals +5 DMG." },
+  "Dagger of Vrunior": { slot: "weapon", dmg: "1d6", enc: 5, class: 1, special: "Dual Wield +1. All attacks with this dagger are treated as being made from behind." },
+  "The Summoner's Staff": { slot: "weapon", dmg: "1d8", enc: 5, class: 2, special: "Defensive. Conjuration spells cast while wielding this get +20 Arcane Arts; summoned elementals/demons get 1 extra initiative token." },
+  "The Headsman's Axe": { slot: "weapon", dmg: "1d12+2", enc: 20, class: 5, special: "Slow, BFO, AP(2). +2 DMG per consecutive damaging hit; any miss or 0-damage hit resets the bonus (also resets each battle)." },
+  "Sword of Lightning": { slot: "weapon", dmg: "1d12", enc: 10, class: 4, special: "Any odd-numbered hit also deals +1d6 lightning damage (no armour save); half that (RDD) hits the nearest other hero — randomise if tied." },
+  "Ohlnir's Hammer": { slot: "weapon", dmg: "1d10", enc: 10, class: 3, special: "Stun, BFO. Every hit stuns the enemy, no test needed (not cumulative — max 1 Action lost/turn from this)." },
+  "The Golden Khopesh": { slot: "weapon", dmg: "1d12+1", enc: 10, class: 4, special: "Ignores all armour and Natural Armour saves. Higher Undead always attack the wielder over other targets." },
+  "The Goblin Scimitar": { slot: "weapon", dmg: "1d8+2", enc: 8, class: 3, special: "Wielder gains the Frenzy Perk." },
+  "The Breastplate of Rannulf": { slot: "torso", def: 8, enc: 7, special: "Denies the Double Damage roll made by Large Creatures." },
+  "The Helmet of Golgorosh the Ram": { slot: "head", def: 6, enc: 5, special: "Treated as a metal helmet. Head hits no longer cause −1 Sanity even on a partial absorb. If hit in the head, RES test or lose the next Action Point stunned (enjoying the fairy voices). +15 to Shove while worn." },
+  "Armour of the Father": {
+    slot: "torso",
+    special: "+15 RES applies automatically above. Base armour type is chosen by profession — same stats as that type, with a +1 DEF modifier already included below.",
+    options: [
+      { name: "Armour of the Father (Padded Vest)", def: 3, enc: 3 },
+      { name: "Armour of the Father (Leather Vest)", def: 4, enc: 3 },
+      { name: "Armour of the Father (Chainmail Shirt)", def: 5, enc: 6 },
+      { name: "Armour of the Father (Breastplate)", def: 6, enc: 7 },
+    ],
+  },
+};
+
+const LEGENDARY_EQUIP_NAMES = new Set([
+  ...Object.keys(LEGENDARY_EQUIP),
+  ...Object.values(LEGENDARY_EQUIP).flatMap((eq) => (eq.options ? eq.options.map((o) => o.name) : [])),
+]);
+// Legendary Items "never run out of magic and can't be damaged" (p201) — unlike ordinary
+// magic gear, they're immune to the Resolve a Hit DUR-loss step.
+function isLegendaryGear(name) {
+  return LEGENDARY_EQUIP_NAMES.has(name);
+}
 
 // Lore tab content — paraphrased from the rulebook's flavor text (not reproduced verbatim,
 // out of respect for von Braus Publishing's copyright on the original prose). Mechanics for
@@ -2975,10 +3059,12 @@ const TALENTS = [
   { name: "Axeman", type: "Combat", effect: "Bloodlust triggers on 1-10 (instead of 1-5) with all axes." },
   { name: "Backstabber", type: "Sneaky", effect: "Ignores enemy armour and NA when attacking from behind." },
   { name: "Bard", type: "Common", effect: "+10 WIS modifier when using instruments." },
+  { name: "Battle Hardened", type: "Racial", effect: "Any permanent wound gives +10 RES; a lasting wound gives +5 RES until it's healed." },
   { name: "Blood Magic", type: "Magic", effect: "Wizard spends HP to create Mana — every 2 HP spent grants 5 Mana. Free during the wizard's turn." },
   { name: "Braveheart", type: "Mental", effect: "+10 bonus on Fear and Terror tests." },
   { name: "Bruiser", type: "Combat", effect: "Bloodlust triggers on 1-10 with hammers, flails, staffs, and morning stars." },
   { name: "Cartographer", type: "Common", effect: "Pass a WIS test before entering a dungeon: exploration deck uses 2 fewer cards (1 corridor, 1 room). Max 2 cards removed regardless of heroes with this talent." },
+  { name: "Cat and Dog", type: "Racial", effect: "Goblins and Dwarfs have a hard time getting along — if there is a Goblin and a Dwarf in the same party, Party Morale suffers a -3 modifier. Situational — apply by hand when party composition changes." },
   { name: "Catlike", type: "Physical", effect: "+5 DEX." },
   { name: "Charming", type: "Common", effect: "This hero negotiates all rewards, +5% Reward Bonus on all quests." },
   { name: "Chivalrous", type: "Profession", effect: "Rescue quests trigger a +30 RES bonus from taking the quest until reward or failure." },
@@ -3019,6 +3105,7 @@ const TALENTS = [
   { name: "Mithril Smith", type: "Common", effect: "Learned in a dwarven settlement (level up, pay 400c) — may forge mithril using the crafting rules." },
   { name: "Mounted Combat", type: "Common", effect: "Allows fighting while mounted on a steed." },
   { name: "Mystic", type: "Magic", effect: "+5 Arcane Arts casting Mysticism spells; Mana cost reduced by 5." },
+  { name: "Natural Illusionist", type: "Racial", effect: "+10 Arcane Arts casting Illusion spells. Starts with one level 1 Illusion spell of choice, regardless of profession." },
   { name: "Natural Killer", type: "Racial", effect: "+1d6 Damage attacking from behind." },
   { name: "Natural Leader", type: "Common", effect: "+2 to Party Morale permanently. Not cumulative across heroes." },
   { name: "Natural Swimmers", type: "Racial", effect: "Ignores negative effects of water, moves through it at normal speed." },
@@ -3049,6 +3136,8 @@ const TALENTS = [
   { name: "Sense for Gold", type: "Sneaky", effect: "-1 on Furniture Table treasure rolls." },
   { name: "Shadow Walker", type: "Sneaky", effect: "Moving, ignores movement restrictions from enemy ZOC." },
   { name: "Sharp-eyed", type: "Sneaky", effect: "+10 bonus on Perception Tests." },
+  { name: "Shunned", type: "Racial", effect: "Some species are looked upon with scepticism. Whenever shunned heroes enter a settlement, roll on the Shunned table (once per group, regardless of how many shunned heroes are present). Luck cannot be used to re-roll." },
+  { name: "Slippery", type: "Racial", effect: "-10 to the Dodge skill, but may dodge 2 times per battle instead of once." },
   { name: "Smith", type: "Common", effect: "May craft weapons and armour using the crafting rules." },
   { name: "Sniper", type: "Combat", effect: "Aim action gives +15 instead of +10." },
   { name: "Streetwise", type: "Sneaky", effect: "Rogue only. Every availability roll modified by -1." },
@@ -3069,6 +3158,7 @@ const TALENTS = [
   { name: "Tunnel Fighter", type: "Combat", effect: "+10 CS fighting in a corridor." },
   { name: "Unconventional", type: "Combat", effect: "May use armour one class higher than their profession permits." },
   { name: "Veteran", type: "Common", effect: "May use equipment from a Quick Slot without spending an AP (once per turn)." },
+  { name: "Weak with Destruction Magic", type: "Racial", effect: "-10 Arcane Arts when casting Destruction magic." },
   { name: "Wise", type: "Mental", effect: "May re-roll a failed WIS test." },
 ];
 
@@ -3090,6 +3180,7 @@ const TALENT_EFFECTS = {
   "Persistent": { mana: 15, label: "+15 Mana" },
   "Confident": { stat: "RES", amount: 5, label: "+5 RES" },
   "Strong-Minded": { sanity: 1, label: "+1 Sanity" },
+  "Tough Mind": { sanity: 2, label: "+2 Sanity" },
 };
 
 // Adjusts a cur/max pair by `amount` in the given direction. Growing (+1) raises both;
@@ -3171,11 +3262,14 @@ const PERKS = [
   { name: "Ignore Wounds", type: "Common", effect: "Gains Natural Armour 2, lasting one battle." },
   { name: "In Tune with the Magic", type: "Arcane", effect: "May Focus before identifying a Magic Item, but risks a miscast (95-00 on 1 Focus action, +5 risk per extra action)." },
   { name: "Inner Power", type: "Arcane", effect: "Magic Missiles do an extra 1d6 Damage. Declared before casting." },
+  { name: "Jumper", type: "Racial", effect: "Spend 1 Energy Point to jump across two squares (moves 3 squares total). Always succeeds, no DEX test needed. May leap hazards (traps, chasms), objects (barrels, tables), and normal-sized characters. Can never jump through a door opening." },
   { name: "Keep Calm and Carry On!", type: "Leader", effect: "Increase Party Morale by +2 (cannot exceed starting morale)." },
+  { name: "Linked to the Void", type: "Racial", effect: "When failing an Arcane Arts roll, may spend 1 Energy Point to make it a success instead." },
   { name: "Living on Nothing", type: "Sneaky", effect: "Spending an Energy Point counts as consuming a ration. Can't regain that Energy in the same rest." },
   { name: "Loot Goblin", type: "Sneaky", effect: "May reroll a gold amount once; decide after the first roll." },
   { name: "Lucky Git", type: "Sneaky", effect: "Reduce the Threat Level by 2." },
   { name: "My Will Be Done", type: "Faith", effect: "+10 RES, lasting until the end of the next battle." },
+  { name: "Now You See Me…", type: "Racial", effect: "Spend 1 Energy Point to become invisible to all — removed from the table and treated as not present, though it keeps its initiative token. Becomes visible again as soon as it takes any action after disappearing, placed as close to its original position as possible." },
   { name: "Perfect Aim", type: "Combat", effect: "+25 RS on your next Ranged Attack." },
   { name: "Perfect Healer", type: "Alchemist", effect: "Your next mixed Healing Potion heals +3 HP. Used when the potion is mixed." },
   { name: "Pitcher", type: "Alchemist", effect: "+10 RS on your next potion throw. One potion, declared before throwing." },
@@ -3628,6 +3722,23 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.52.0",
+    date: "2026-08-22",
+    sections: {
+      "Added": [
+        "Dwarf and Elf character creation now has a Subspecies picker (Advanced Bestiary): Nozhrak, Derthzak, Noarzth, Fizrtheg, Dergthaz, Glanrak, and Kiirahkz for Dwarves; Wald-adjaar'ii, Mondel-adjaar'ii, and Sethel-adjaar'ii for Elves — each with a note card and one-tap buttons to grant the Talent(s)/skill bonus it comes with. Wood Elves can also take a Pudoa'ii (now in the Weapon picker) instead of their profession's usual starting weapon",
+        "Duckfolk, Frogling, Gnome, Pale Orc, and Pale Goblin now have their full Traits and profession limitations from the Advanced Bestiary, auto-applied on \"Roll Starting Stats\" the same way Elf/Dwarf/Half-Ogre traits already were. Half-Ogre's \"+2 Sanity\" is now a real, formal Tough Mind talent instead of just a note. Duckfolk's base stats corrected (CON 25→20, DEX 30→40)",
+        "Stat Maximum caps added for all 10 species (previously only Duckfolk and Half-Ogre had them) — also corrects two existing errors (Duckfolk WIS was 70, should be 80; Half-Ogre CON/RES were 60, should be 80)",
+        "10 new Talents/Perks added to the Compendium: Battle Hardened, Cat and Dog, Jumper, Linked to the Void, Natural Illusionist, Now You See Me…, Shunned, Slippery, Weak with Destruction Magic, Natural Swimmers",
+        "Legendary Items with a real Weapon/Armour type (Breastplate of Rannulf, Armour of the Father, Golden Khopesh, Bow of Divine Twilight, and 6 others) can now be equipped directly into the hero's actual gear slot — swaps out whatever was worn before, and fills in the item's real DMG/DEF/ENC at 8 DUR (the Magic Items rule). Previously these just sat as a description card with no way to equip them",
+        "Legendary Items are now immune to the Durability loss step in Resolve a Hit, matching the rulebook (\"never run out of magic and can't be damaged\") — ordinary magic gear is unaffected",
+      ],
+      "Fixed": [
+        "Alchemist Belt now actually expands Quick Slots from 3 to 9 as the rulebook states — the extra 6 slots are restricted to potions/vials only, with a clear message if a non-bottle item is moved there instead. Previously the belt had no effect on Quick Slot capacity at all",
+      ],
+    },
+  },
   {
     version: "1.51.1",
     date: "2026-08-21",
@@ -6025,8 +6136,19 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     // Species starting Traits that map to an unconditional Talent bonus — applied once
     // (won't stack on reroll). Hate Goblins (Dwarf) and Jack of All Trades (Human) need
     // a chosen enemy/category respectively, so those stay manual via the Compendium.
-    const speciesTraitTalents = { Elf: ["Night Vision", "Perfect Hearing"], Dwarf: ["Night Vision"], "Half-Ogre": ["Stupid"] }[speciesData.name] || [];
+    const speciesTraitTalents = {
+      Elf: ["Night Vision", "Perfect Hearing"],
+      Dwarf: ["Night Vision"],
+      "Half-Ogre": ["Stupid", "Tough Mind"],
+      Duckfolk: ["Magic Resistance", "Natural Swimmers", "Natural Killer"],
+      Frogling: ["Gatherer", "Natural Swimmers", "Night Vision", "Shunned"],
+      "Pale Orc": ["Night Vision", "Tough Mind", "Shunned", "Battle Hardened"],
+      "Pale Goblin": ["Night Vision", "Natural Killer", "Trapfinder", "Shunned", "Cat and Dog"],
+    }[speciesData.name] || [];
+    // Racial Perks that apply the same way, just kept in hero.perks instead of hero.talents.
+    const speciesTraitPerks = { Gnome: ["Linked to the Void", "Now You See Me…"], Frogling: ["Jumper"] }[speciesData.name] || [];
     let talents = hero.talents;
+    let perks = hero.perks;
     let workingHero = { ...hero, stats: newStats, skills: nextSkills };
     speciesTraitTalents.forEach((tName) => {
       if (!talents.includes(tName)) {
@@ -6034,12 +6156,22 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
         talents = [...talents, tName];
       }
     });
+    speciesTraitPerks.forEach((pName) => {
+      if (!perks.includes(pName)) perks = [...perks, pName];
+    });
+    // Gnome (Slippery, Weak with Destruction Magic, Natural Illusionist) and remaining
+    // racial Talents without a numeric TALENT_EFFECTS bonus still get added directly so
+    // they're visible on the sheet without a manual Compendium trip.
+    const extraTraitTalents = { Gnome: ["Slippery", "Weak with Destruction Magic", "Natural Illusionist"] }[speciesData.name] || [];
+    extraTraitTalents.forEach((tName) => {
+      if (!talents.includes(tName)) talents = [...talents, tName];
+    });
     nextSkills = workingHero.skills;
 
     // Lucky (Halfling) — starts with 1 Luck Point; non-halflings start at 0.
     const luckPatch = speciesData.name === "Halfling" ? { luck: { cur: Math.max(hero.luck.cur, 1), max: Math.max(hero.luck.max, 1) } } : {};
 
-    update({ ...hero, stats: newStats, skills: nextSkills, hp: { cur: hpRoll, max: hpRoll }, creationPoints: 15, creationPointsSpent: { STR: 0, CON: 0, DEX: 0, WIS: 0, RES: 0 }, talents, ...luckPatch, ...manaPatch, startingStatsRolled: true });
+    update({ ...hero, stats: newStats, skills: nextSkills, hp: { cur: hpRoll, max: hpRoll }, creationPoints: 15, creationPointsSpent: { STR: 0, CON: 0, DEX: 0, WIS: 0, RES: 0 }, talents, perks, ...luckPatch, ...manaPatch, startingStatsRolled: true });
   };
 
   const recalcSkills = () => set({ skills: computeProfessionSkills(hero) });
@@ -6225,14 +6357,26 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
   const removeBackpackItem = (id) => set({ backpack: hero.backpack.filter((it) => it.id !== id) });
   const quickSlotUsed = hero.backpack.filter((it) => it.slot === "quickslot").length;
   const quickSlotMax = quickSlotCapacity(hero);
+  const alchemistSlotMax = alchemistBeltSlots(hero);
+  const quickSlotGeneralUsed = hero.backpack.filter((it) => it.slot === "quickslot" && !isBottledItem(it.name)).length;
+  const quickSlotTotalMax = quickSlotMax + alchemistSlotMax;
   const [backpackFeedback, setBackpackFeedback] = useState(null);
   const moveSlot = (item) => {
     const movingToQuick = item.slot !== "quickslot";
-    if (movingToQuick && quickSlotUsed >= quickSlotMax) {
-      const msg = `No room in Quick Slots (${quickSlotUsed}/${quickSlotMax}) for ${item.name}. Move something else out first, or clear it.`;
-      setBackpackFeedback({ text: msg, tone: "bad" });
-      addLog && addLog(`${hero.name}: ${msg}`);
-      return;
+    if (movingToQuick) {
+      const bottled = isBottledItem(item.name);
+      if (!bottled && quickSlotGeneralUsed >= quickSlotMax) {
+        const msg = `No room in the general Quick Slots (${quickSlotGeneralUsed}/${quickSlotMax}) for ${item.name}. The Alchemist Belt's extra slots are potions/vials only. Move something else out first, or clear it.`;
+        setBackpackFeedback({ text: msg, tone: "bad" });
+        addLog && addLog(`${hero.name}: ${msg}`);
+        return;
+      }
+      if (bottled && quickSlotUsed >= quickSlotTotalMax) {
+        const msg = `No room in Quick Slots (${quickSlotUsed}/${quickSlotTotalMax}) for ${item.name}. Move something else out first, or clear it.`;
+        setBackpackFeedback({ text: msg, tone: "bad" });
+        addLog && addLog(`${hero.name}: ${msg}`);
+        return;
+      }
     }
     const ap = hero.ap ?? 2;
     if (ap < 2) {
@@ -6285,6 +6429,39 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     }
   };
   const isEquippable = (item) => WEAPONS.some((w) => w.name === item.name) || ARMOUR_AND_SHIELDS.some((a) => a.name === item.name);
+
+  // Equips a Legendary Item into its real Weapon/Armour slot (LEGENDARY_EQUIP), swapping
+  // whatever was there back into the backpack — same pattern as equipFromBackpack, but
+  // sourced from the Legendary Items table instead of the ordinary Weapon/Armour tables,
+  // and always at 8 DUR (Magic Items rule). `optionName`/`optionStats` are used for
+  // Armour of the Father, whose base armour type depends on the hero's profession.
+  const equipLegendaryItem = (itemName, optionName, optionStats) => {
+    const eq = LEGENDARY_EQUIP[itemName];
+    if (!eq) return;
+    const displayName = optionName || itemName;
+    const stats = optionStats || eq;
+    if (eq.slot === "weapon") {
+      let backpack = hero.backpack;
+      if (hero.weapon.name) {
+        const oldRef = WEAPONS.find((w) => w.name === hero.weapon.name);
+        backpack = [...backpack, { id: uid(), name: hero.weapon.name, value: oldRef ? oldRef.cost : "", enc: hero.weapon.enc, dur: `${hero.weapon.dur.cur}/${hero.weapon.dur.max}`, slot: "backpack" }];
+      }
+      update({ ...hero, weapon: { name: displayName, dmg: stats.dmg, enc: stats.enc, dur: { cur: 8, max: 8 } }, backpack });
+      setBackpackFeedback({ text: `${displayName} equipped (weapon).${hero.weapon.name ? ` ${hero.weapon.name} moved to the backpack.` : ""}`, tone: "good" });
+      addLog && addLog(`${hero.name} equips the Legendary Item "${displayName}" as their weapon.${hero.weapon.name ? ` ${hero.weapon.name} moved to the backpack.` : ""}`);
+      return;
+    }
+    const loc = eq.slot;
+    let backpack = hero.backpack;
+    const oldPiece = hero.armour[loc];
+    if (oldPiece.name) {
+      const oldRef = ARMOUR_AND_SHIELDS.find((a) => a.name === oldPiece.name);
+      backpack = [...backpack, { id: uid(), name: oldPiece.name, value: oldRef ? oldRef.cost : "", enc: oldPiece.enc, dur: `${oldPiece.dur.cur}/${oldPiece.dur.max}`, slot: "backpack" }];
+    }
+    update({ ...hero, armour: { ...hero.armour, [loc]: { name: displayName, def: stats.def, enc: stats.enc, dur: { cur: 8, max: 8 } } }, backpack });
+    setBackpackFeedback({ text: `${displayName} equipped (${loc}).${oldPiece.name ? ` ${oldPiece.name} moved to the backpack.` : ""}`, tone: "good" });
+    addLog && addLog(`${hero.name} equips the Legendary Item "${displayName}" (${loc}).${oldPiece.name ? ` ${oldPiece.name} moved to the backpack.` : ""}`);
+  };
 
   const [conditionInput, setConditionInput] = useState("");
   const addCondition = () => {
@@ -6418,6 +6595,76 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               )}
             </div>
           </div>
+          {speciesData && speciesData.subspecies && (
+            <div className="mt-1.5">
+              <select
+                value={hero.subspecies || ""}
+                onChange={(e) => set({ subspecies: e.target.value })}
+                className="w-full text-xs rounded px-2 py-1"
+                style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", color: hero.subspecies ? palette.ink : palette.inkSoft }}
+              >
+                <option value="">Subspecies (optional)…</option>
+                {speciesData.subspecies.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              {(() => {
+                const sub = speciesData.subspecies.find((s) => s.id === hero.subspecies);
+                if (!sub) return null;
+                return (
+                  <div className="mt-1.5 p-2 rounded text-xs" style={{ background: "#00000006", borderLeft: `3px solid ${palette.goldSoft}` }}>
+                    <p style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+                      <b style={{ color: palette.ink, fontStyle: "normal" }}>{sub.name}:</b> {sub.note}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {sub.grantsTalent && (
+                        <button
+                          onClick={() => {
+                            if (hero.talents.includes(sub.grantsTalent)) return;
+                            const patch = talentEffectPatch(hero, sub.grantsTalent, 1);
+                            update({ ...hero, ...patch, talents: [...hero.talents, sub.grantsTalent] });
+                          }}
+                          disabled={hero.talents.includes(sub.grantsTalent)}
+                          className="text-[11px] px-2 py-1 rounded font-semibold"
+                          style={{ background: hero.talents.includes(sub.grantsTalent) ? palette.forestDark : "#fff", color: hero.talents.includes(sub.grantsTalent) ? palette.parchment : palette.ink, border: `1px solid ${palette.line}` }}
+                        >
+                          {hero.talents.includes(sub.grantsTalent) ? `✓ ${sub.grantsTalent}` : `+ Add ${sub.grantsTalent}`}
+                        </button>
+                      )}
+                      {sub.grantsTalentChoice && sub.grantsTalentChoice.map((tName) => (
+                        <button
+                          key={tName}
+                          onClick={() => {
+                            if (hero.talents.includes(tName)) return;
+                            const patch = talentEffectPatch(hero, tName, 1);
+                            update({ ...hero, ...patch, talents: [...hero.talents, tName] });
+                          }}
+                          disabled={hero.talents.includes(tName)}
+                          className="text-[11px] px-2 py-1 rounded font-semibold"
+                          style={{ background: hero.talents.includes(tName) ? palette.forestDark : "#fff", color: hero.talents.includes(tName) ? palette.parchment : palette.ink, border: `1px solid ${palette.line}` }}
+                        >
+                          {hero.talents.includes(tName) ? `✓ ${tName}` : `+ Add ${tName}`}
+                        </button>
+                      ))}
+                      {sub.skillBonus && (
+                        <button
+                          onClick={() => {
+                            const applied = (hero.subspeciesBonusApplied || []).includes(sub.id);
+                            if (applied) return;
+                            const patch = applyEffectDelta(hero, sub.skillBonus, 1);
+                            update({ ...hero, ...patch, subspeciesBonusApplied: [...(hero.subspeciesBonusApplied || []), sub.id] });
+                          }}
+                          disabled={(hero.subspeciesBonusApplied || []).includes(sub.id)}
+                          className="text-[11px] px-2 py-1 rounded font-semibold"
+                          style={{ background: (hero.subspeciesBonusApplied || []).includes(sub.id) ? palette.forestDark : "#fff", color: (hero.subspeciesBonusApplied || []).includes(sub.id) ? palette.parchment : palette.ink, border: `1px solid ${palette.line}` }}
+                        >
+                          {(hero.subspeciesBonusApplied || []).includes(sub.id) ? "✓ Skill bonus applied" : "+ Apply Skill Bonus"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
           <button
             onClick={levelUp}
             className="text-[10px] px-2 py-0.5 rounded mt-1"
@@ -7503,7 +7750,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
             Adds a spare — tap the sword icon on a weapon/armour row below to actually equip it (swaps whatever's currently worn back into the backpack).
           </p>
           <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-            <span className="font-semibold" style={{ color: palette.ink }}>Quick Slots: {quickSlotUsed}/{quickSlotMax}</span> — tap Q/B on an item to move it (2 AP). {quickSlotMax > 3 ? "Capacity raised by an owned Combat Harness/Extended Battle Belt." : "Base 3; a Combat Harness or Extended Battle Belt raises this."}
+            <span className="font-semibold" style={{ color: palette.ink }}>Quick Slots: {quickSlotUsed}/{quickSlotTotalMax}</span> — tap Q/B on an item to move it (2 AP). {quickSlotMax > 3 ? "General capacity raised by an owned Combat Harness/Extended Battle Belt." : "Base 3 general slots; a Combat Harness or Extended Battle Belt raises this."} {alchemistSlotMax > 0 ? `Alchemist Belt adds ${alchemistSlotMax} more, potions/vials only (${quickSlotGeneralUsed}/${quickSlotMax} general used).` : "An Alchemist Belt adds 6 more, restricted to potions/vials."}
           </p>
           {backpackFeedback && (
             <p className="text-[10px] mb-1.5 font-semibold" style={{ color: backpackFeedback.tone === "good" ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif" }}>
@@ -7653,6 +7900,45 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                   if (LEGENDARY_ITEM_EFFECTS[t]) addLog && addLog(`${hero.name}: removed Legendary Item "${t}" (${LEGENDARY_ITEM_EFFECTS[t].label} reversed).`);
                 }}
               />
+              {(hero.legendaryItems || []).filter((t) => LEGENDARY_EQUIP[t]).map((t) => {
+                const eq = LEGENDARY_EQUIP[t];
+                if (eq.options) {
+                  return (
+                    <div key={t} className="mb-1.5 p-2 rounded text-xs" style={{ background: "#00000006", borderLeft: `3px solid ${palette.gold}` }}>
+                      <p style={{ color: palette.inkSoft, fontStyle: "italic" }}>{eq.special}</p>
+                      <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        {eq.options.map((opt) => {
+                          const equipped = hero.armour[eq.slot].name === opt.name;
+                          return (
+                            <button
+                              key={opt.name}
+                              onClick={() => equipLegendaryItem(t, opt.name, opt)}
+                              disabled={equipped}
+                              className="text-[11px] px-2 py-1 rounded font-semibold"
+                              style={{ background: equipped ? palette.forestDark : "#fff", color: equipped ? palette.parchment : palette.ink, border: `1px solid ${palette.line}` }}
+                            >
+                              {equipped ? `✓ ${opt.name.replace(`${t} (`, "").replace(")", "")}` : opt.name.replace(`${t} (`, "").replace(")", "")}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                }
+                const equipped = eq.slot === "weapon" ? hero.weapon.name === t : hero.armour[eq.slot].name === t;
+                return (
+                  <div key={t} className="mb-1.5">
+                    <button
+                      onClick={() => equipLegendaryItem(t)}
+                      disabled={equipped}
+                      className="w-full text-xs px-2 py-1.5 rounded font-semibold"
+                      style={{ background: equipped ? palette.forestDark : palette.gold, color: equipped ? palette.parchment : palette.charcoal }}
+                    >
+                      {equipped ? `✓ ${t} equipped (${eq.slot})` : `Equip ${t} (${eq.slot})`}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -12334,10 +12620,14 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
       remaining = Math.max(0, remaining - outerLayer.def);
       steps.push(`${outerLayer.name} (outer) absorbs ${Math.min(before, outerLayer.def)} DEF — ${before} → ${remaining} remaining.`);
       if (remaining > 0) {
-        const nd = Math.max(0, outerLayer.dur.cur - 1);
-        newDur[outerLayer.key] = nd;
-        steps.push(`Didn't fully absorb → ${outerLayer.name} loses 1 DUR (${outerLayer.dur.cur}/${outerLayer.dur.max} → ${nd}/${outerLayer.dur.max}).`);
-        if (nd === 0) breaks.push(outerLayer);
+        if (isLegendaryGear(outerLayer.name)) {
+          steps.push(`${outerLayer.name} is a Legendary Item — it can't be damaged, so no DUR loss.`);
+        } else {
+          const nd = Math.max(0, outerLayer.dur.cur - 1);
+          newDur[outerLayer.key] = nd;
+          steps.push(`Didn't fully absorb → ${outerLayer.name} loses 1 DUR (${outerLayer.dur.cur}/${outerLayer.dur.max} → ${nd}/${outerLayer.dur.max}).`);
+          if (nd === 0) breaks.push(outerLayer);
+        }
       } else {
         steps.push(`Fully absorbed → ${outerLayer.name} takes no DUR loss.`);
       }
@@ -12347,10 +12637,14 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
       remaining = Math.max(0, remaining - innerLayer.def);
       steps.push(`${innerLayer.name} (inner, ½ DEF) absorbs ${Math.min(before, innerLayer.def)} DEF — ${before} → ${remaining} remaining.`);
       if (remaining > 0) {
-        const nd = Math.max(0, innerLayer.dur.cur - 1);
-        newDur[innerLayer.key] = nd;
-        steps.push(`Didn't fully absorb → ${innerLayer.name} loses 1 DUR (${innerLayer.dur.cur}/${innerLayer.dur.max} → ${nd}/${innerLayer.dur.max}).`);
-        if (nd === 0) breaks.push(innerLayer);
+        if (isLegendaryGear(innerLayer.name)) {
+          steps.push(`${innerLayer.name} is a Legendary Item — it can't be damaged, so no DUR loss.`);
+        } else {
+          const nd = Math.max(0, innerLayer.dur.cur - 1);
+          newDur[innerLayer.key] = nd;
+          steps.push(`Didn't fully absorb → ${innerLayer.name} loses 1 DUR (${innerLayer.dur.cur}/${innerLayer.dur.max} → ${nd}/${innerLayer.dur.max}).`);
+          if (nd === 0) breaks.push(innerLayer);
+        }
       } else {
         steps.push(`Fully absorbed → ${innerLayer.name} takes no DUR loss.`);
       }

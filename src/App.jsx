@@ -13041,11 +13041,11 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
                 {result.isBloodlust && " Bloodlust! Roll DMG twice and take the higher — or, if this was a Power Attack, DMG is automatic max instead."}
               </p>
               <button
-                onClick={() => { setMode("damage"); setResult(null); }}
+                onClick={() => { setMode("resolveHit"); setResult(null); }}
                 className="mt-2 text-xs px-3 py-1.5 rounded-full font-semibold flex items-center gap-1.5"
                 style={{ background: palette.crimson, color: palette.parchment, fontFamily: "Crimson Pro, serif" }}
               >
-                <Shield size={12} /> Go to Damage
+                <Shield size={12} /> Resolve the Hit
               </button>
             </div>
           )}

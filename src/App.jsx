@@ -12953,13 +12953,24 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
             </label>
             <label className="text-xs flex-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
               Enemy {mode === "cc" ? "TO HIT" : "DEFENCE"} mod
-              <input
-                type="number"
-                value={enemyMod}
-                onChange={(e) => { setEnemyPick(""); setEnemyMod(Number(e.target.value) || 0); }}
-                className="w-full rounded px-2 py-1 mt-1 font-bold"
-                style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
-              />
+              <div className="flex items-center gap-1 mt-1">
+                <button
+                  type="button"
+                  onClick={() => { setEnemyPick(""); setEnemyMod((v) => -Number(v || 0)); }}
+                  className="px-2.5 py-1 rounded font-bold text-sm shrink-0"
+                  style={{ border: `1px solid ${palette.line}`, background: "#fff", color: palette.inkSoft }}
+                  aria-label="Toggle positive/negative"
+                >
+                  ±
+                </button>
+                <input
+                  type="number"
+                  value={enemyMod}
+                  onChange={(e) => { setEnemyPick(""); setEnemyMod(Number(e.target.value) || 0); }}
+                  className="w-full rounded px-2 py-1 font-bold"
+                  style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
+                />
+              </div>
             </label>
           </div>
           <label className="text-xs block mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
@@ -12977,7 +12988,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
             </select>
           </label>
           <p className="text-[10px] -mt-2 mb-3 italic" style={{ color: palette.inkSoft }}>
-            Enter as printed on the card (e.g. -10) — it's added to the roll directly, so a negative value lowers the effective {mode === "cc" ? "CS" : "RS"} as expected.
+            Not in the Bestiary (Advanced Bestiary, homebrew, etc.)? Just type the value directly above — tap ± to switch it positive/negative. It's added to the roll as entered, matching what's printed on the card.
           </p>
           {mode === "ranged" && (
             <label className="text-xs block mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>

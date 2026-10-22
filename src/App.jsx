@@ -584,6 +584,7 @@ const defaultParty = () => ({
   // for still-living models return to the bag and get reused each round), not reset every
   // turn. Living here means it also survives switching tabs mid-combat.
   initiativeSetup: { enemyCount: 1, namedMonsterCount: 0, largeMonsterCount: 0, perfectHearing: false, enemyPerfectHearing: false, swiftLeader: false, sneaky: false, doorBashed: false, ambushed: false },
+  advancedRules: { overwatch: false, limitedBleeding: false, quickSlotDamage: false }, // optional rules (rulebook p184/193/194)
   initiativeBag: null, // array of "hero"/"enemy" tokens still in the bag, or null before first build
   initiativeDrawOrder: [], // tokens drawn so far, in order
 });
@@ -598,6 +599,7 @@ function normalizeParty(p) {
   merged.storage = { ...defaultParty().storage, ...(p?.storage || {}) };
   merged.magicWorkshop = { ...defaultParty().magicWorkshop, ...(p?.magicWorkshop || {}) };
   merged.initiativeSetup = { ...defaultParty().initiativeSetup, ...(p?.initiativeSetup || {}) };
+  merged.advancedRules = { ...defaultParty().advancedRules, ...(p?.advancedRules || {}) };
   merged.quests = { ...defaultParty().quests, ...(p?.quests || {}) };
   merged.quests.completed = { ...(p?.quests?.completed || {}) };
   return merged;
@@ -1162,27 +1164,27 @@ function repairCostPerPoint(price) {
 // Availability, and Reload (missile weapons only). All weapons have Durability 6
 // unless otherwise noted in the book — none of these are noted otherwise.
 const WEAPONS = [
-  { name: "Dagger", dmg: "1d6", enc: 5, class: 1, special: "Dual Wield +1", cost: 10, avail: 4, reload: null },
+  { name: "Dagger", dmg: "1d6", enc: 5, class: 1, wtype: "E", special: "Dual Wield +1, Bleed", cost: 10, avail: 4, reload: null },
   { name: "Pudoa'ii", dmg: "2d4+2", enc: 10, class: 3, special: "Reach, AP (1). Elf-only alternate starting weapon.", cost: 350, avail: 2, reload: null },
-  { name: "Rapier", dmg: "1d6+1", enc: 5, class: 1, special: "Fast, Dual Wield +2", cost: 130, avail: 3, reload: null },
-  { name: "Javelin", dmg: "1d10", enc: 10, class: 2, special: "Reach, BFO, AP(1)", cost: 100, avail: 4, reload: null },
-  { name: "Shortsword", dmg: "1d6+2", enc: 7, class: 2, special: "Dual Wield +2", cost: 70, avail: 4, reload: null },
-  { name: "Staff", dmg: "1d8", enc: 5, class: 2, special: "Defensive", cost: 5, avail: 5, reload: null },
-  { name: "Battle Hammer", dmg: "1d10", enc: 10, class: 3, special: "Stun, BFO", cost: 100, avail: 4, reload: null },
-  { name: "Broadsword", dmg: "1d8+2", enc: 8, class: 3, special: "", cost: 90, avail: 5, reload: null },
-  { name: "Battleaxe", dmg: "1d10+1", enc: 10, class: 4, special: "BFO, AP(1)", cost: 100, avail: 4, reload: null },
-  { name: "Longsword", dmg: "1d12", enc: 10, class: 4, special: "", cost: 100, avail: 4, reload: null },
-  { name: "Morning Star", dmg: "1d8+4", enc: 10, class: 4, special: "Unwieldy, BFO, Stun", cost: 150, avail: 2, reload: null },
-  { name: "Flail", dmg: "1d10+4", enc: 20, class: 5, special: "Unwieldy, BFO, Stun", cost: 150, avail: 2, reload: null },
-  { name: "Greataxe", dmg: "1d12+2", enc: 20, class: 5, special: "Slow, BFO, AP(2)", cost: 200, avail: 3, reload: null },
-  { name: "Greatsword", dmg: "2d6", enc: 20, class: 5, special: "Slow", cost: 200, avail: 3, reload: null },
-  { name: "Halberd", dmg: "1d12", enc: 20, class: 5, special: "Reach, AP(1)", cost: 150, avail: 4, reload: null },
-  { name: "Warhammer", dmg: "2d6", enc: 20, class: 5, special: "Slow, BFO, Stun", cost: 200, avail: 3, reload: null },
+  { name: "Rapier", dmg: "1d6+1", enc: 5, class: 1, wtype: "P", special: "Fast, Dual Wield +2", cost: 130, avail: 3, reload: null },
+  { name: "Javelin", dmg: "1d10", enc: 10, class: 2, wtype: "P", special: "Reach, BFO, AP(1)", cost: 100, avail: 4, reload: null },
+  { name: "Shortsword", dmg: "1d6+2", enc: 7, class: 2, wtype: "E", special: "Dual Wield +2, Bleed", cost: 70, avail: 4, reload: null },
+  { name: "Staff", dmg: "1d8", enc: 5, class: 2, wtype: "C", special: "Defensive", cost: 5, avail: 5, reload: null },
+  { name: "Battle Hammer", dmg: "1d10", enc: 10, class: 3, wtype: "C", special: "Stun, BFO", cost: 100, avail: 4, reload: null },
+  { name: "Broadsword", dmg: "1d8+2", enc: 8, class: 3, wtype: "E", special: "Bleed", cost: 90, avail: 5, reload: null },
+  { name: "Battleaxe", dmg: "1d10+1", enc: 10, class: 4, wtype: "E", special: "BFO, AP(1), Bleed", cost: 100, avail: 4, reload: null },
+  { name: "Longsword", dmg: "1d12", enc: 10, class: 4, wtype: "E", special: "Bleed", cost: 100, avail: 4, reload: null },
+  { name: "Morning Star", dmg: "1d8+4", enc: 10, class: 4, wtype: "C", special: "Unwieldy, BFO, Stun", cost: 150, avail: 2, reload: null },
+  { name: "Flail", dmg: "1d10+4", enc: 20, class: 5, wtype: "C", special: "Unwieldy, BFO, Stun", cost: 150, avail: 2, reload: null },
+  { name: "Greataxe", dmg: "1d12+2", enc: 20, class: 5, wtype: "E", special: "Slow, BFO, AP(2), Bleed", cost: 200, avail: 3, reload: null },
+  { name: "Greatsword", dmg: "2d6", enc: 20, class: 5, wtype: "E", special: "Slow, Bleed", cost: 200, avail: 3, reload: null },
+  { name: "Halberd", dmg: "1d12", enc: 20, class: 5, wtype: "E", special: "Reach, AP(1), Bleed", cost: 150, avail: 4, reload: null },
+  { name: "Warhammer", dmg: "2d6", enc: 20, class: 5, wtype: "C", special: "Slow, BFO, Stun", cost: 200, avail: 3, reload: null },
   { name: "Arbalest", dmg: "3d6", enc: 20, class: 6, special: "Requires STR 55, AP(2)", cost: 400, avail: 2, reload: 3 },
   { name: "Crossbow", dmg: "1d10+3", enc: 15, class: 6, special: "AP(1)", cost: 250, avail: 3, reload: 2 },
   { name: "Crossbow Pistol", dmg: "1d8+1", enc: 5, class: 2, special: "Secondary Weapon", cost: 350, avail: 2, reload: 2 },
-  { name: "Elven Bow", dmg: "1d10+2", enc: 7, class: 6, special: "AP(1)", cost: 700, avail: 2, reload: 1 },
-  { name: "Longbow", dmg: "1d10", enc: 10, class: 6, special: "AP(1)", cost: 100, avail: 4, reload: 1 },
+  { name: "Elven Bow", dmg: "1d10+2", enc: 7, class: 6, special: "Requires STR 35, AP(1)", cost: 700, avail: 2, reload: 1 },
+  { name: "Longbow", dmg: "1d10", enc: 10, class: 6, special: "Requires STR 40, AP(1)", cost: 100, avail: 4, reload: 1 },
   { name: "Shortbow", dmg: "1d8", enc: 5, class: 6, special: "", cost: 100, avail: 4, reload: 1 },
   { name: "Sling", dmg: "1d6", enc: 1, class: 6, special: "Unlimited Ammo", cost: 40, avail: 4, reload: null },
   { name: "Net", dmg: "-", enc: 2, class: 2, special: "Ensnare, Dual Wield +0", cost: 100, avail: 3, reload: null },
@@ -1584,7 +1586,7 @@ const POTION_EFFECTS = {
   "Potion of Cure Disease": "Cures a disease: 75% (Weak) or 100% (Standard/Supreme) chance. Supreme also heals 1d3 HP.",
   "Potion of Cure Poison (Antidote)": "Cures poison: 75% (Weak) or 100% (Standard/Supreme) chance. Supreme also heals 1d3 HP.",
   "Potion of Disorientation": "(Tr) Thrown. Hit square: RES test or forfeit next turn. Adjacent squares: RES test at +20. Doesn't work on undead.",
-  "Potion of Dexterity": "+5 / +10 / +15 DEX (and DEX-based skills), temporary, same duration as Potion of Constitution.",
+  "Potion of Dexterity": "+10 / +15 / +20 DEX (Weak/Standard/Supreme; and DEX-based skills), temporary, same duration as Potion of Constitution.",
   "Potion of Dragon's Breath": "Breathe fire once: range 2 squares, 1d8 to one adjacent square, or 1d4 to two connected squares.",
   "Potion of Dragon Skin": "Ignore all damage for 3 turns except spells/poison. Armour can still take damage, but the hero takes no HP loss.",
   "Potion of Energy": "+1 / +2 / +3 Energy (Weak/Standard/Supreme) until the end of the dungeon or skirmish.",
@@ -3817,6 +3819,27 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.63.0",
+    date: "2026-10-22",
+    sections: {
+      "Added": [
+        "Perfect Results (rulebook p22): a natural 01–05 on a successful attack, Dodge/Parry, spell, prayer or any Stat/Skill check now offers +1 Energy or a permanent +1 to that exact skill/stat (once per skill/stat per settlement visit, skills max 80, stats max by species; WIS recalculates Mana, RES updates Party Morale). The Stat/Skill Check tool now includes the stats too",
+        "Hero damage roller in the Combat tab after a successful hit: rolls the equipped weapon's damage (Bloodlust rolls twice), adds Damage Bonus, subtracts enemy Natural Armour/armour, applies Crushing (+2 vs Just Bones), Piercing (−2 vs Just Bones, push on odd rolls), Stun and Edged notes, and automates the new Bleed rule",
+        "Weapon types (Edged/Piercing/Crushing) shown on the hero card, Bleed added to the Edged weapons, and bow Strength requirements corrected",
+        "Prayers now make a real Battle Prayers Test: 1 Energy whether it works or not, Impeccable Prayer (01–05) is free and automatic, only one prayer is active at a time",
+        "New Dispel tool: Arcane Arts ÷ 2 test, costs 15 Mana (or Mana to 0 and 1d3 Sanity)",
+        "New Advanced rules panel (all off by default): Overwatch, Limited Bleeding-Out Time and Quick Slot Damage",
+        "Updated the link-preview share image to show v2.571 support",
+      ],
+      "Fixed": [
+        "A natural 91–00 now always fails, and 01–05 only counts as Perfect when the test succeeds",
+        "Mithril weapons/armour can no longer drop below ENC 1",
+        "Potion of Dexterity text corrected to +10/+15/+20",
+        "Starting weapon and armour now lose 1d4 Durability as the rulebook says",
+      ],
+    },
+  },
   {
     version: "1.62.0",
     date: "2026-10-22",
@@ -6151,15 +6174,17 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     if (weaponName) {
       const w = WEAPONS.find((x) => x.name === weaponName);
       if (w) {
-        patch.weapon = { name: w.name, dmg: w.dmg, enc: w.enc, dur: { cur: 6, max: 6 } };
-        lines.push(w.name);
+        const loss = rollDie(4); // p46: every starting item loses 1d4 DUR, to a minimum of 1 remaining
+        patch.weapon = { name: w.name, dmg: w.dmg, enc: w.enc, dur: { cur: Math.max(1, 6 - loss), max: 6 } };
+        lines.push(`${w.name} (−${Math.min(loss, 5)} DUR)`);
       }
     }
     if (startingCfg.armour) {
       const a = ARMOUR_AND_SHIELDS.find((x) => x.name === startingCfg.armour);
       if (a) {
-        patch.armour = { ...hero.armour, [a.covers[0]]: { name: a.name, def: a.def, enc: a.enc, dur: { cur: 6, max: 6 } } };
-        lines.push(a.name);
+        const loss = rollDie(4);
+        patch.armour = { ...hero.armour, [a.covers[0]]: { name: a.name, def: a.def, enc: a.enc, dur: { cur: Math.max(1, 6 - loss), max: 6 } } };
+        lines.push(`${a.name} (−${Math.min(loss, 5)} DUR)`);
       }
     }
     const newBackpackItems = (startingCfg.backpackItems || []).filter((it) => !(it.bowOnly && weaponName === "Sling")).map((it) => ({ id: uid(), name: it.name, value: it.value ?? "", enc: it.enc ?? "", dur: "" }));
@@ -6294,17 +6319,18 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
   const setArmourPiece = (loc, patch) => update({ ...hero, armour: { ...hero.armour, [loc]: { ...hero.armour[loc], ...patch } } });
   const toggleWeaponMithril = () => {
     if (hero.weapon.mithril) {
-      setWeapon({ mithril: false, dmg: hero.weapon.mithrilOrigDmg || hero.weapon.dmg, enc: hero.weapon.enc + 2, mithrilOrigDmg: "" });
+      setWeapon({ mithril: false, dmg: hero.weapon.mithrilOrigDmg || hero.weapon.dmg, enc: hero.weapon.mithrilOrigEnc ?? hero.weapon.enc + 2, mithrilOrigDmg: "", mithrilOrigEnc: undefined });
     } else {
-      setWeapon({ mithril: true, mithrilOrigDmg: hero.weapon.dmg, dmg: `${hero.weapon.dmg}+1`, enc: Math.max(0, hero.weapon.enc - 2) });
+      // Mithril can never reduce an item's ENC below 1 (p63).
+      setWeapon({ mithril: true, mithrilOrigDmg: hero.weapon.dmg, mithrilOrigEnc: hero.weapon.enc, dmg: `${hero.weapon.dmg}+1`, enc: Math.max(1, hero.weapon.enc - 2) });
     }
   };
   const toggleArmourMithril = (loc) => {
     const piece = hero.armour[loc];
     if (piece.mithril) {
-      setArmourPiece(loc, { mithril: false, def: piece.def - 1, enc: piece.enc + 1 });
+      setArmourPiece(loc, { mithril: false, def: piece.def - 1, enc: piece.mithrilOrigEnc ?? piece.enc + 1, mithrilOrigEnc: undefined });
     } else {
-      setArmourPiece(loc, { mithril: true, def: piece.def + 1, enc: Math.max(0, piece.enc - 1) });
+      setArmourPiece(loc, { mithril: true, def: piece.def + 1, mithrilOrigEnc: piece.enc, enc: Math.max(1, piece.enc - 1) });
     }
   };
   const dissipateWeaponMagic = () => {
@@ -8123,7 +8149,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
             </div>
             {weaponRef && (
               <div className="text-[10px] mt-1 rounded px-2 py-1" style={{ background: "#00000008", color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-                Class {weaponRef.class}{weaponRef.special ? ` · ${weaponRef.special}` : ""} · {weaponRef.cost}c (avail {weaponRef.avail}){weaponRef.reload ? ` · Reload ${weaponRef.reload}` : ""}
+                Class {weaponRef.class}{weaponRef.wtype ? ` · ${({ E: "Edged", P: "Piercing", C: "Crushing" })[weaponRef.wtype]}` : ""}{weaponRef.special ? ` · ${weaponRef.special}` : ""} · {weaponRef.cost}c (avail {weaponRef.avail}){weaponRef.reload ? ` · Reload ${weaponRef.reload}` : ""}
                 {strReq && (
                   <span style={{ color: strTooWeak ? palette.crimson : palette.inkSoft, fontWeight: strTooWeak ? 700 : 400 }}>
                     {" · "}Requires STR {strReq.oneH ? `${strReq.oneH} (1H) / ` : ""}{strReq.twoH} (2H){strTooWeak ? " — under this hero's STR" : ""}
@@ -12886,7 +12912,7 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
   const bag = party.initiativeBag;
   const drawOrder = party.initiativeDrawOrder;
 
-  const heroTokenCount = heroes.length + (perfectHearing && !enemyPerfectHearing ? 1 : 0) + (swiftLeader ? 1 : 0);
+  const heroTokenCount = heroes.filter((h) => !(party.advancedRules?.overwatch && h.overwatch)).length + (perfectHearing && !enemyPerfectHearing ? 1 : 0) + (swiftLeader ? 1 : 0);
   const enemyTokenCount =
     Math.max(0, Number(enemyCount) || 0) +
     Math.max(0, Number(namedMonsterCount) || 0) +
@@ -13507,7 +13533,150 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
 }
 
 // ---------- Combat Calculator ----------
-function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
+// "NdM+K" weapon damage string -> parts. Handles several flat modifiers ("1d10+1+1" for Mithril).
+function parseWeaponDmg(spec) {
+  const str = String(spec || "");
+  const m = str.match(/(\d+)d(\d+)/);
+  const flat = (str.replace(/\d+d\d+/, "").match(/[+-]\s*\d+/g) || []).reduce((a, x) => a + Number(x.replace(/\s/g, "")), 0);
+  return m ? { count: Number(m[1]), sides: Number(m[2]), flat } : { count: 0, sides: 0, flat: Number(str) || 0 };
+}
+
+// Perfect Results (rulebook 2.571 p22): a natural 01-05 on a SUCCESSFUL Stat or Skill Test lets
+// the hero restore 1 Energy, or permanently raise that exact Skill/Stat by +1 (once per
+// settlement visit per skill/stat, skill cap 80, stat cap = species maximum).
+function PerfectResultPrompt({ hero, keyName, updateHero, addLog, setParty }) {
+  const [done, setDone] = useState("");
+  if (!hero || !keyName) return null;
+  const isStat = STAT_KEYS.includes(keyName);
+  const label = isStat ? keyName : (SKILL_LABELS[keyName] || keyName);
+  const cur = Number(isStat ? hero.stats[keyName] : hero.skills[keyName]) || 0;
+  const speciesMax = isStat ? (SPECIES_DATA.find((sp) => sp.name === hero.species)?.max?.[keyName] ?? 99) : 80;
+  const used = !!hero.skillImprovementsUsed?.[keyName];
+  const capped = cur >= speciesMax;
+  const energyFull = hero.energy.cur >= hero.energy.max;
+  const gainEnergy = () => {
+    updateHero({ ...hero, energy: { ...hero.energy, cur: Math.min(hero.energy.max, hero.energy.cur + 1) } });
+    addLog && addLog(`${hero.name}: Perfect Result on ${label} — regains 1 Energy.`);
+    setDone("+1 Energy restored.");
+  };
+  const gainPoint = () => {
+    let patch = { skillImprovementsUsed: { ...(hero.skillImprovementsUsed || {}), [keyName]: true } };
+    const extra = [];
+    if (isStat) {
+      const stats = { ...hero.stats, [keyName]: cur + 1 };
+      patch.stats = stats;
+      if (keyName === "WIS" && (CASTER_SKILL[hero.profession] || hero.mana.max > 0)) {
+        const m = Math.floor(stats.WIS * 1.5);
+        patch.mana = { cur: Math.max(0, hero.mana.cur + (m - hero.mana.max)), max: m };
+        extra.push("max Mana recalculated");
+      }
+      if (keyName === "RES" && (cur + 1) % 10 === 0 && setParty) {
+        setParty((prev) => ({ ...prev, morale: Math.min(20, (prev.morale || 0) + 1), startingMorale: Math.min(20, (prev.startingMorale || 0) + 1) }));
+        extra.push("Party Morale +1");
+      }
+    } else {
+      patch.skills = { ...hero.skills, [keyName]: cur + 1 };
+    }
+    updateHero({ ...hero, ...patch });
+    addLog && addLog(`${hero.name}: Perfect Result on ${label} — permanent +1 (${cur} → ${cur + 1}).${extra.length ? " " + extra.join(", ") + "." : ""}`);
+    setDone(`${label} permanently +1 (${cur + 1}).${extra.length ? " " + extra.join(", ") + "." : ""}`);
+  };
+  return (
+    <div className="mt-2 rounded p-2" style={{ background: "#B8860B18", border: `1px solid ${palette.gold}` }}>
+      <p className="text-xs font-semibold mb-1.5" style={{ color: palette.ink, fontFamily: "Cinzel, serif" }}>Perfect Result! {hero.name} may choose:</p>
+      {done ? (
+        <p className="text-xs" style={{ color: palette.forest, fontFamily: "Crimson Pro, serif" }}>{done}</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          <button onClick={gainEnergy} disabled={energyFull} className="text-xs px-2.5 py-1.5 rounded font-semibold" style={{ background: palette.forestDark, color: palette.parchment, opacity: energyFull ? 0.4 : 1 }}>
+            +1 Energy{energyFull ? " (full)" : ""}
+          </button>
+          <button onClick={gainPoint} disabled={used || capped} className="text-xs px-2.5 py-1.5 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment, opacity: used || capped ? 0.4 : 1 }}>
+            +1 {label}{used ? " (used this visit)" : capped ? ` (at max ${speciesMax})` : ""}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Hero damage roller (rulebook 2.571 p65): weapon type effects (E/P/C), Bleed, Stun.
+function HeroDamageRoller({ hero, perfect, addLog }) {
+  const [naIn, setNaIn] = useState(0);
+  const [armIn, setArmIn] = useState(0);
+  const [wornArmour, setWornArmour] = useState(false);
+  const [justBones, setJustBones] = useState(false);
+  const [immune, setImmune] = useState(false);
+  const [out, setOut] = useState(null);
+  const w = hero?.weapon;
+  if (!w?.name) return <p className="text-xs italic mt-2" style={{ color: palette.inkSoft }}>Equip a weapon on the hero card to roll damage here.</p>;
+  const tmpl = WEAPONS.find((x) => x.name === String(w.name).replace(/^Mithril\s+/i, ""));
+  const wtype = tmpl?.wtype || "";
+  const special = tmpl?.special || "";
+  const hasBleed = /Bleed/i.test(special);
+  const isStun = /Stun/i.test(special);
+  const p = parseWeaponDmg(w.dmg || tmpl?.dmg);
+  const db = damageBonus(hero.stats.STR);
+  const doRoll = () => {
+    const rollOnce = () => { let t = 0; for (let i = 0; i < p.count; i++) t += rollDie(p.sides); return t; };
+    let dice = rollOnce(); let second = null;
+    if (perfect) { second = rollOnce(); dice = Math.max(dice, second); }
+    let weaponDmg = dice + p.flat;
+    const notes = [];
+    if (wtype === "C" && justBones) { weaponDmg += 2; notes.push("Crushing vs Just Bones: +2 DMG"); }
+    if (wtype === "P" && justBones) { weaponDmg -= 2; notes.push("Piercing vs Just Bones: −2 DMG"); }
+    const raw = Math.max(0, weaponDmg + db);
+    const reduction = Number(naIn || 0) + Number(armIn || 0);
+    const dealt = Math.max(0, raw - reduction);
+    if (wtype === "P" && !justBones && dice % 2 === 1) notes.push("Piercing, odd damage roll: push the target 1 square");
+    if (isStun && dice % 2 === 0) notes.push("Stun: even damage roll — target loses an action next turn (doesn't stack)");
+    if (wtype === "E") notes.push("Edged: may be coated with Weapon Oil");
+    const weaponMax = p.count * p.sides + p.flat;
+    let bleed = null;
+    if (hasBleed) {
+      if (immune) bleed = "No Bleed — Undead / magical creatures are immune.";
+      else if (wornArmour) bleed = "No Bleed — target wears armour (Natural Armour doesn't count).";
+      else if (dealt >= 6 && dealt >= weaponMax - 2) bleed = "BLEEDING! Target loses 1 HP at the start of each of its activations (doesn't stack; ends if healed).";
+      else bleed = `No Bleed — needs ≥6 damage and within 2 of the weapon's max (${weaponMax}); dealt ${dealt}.`;
+    }
+    setOut({ dice, second, weaponDmg, db, raw, reduction, dealt, notes, bleed });
+    addLog && addLog(`${hero.name}: ${w.name} damage ${dealt} (roll ${dice}${second !== null ? ` / ${second}, Bloodlust` : ""} + ${p.flat} + DB ${db} − ${reduction}).${bleed && bleed.startsWith("BLEEDING") ? " Target is bleeding." : ""}`);
+  };
+  const inp = "w-full px-2 py-1 rounded text-sm";
+  return (
+    <div className="mt-2 rounded p-2.5" style={{ background: "#00000008" }}>
+      <p className="text-xs font-semibold mb-1" style={{ color: palette.ink, fontFamily: "Cinzel, serif" }}>
+        {w.name} · {w.dmg || tmpl?.dmg} {wtype && `· ${({ E: "Edged", P: "Piercing", C: "Crushing" })[wtype]}`} · DB {db >= 0 ? "+" : ""}{db}
+      </p>
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <label className="text-xs" style={{ color: palette.inkSoft }}>Enemy Natural Armour
+          <input type="number" value={naIn} onChange={(e) => setNaIn(e.target.value)} className={inp} style={{ background: palette.parchment, border: `1px solid ${palette.leatherDark}`, color: palette.ink }} /></label>
+        <label className="text-xs" style={{ color: palette.inkSoft }}>Enemy worn armour
+          <input type="number" value={armIn} onChange={(e) => { setArmIn(e.target.value); setWornArmour(Number(e.target.value) > 0); }} className={inp} style={{ background: palette.parchment, border: `1px solid ${palette.leatherDark}`, color: palette.ink }} /></label>
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 mb-2 text-xs" style={{ color: palette.inkSoft }}>
+        <label className="flex items-center gap-1"><input type="checkbox" checked={justBones} onChange={(e) => setJustBones(e.target.checked)} /> Just Bones</label>
+        <label className="flex items-center gap-1"><input type="checkbox" checked={immune} onChange={(e) => setImmune(e.target.checked)} /> Undead / magical</label>
+      </div>
+      <button onClick={doRoll} className="px-3 py-1.5 rounded text-xs font-bold" style={{ background: palette.crimson, color: palette.parchment }}>
+        Roll damage{perfect ? " (Bloodlust: roll twice, keep higher)" : ""}
+      </button>
+      {out && (
+        <div className="mt-2 text-xs" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
+          <p className="font-bold">Damage dealt: {out.dealt}</p>
+          <p style={{ color: palette.inkSoft }}>
+            Dice {out.dice}{out.second !== null ? ` (other ${out.second})` : ""} + flat {p.flat} {out.weaponDmg !== out.dice + p.flat ? "± type" : ""} + DB {out.db} − NA/Armour {out.reduction}
+          </p>
+          {out.notes.map((n, i) => <p key={i}>• {n}</p>)}
+          {out.bleed && <p className="font-semibold" style={{ color: out.bleed.startsWith("BLEEDING") ? palette.crimson : palette.inkSoft }}>• {out.bleed}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) {
+  const adv = party?.advancedRules || {};
   const [mode, setMode] = useState("cc"); // cc | ranged | damage | check | spells | prayers
   const [base, setBase] = useState(30);
   const [enemyMod, setEnemyMod] = useState(0);
@@ -13564,14 +13733,18 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
 
   const roll = () => {
     const r = rollPercent();
+    // A natural 91-00 always fails; 01-05 is only a Perfect Result when the Test succeeds (p22).
+    const ok = r <= effective && r <= 90;
     let outcome;
-    if (r <= 5) outcome = "PERFECT";
-    else if (r <= effective) outcome = "SUCCESS";
+    if (ok && r <= 5) outcome = "PERFECT";
+    else if (ok) outcome = "SUCCESS";
     else outcome = "FAILURE";
-    setResult({ r, outcome, isBloodlust: r <= 5, isDoubleZero: r === 100 });
+    setResult({ r, outcome, isBloodlust: ok && r <= 5, isDoubleZero: r === 100 });
+    setDmgOut(null);
   };
 
   // Damage calc (feeds into Resolve a Hit's "Calculate from Weapon" section)
+  const [dmgOut, setDmgOut] = useState(null);
   const [weaponDmg, setWeaponDmg] = useState(0);
   const [db, setDb] = useState(0);
   const [na, setNa] = useState(0);
@@ -13709,7 +13882,10 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
   const [checkResult, setCheckResult] = useState(null);
   const applyCheckSkill = (heroId, skillKey) => {
     const h = heroes.find((x) => x.id === heroId);
-    if (h && skillKey && h.skills[skillKey] !== undefined) {
+    if (h && skillKey && STAT_KEYS.includes(skillKey)) {
+      const penalty = encumbranceOver(h) ? -10 : 0;
+      setCheckValue((Number(h.stats[skillKey]) || 0) + penalty);
+    } else if (h && skillKey && h.skills[skillKey] !== undefined) {
       const penalty = encumbranceOver(h) ? -10 : 0;
       setCheckValue(h.skills[skillKey] + penalty);
     }
@@ -13717,8 +13893,9 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
   const doCheck = () => {
     const r = rollPercent();
     let outcome;
-    if (r <= 5) outcome = "PERFECT (choose a bonus)";
-    else if (r <= checkValue) outcome = "SUCCESS";
+    const ok = r <= checkValue && r <= 90;
+    if (ok && r <= 5) outcome = "PERFECT (choose a bonus)";
+    else if (ok) outcome = "SUCCESS";
     else outcome = "FAILURE";
     setCheckResult({ r, outcome });
   };
@@ -13832,7 +14009,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
     }
     lines.push(`Mana: ${castHero.mana.cur} → ${cur}/${castHero.mana.max}.`);
 
-    setCastResult({ ok: r.effectExecuted, lines });
+    setCastResult({ ok: r.effectExecuted, lines, perfect: !!(r.success && r.roll <= 5), roll: r.roll });
     addLog && addLog(`${castHero.name} casts ${chosenSpell.name}: ${lines.join(" ")}`);
   };
 
@@ -13843,20 +14020,48 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
   const chosenPrayer = PRAYERS.find((p) => p.name === prayPick);
   const sayPrayer = () => {
     if (!prayHero || !chosenPrayer) return;
-    if (prayHero.energy.cur < 1) {
+    const r = rollPercent();
+    const impeccable = r <= 5;
+    if (!impeccable && prayHero.energy.cur < 1) {
       setPrayResult({ ok: false, msg: `Not enough Energy — praying costs 1, ${prayHero.name} has 0 left.` });
       return;
     }
-    const cur = clamp(prayHero.energy.cur - 1, 0, prayHero.energy.max);
-    updateHero({ ...prayHero, energy: { ...prayHero.energy, cur } });
-    setPrayResult({ ok: true, msg: `${prayHero.name} prayed ${chosenPrayer.name} (−1 Energy → ${cur}/${prayHero.energy.max})` });
-    addLog && addLog(`${prayHero.name} prayed ${chosenPrayer.name} (−1 Energy → ${cur}/${prayHero.energy.max})`);
+    const skill = prayHero.skills.battlePrayers || 0;
+    const success = impeccable || (r <= skill && r <= 90);
+    const cur = impeccable ? prayHero.energy.cur : clamp(prayHero.energy.cur - 1, 0, prayHero.energy.max);
+    const replaced = prayHero.activePrayer && success && prayHero.activePrayer !== chosenPrayer.name ? ` (ends ${prayHero.activePrayer})` : "";
+    updateHero({ ...prayHero, energy: { ...prayHero.energy, cur }, activePrayer: success ? chosenPrayer.name : prayHero.activePrayer || "" });
+    const msg = impeccable
+      ? `Rolled ${r}: Impeccable Prayer! ${chosenPrayer.name} succeeds and costs no Energy${replaced}.`
+      : success
+        ? `Rolled ${r} vs ${skill}: ${chosenPrayer.name} answered (−1 Energy → ${cur}/${prayHero.energy.max})${replaced}.`
+        : `Rolled ${r} vs ${skill}: the prayer fails (−1 Energy → ${cur}/${prayHero.energy.max}).`;
+    setPrayResult({ ok: success, msg, perfect: impeccable, r });
+    addLog && addLog(`${prayHero.name}: ${msg}`);
+  };
+
+  // Hero Dispel (rulebook p94)
+  const [dispHeroPick, setDispHeroPick] = useState("");
+  const [dispResult, setDispResult] = useState(null);
+  const dispHero = heroes.find((h) => h.id === dispHeroPick);
+  const doDispel = () => {
+    if (!dispHero) return;
+    const target = Math.floor((dispHero.skills.arcaneArts || 0) / 2);
+    const r = rollPercent();
+    const ok = r <= target && r <= 90;
+    let mana = dispHero.mana.cur; let sanity = dispHero.sanity.cur; let extra = "";
+    if (mana >= 15) mana -= 15;
+    else { const loss = rollDie(3); mana = 0; sanity = Math.max(0, sanity - loss); extra = ` Under 15 Mana: Mana to 0 and −${loss} Sanity.`; }
+    updateHero({ ...dispHero, mana: { ...dispHero.mana, cur: mana }, sanity: { ...dispHero.sanity, cur: sanity } });
+    const msg = `${dispHero.name} Dispel: rolled ${r} vs ${target} (Arcane Arts ÷ 2) — ${ok ? "the spell is dispelled" : "fails"}. −15 Mana either way.${extra}`;
+    setDispResult({ ok, msg });
+    addLog && addLog(msg);
   };
 
   return (
     <div>
       <div className="flex gap-1.5 mb-4 flex-wrap">
-        {[["cc", "Close Combat", Swords], ["ranged", "Ranged", Dice5], ["throw", "Throw Potion", FlaskConical], ["resolveHit", "Resolve a Hit", ShieldAlert], ["check", "Stat/Skill Check", Brain], ["spells", "Spells", Sparkles], ["scroll", "Read Scroll", ScrollText], ["prayers", "Prayers", Heart]].map(([key, label, Icon]) => (
+        {[["cc", "Close Combat", Swords], ["ranged", "Ranged", Dice5], ["throw", "Throw Potion", FlaskConical], ["resolveHit", "Resolve a Hit", ShieldAlert], ["check", "Stat/Skill Check", Brain], ["spells", "Spells", Sparkles], ["dispel", "Dispel", Sparkles], ["scroll", "Read Scroll", ScrollText], ["prayers", "Prayers", Heart]].map(([key, label, Icon]) => (
           <button
             key={key}
             onClick={() => { setMode(key); setResult(null); }}
@@ -14017,6 +14222,12 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
               Rolled {result.r} — {result.outcome}
             </div>
           )}
+          {result && result.outcome === "PERFECT" && heroes.find((h) => h.id === heroPick) && (
+            <PerfectResultPrompt key={result.r + mode} hero={heroes.find((h) => h.id === heroPick)} keyName={mode === "cc" ? "cs" : "rs"} updateHero={updateHero} addLog={addLog} setParty={setParty} />
+          )}
+          {result && result.outcome !== "FAILURE" && heroes.find((h) => h.id === heroPick) && (
+            <HeroDamageRoller hero={heroes.find((h) => h.id === heroPick)} perfect={result.isBloodlust} addLog={addLog} />
+          )}
           {result && result.outcome !== "FAILURE" && (
             <div className="mt-2 rounded p-2.5" style={{ background: "#00000008" }}>
               <p className="text-xs" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
@@ -14166,7 +14377,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
                   Head hit — Apply −1 Sanity
                 </button>
               )}
-              {rhLoc === "torso" && (() => {
+              {rhLoc === "torso" && adv.quickSlotDamage && (() => {
                 const quickItems = rhHero.backpack.filter((it) => it.slot === "quickslot");
                 return (
                   <button
@@ -14181,7 +14392,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
                       const newDur = Math.max(0, curDur - 1);
                       const maxPart = String(item.dur || "").split("/")[1] || "";
                       updateHero({ ...rhHero, backpack: rhHero.backpack.map((it) => it.id === item.id ? { ...it, dur: maxPart ? `${newDur}/${maxPart}` : String(newDur) } : it) });
-                      addLog && addLog(`${rhHero.name}: torso hit, Quick Slot roll ${slotRoll} — ${item.name} takes 1 Durability damage.`);
+                      addLog && addLog(`${rhHero.name}: torso hit, Quick Slot roll ${slotRoll} — ${item.name} takes 1 Durability damage.${/potion|flask|vial/i.test(item.name) ? " If it is a damaging potion it breaks and inflicts its Damage on the hero." : ""}`);
                     }}
                     className="w-full mt-1.5 px-2 py-1.5 rounded text-xs font-bold"
                     style={{ background: palette.crimson, color: palette.parchment }}
@@ -14315,7 +14526,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
         <Panel className="mb-4">
           <SectionTitle icon={Brain}>Stat / Skill Check</SectionTitle>
           <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
-            Roll ≤ the stat/skill value to succeed. 01–05 is always a Perfect roll (regain 1 Energy, or permanently raise the stat/skill by 1 — once per settlement visit).
+            Roll ≤ the stat/skill value to succeed (91–00 always fails). A natural 01–05 on a success is a Perfect Result: regain 1 Energy, or permanently raise that skill/stat by 1 (once per settlement visit, skills max 80).
           </p>
           {heroes && heroes.length > 0 && (
             <div className="flex gap-1.5 mb-3">
@@ -14335,6 +14546,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
                 style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
               >
                 {Object.keys(SKILL_LABELS).map((k) => <option key={k} value={k}>{SKILL_LABELS[k]}</option>)}
+                {STAT_KEYS.map((k) => <option key={k} value={k}>{k} (stat)</option>)}
               </select>
             </div>
           )}
@@ -14361,6 +14573,9 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
             >
               Rolled {checkResult.r} — {checkResult.outcome}
             </div>
+          )}
+          {checkResult && checkResult.outcome.startsWith("PERFECT") && heroes.find((h) => h.id === checkHeroPick) && (
+            <PerfectResultPrompt key={checkResult.r + checkSkillPick} hero={heroes.find((h) => h.id === checkHeroPick)} keyName={checkSkillPick} updateHero={updateHero} addLog={addLog} setParty={setParty} />
           )}
         </Panel>
       )}
@@ -14489,6 +14704,9 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
               {castResult && (
                 <div className="text-xs mt-3 text-center rounded p-2 font-bold space-y-0.5" style={{ background: castResult.ok ? palette.forestDark : palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
                   {castResult.lines.map((l, i) => <p key={i}>{l}</p>)}
+              {castResult && castResult.perfect && castHero && (
+                <PerfectResultPrompt key={castResult.roll + castHero.id} hero={castHero} keyName="arcaneArts" updateHero={updateHero} addLog={addLog} setParty={setParty} />
+              )}
                 </div>
               )}
               </>
@@ -14666,10 +14884,67 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
               {prayResult && (
                 <p className="text-xs mt-3 text-center rounded p-2 font-bold" style={{ background: prayResult.ok ? palette.forestDark : palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>{prayResult.msg}</p>
               )}
+              {prayResult && prayResult.perfect && prayHero && (
+                <PerfectResultPrompt key={prayResult.r} hero={prayHero} keyName="battlePrayers" updateHero={updateHero} addLog={addLog} setParty={setParty} />
+              )}
+              {prayHero && prayHero.activePrayer && (
+                <div className="mt-2 flex items-center justify-between text-xs rounded p-2" style={{ background: "#00000008", color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
+                  <span>Active prayer: <b>{prayHero.activePrayer}</b> (one at a time; ends if Stunned, Prone, at 0 HP, unconscious, Silenced or a Terror Test fails)</span>
+                  <button onClick={() => updateHero({ ...prayHero, activePrayer: "" })} className="ml-2 px-2 py-1 rounded font-bold" style={{ background: palette.crimsonDark, color: palette.parchment }}>End</button>
+                </div>
+              )}
             </>
           )}
         </Panel>
       )}
+
+      {mode === "dispel" && (
+        <Panel className="mb-4">
+          <SectionTitle icon={Sparkles}>Hero Dispel</SectionTitle>
+          <p className="text-xs mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            Once per combat turn: roll against half Arcane Arts. The hero loses 15 Mana whether it works or not (under 15: Mana to 0 and lose 1d3 Sanity). The caster still pays full Mana. Touch / close-combat spells can't be dispelled.
+          </p>
+          <select value={dispHeroPick} onChange={(e) => { setDispHeroPick(e.target.value); setDispResult(null); }} className="w-full text-sm rounded px-2 py-1.5 mb-2" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+            <option value="">Choose a hero…</option>
+            {heroes.filter((h) => (h.skills.arcaneArts || 0) > 0).map((h) => <option key={h.id} value={h.id}>{h.name} — AA {h.skills.arcaneArts}, Mana {h.mana.cur}</option>)}
+          </select>
+          <button onClick={doDispel} disabled={!dispHero} className="w-full px-4 py-2 rounded font-bold text-sm" style={{ background: palette.ember, color: palette.parchment, opacity: dispHero ? 1 : 0.5 }}>Attempt Dispel</button>
+          {dispResult && <p className="text-xs mt-3 text-center rounded p-2 font-bold" style={{ background: dispResult.ok ? palette.forestDark : palette.crimsonDark, color: palette.parchment }}>{dispResult.msg}</p>}
+        </Panel>
+      )}
+
+      <Panel className="mb-4">
+        <SectionTitle icon={ShieldAlert}>Advanced rules (optional)</SectionTitle>
+        {[["overwatch", "Overwatch", "A hero with Energy and a ready weapon skips activating and fires/strikes once on an enemy's move for 1 Energy."],
+          ["limitedBleeding", "Limited Bleeding-Out Time", "Heroes at 0 HP have 1d6+1 combat turns before they die."],
+          ["quickSlotDamage", "Quick Slot Damage", "Torso hits can damage Quick Slot items (and break damaging potions)."]].map(([k, label, desc]) => (
+          <label key={k} className="flex items-start gap-2 text-xs mb-1.5" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
+            <input type="checkbox" checked={!!adv[k]} onChange={(e) => setParty && setParty((prev) => ({ ...prev, advancedRules: { ...prev.advancedRules, [k]: e.target.checked } }))} className="mt-0.5" />
+            <span><b>{label}</b> — {desc}</span>
+          </label>
+        ))}
+        {adv.overwatch && heroes.map((h) => (
+          <div key={h.id} className="flex items-center justify-between text-xs mt-1" style={{ color: palette.ink }}>
+            <span>{h.name}{h.overwatch ? " — on Overwatch" : ""}</span>
+            <span className="flex gap-1">
+              <button onClick={() => updateHero({ ...h, overwatch: !h.overwatch })} className="px-2 py-1 rounded font-bold" style={{ background: h.overwatch ? palette.crimsonDark : palette.forestDark, color: palette.parchment }}>{h.overwatch ? "Stand down" : "Go on Overwatch"}</button>
+              {h.overwatch && <button disabled={h.energy.cur < 1} onClick={() => { updateHero({ ...h, energy: { ...h.energy, cur: h.energy.cur - 1 } }); addLog && addLog(`${h.name}: Overwatch attack (−1 Energy).`); }} className="px-2 py-1 rounded font-bold" style={{ background: palette.ember, color: palette.parchment, opacity: h.energy.cur < 1 ? 0.4 : 1 }}>Fire (−1 En)</button>}
+            </span>
+          </div>
+        ))}
+        {adv.limitedBleeding && (
+          <div className="mt-2">
+            {heroes.filter((h) => h.hp.cur <= 0 || h.bleedTurns != null).map((h) => (
+              <div key={h.id} className="flex items-center justify-between text-xs mt-1" style={{ color: palette.ink }}>
+                <span>{h.name}: {h.bleedTurns != null ? `${h.bleedTurns} turn${h.bleedTurns === 1 ? "" : "s"} left` : "bleeding out"}</span>
+                {h.bleedTurns == null && <button onClick={() => { const t = rollDie(6) + 1; updateHero({ ...h, bleedTurns: t }); addLog && addLog(`${h.name} is bleeding out: ${t} combat turns left.`); }} className="px-2 py-1 rounded font-bold" style={{ background: palette.crimsonDark, color: palette.parchment }}>Roll 1d6+1</button>}
+                {h.bleedTurns != null && <button onClick={() => updateHero({ ...h, bleedTurns: null })} className="px-2 py-1 rounded font-bold" style={{ background: palette.forestDark, color: palette.parchment }}>Stabilised</button>}
+              </div>
+            ))}
+            <button onClick={() => heroes.forEach((h) => { if (h.bleedTurns != null) { const t = h.bleedTurns - 1; updateHero({ ...h, bleedTurns: t }); addLog && addLog(t <= 0 ? `${h.name} has bled out and dies.` : `${h.name}: ${t} turn${t === 1 ? "" : "s"} left to bleed out.`); } })} className="mt-2 w-full px-3 py-1.5 rounded text-xs font-bold" style={{ background: palette.leatherDark, color: palette.parchment }}>End of combat turn (tick bleeding-out timers)</button>
+          </div>
+        )}
+      </Panel>
     </div>
   );
 }
@@ -17528,7 +17803,7 @@ export default function App() {
         {tab === "heroes" && (
           <HeroesTab heroes={heroes} updateHero={updateHero} removeHero={removeHero} addHero={addHero} addLog={addLog} pushToast={pushToast} party={party} setParty={setParty} goToTab={goToTab} />
         )}
-        {tab === "combat" && <CombatCalc heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} pushToast={pushToast} />}
+        {tab === "combat" && <CombatCalc heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} pushToast={pushToast} setParty={setParty} party={party} />}
         {tab === "alchemy" && <AlchemyTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
         {tab === "actions" && <ActionsTray party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />}
         {tab === "dice" && <DiceTray party={party} setParty={setParty} heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} pushToast={pushToast} />}

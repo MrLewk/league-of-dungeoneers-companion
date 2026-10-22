@@ -3,6 +3,21 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.63.0] — 2026-10-22
+
+### Added
+- Perfect Results: a natural 01–05 on a successful test offers +1 Energy or a permanent +1 to that skill/stat (once per visit); the Stat/Skill Check tool now includes stats
+- Hero damage roller with Bleed, Crushing, Piercing, Stun and Edged handling
+- Weapon types shown on the hero card; Bleed added to Edged weapons; bow STR requirements fixed
+- Battle Prayers test with Impeccable Prayer and one-active-prayer tracking
+- Dispel tool (AA ÷ 2, 15 Mana)
+- Advanced rules panel (default off): Overwatch, Limited Bleeding-Out Time, Quick Slot Damage
+- Updated link-preview share image showing v2.571 support
+
+### Fixed
+- 91–00 always fails; Perfect only on success
+- Mithril minimum ENC 1; Potion of Dexterity text; starting gear loses 1d4 DUR
+
 ## [1.62.0] — 2026-10-22
 
 ### Added

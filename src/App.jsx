@@ -541,6 +541,10 @@ const defaultParty = () => ({
   settlementName: "",
   dungeonState: "settlement", // "settlement" | "travel" | "dungeon" — drives the Travel tab status badge and the auto-clear of tempEffects on dungeon exit
   dungeonRestCount: 0, // completed (uninterrupted) Short Rests taken since entering the current dungeon — drives the Ambush risk escalation; resets to 0 on Exit Dungeon, never per level
+  maxThreat: 0, // quest's Maximum Threat (0 = none set) — at/over it a Wandering Monster is placed and Threat drops by 5
+  wmTriggerAt: 0, // quest's "Wandering Monster appears at Threat X" level (0 = none)
+  wmTriggerFired: false, // quest triggers only once per quest (rulebook p165)
+  encounter: { empty: 0, eventBonus: 0, mod: 0 }, // Encounter Chance tracker
   dungeonTheme: null, // last-used Encounter Table category for this dungeon's Ambush rolls — set on first use, editable each time
   settlementAP: {}, // heroId -> { spent: number, log: [{label, cost}] }
   innCostPerNight: 25,
@@ -3819,6 +3823,20 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.64.0",
+    date: "2026-10-22",
+    sections: {
+      "Added": [
+        "Encounter Chance tracker on the Party tab (rulebook p178): pick Room (50%) or Corridor (30%), tap Reveal new tile and it rolls the encounter, tracks consecutive empty tiles (+10% per tile after the fourth, max 70%), resets on an Encounter, and rolls the Encounter Table with +10 per level above 1 of your highest-level hero. Includes a quest modifier box and an Event +10 button for the Threat Event \"encounter risk +10\"",
+        "Maximum Threat: set the quest's Max Threat in the Threat panel; when Threat reaches it the app tells you to place a Wandering Monster and drops Threat by 5 automatically",
+        "Quest Wandering Monster trigger (\"appears at Threat X\"): set X once and the app fires it the first time Threat rises to it, and only once per quest",
+      ],
+      "Fixed": [
+        "The quest rules note wrongly said a Wandering Monster triggers every time Threat rises to its level; it is once per quest. Exiting a dungeon resets the quest trigger and the Encounter Chance count",
+      ],
+    },
+  },
   {
     version: "1.63.1",
     date: "2026-10-22",
@@ -13326,6 +13344,75 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
   );
 }
 
+// Encounter Chance tracker (rulebook 2.571 p178): room 50%, corridor 30%; after four empty tiles
+// +10 per further empty tile, max 70%; resets on an Encounter; Encounter Table roll +10 per level above 1.
+function EncounterTracker({ party, setParty, heroes, addLog }) {
+  const enc = party.encounter || { empty: 0, eventBonus: 0, mod: 0 };
+  const [last, setLast] = useState(null);
+  const [cat, setCat] = useState(party.dungeonTheme || "Beasts");
+  const [tileKind, setTileKind] = useState("room");
+  const base = tileKind === "room" ? 50 : 30;
+  const countBonus = enc.empty >= 4 ? 10 * (enc.empty - 3) : 0;
+  const chance = Math.max(0, Math.min(70, base + countBonus + (enc.eventBonus || 0) + (Number(enc.mod) || 0)));
+  const set = (patch) => setParty((p) => ({ ...p, encounter: { ...(p.encounter || { empty: 0, eventBonus: 0, mod: 0 }), ...patch } }));
+  const reveal = () => {
+    const r = rollPercent();
+    if (r > chance) {
+      set({ empty: enc.empty + 1 });
+      setLast({ r, hit: false });
+      addLog && addLog(`New ${tileKind}: Encounter roll ${r} vs ${chance}% — no encounter (${enc.empty + 1} empty tile${enc.empty + 1 === 1 ? "" : "s"} in a row).`);
+      return;
+    }
+    const highest = heroes.length ? Math.max(...heroes.map((h) => h.level || 1)) : 1;
+    const d20 = rollDie(20);
+    const total = d20 + (highest - 1) * 10;
+    const table = ENCOUNTER_TABLES[cat];
+    const row = table ? findEncounterRow(table, Math.min(total, 110)) : null;
+    const rolled = row ? row.entries.map((e) => ({ ...e, count: rollEncounterNumber(e.number) })) : null;
+    set({ empty: 0, eventBonus: 0 });
+    setParty((p) => ({ ...p, dungeonTheme: cat }));
+    setLast({ r, hit: true, d20, total, rolled });
+    const sum = rolled ? rolled.map((e) => `${e.count}× ${e.name}`).join(", ") : `table result ${total} not transcribed`;
+    addLog && addLog(`New ${tileKind}: Encounter roll ${r} vs ${chance}% — ENCOUNTER (${cat}, 1d20 ${d20}${highest > 1 ? ` +${(highest - 1) * 10}` : ""} = ${total}): ${sum}.`);
+  };
+  return (
+    <Panel className="mb-4">
+      <SectionTitle icon={Swords}>Encounter Chance</SectionTitle>
+      <div className="flex gap-1.5 mb-2">
+        {[["room", "Room 50%"], ["corridor", "Corridor 30%"]].map(([k, l]) => (
+          <button key={k} onClick={() => setTileKind(k)} className="flex-1 text-xs px-2 py-1.5 rounded font-semibold" style={{ background: tileKind === k ? palette.ink : "#00000010", color: tileKind === k ? palette.parchment : palette.ink }}>{l}</button>
+        ))}
+      </div>
+      <p className="text-xs mb-2" style={{ color: palette.ink, fontFamily: "JetBrains Mono, monospace" }}>
+        Chance {chance}% — {enc.empty} empty tile{enc.empty === 1 ? "" : "s"} in a row{countBonus ? ` (+${countBonus})` : ""}{enc.eventBonus ? ` · event +${enc.eventBonus}` : ""}
+      </p>
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <label className="text-xs" style={{ color: palette.inkSoft }}>Quest modifier (%)
+          <input type="number" value={enc.mod || 0} onChange={(e) => set({ mod: Number(e.target.value) || 0 })} className="w-full px-2 py-1 rounded text-sm" style={{ background: "#fff", border: `1px solid ${palette.line}` }} /></label>
+        <label className="text-xs" style={{ color: palette.inkSoft }}>Faction table
+          <select value={cat} onChange={(e) => setCat(e.target.value)} className="w-full px-2 py-1.5 rounded text-sm" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+            {Object.keys(ENCOUNTER_TABLES).map((k) => <option key={k} value={k}>{k}</option>)}
+          </select></label>
+      </div>
+      <div className="flex gap-1.5">
+        <button onClick={reveal} className="flex-1 px-3 py-2 rounded font-bold text-sm" style={{ background: palette.ember, color: palette.parchment }}>Reveal new tile — roll</button>
+        <button onClick={() => set({ eventBonus: Math.min(70, (enc.eventBonus || 0) + 10) })} className="px-2 py-2 rounded text-xs font-semibold" style={{ background: "#00000010", color: palette.ink }} title="Threat Event 16–17: encounter risk +10">Event +10</button>
+        <button onClick={() => { set({ empty: 0, eventBonus: 0 }); setLast(null); }} className="px-2 py-2 rounded text-xs font-semibold" style={{ background: "#00000010", color: palette.ink }}>Reset</button>
+      </div>
+      {last && (
+        <div className="mt-2 text-xs rounded p-2" style={{ background: last.hit ? palette.crimsonDark : palette.forestDark, color: palette.parchment, fontFamily: "Crimson Pro, serif" }}>
+          {last.hit
+            ? <>Rolled {last.r}: ENCOUNTER! Table roll {last.total}{last.rolled ? ` → ${last.rolled.map((e) => `${e.count}× ${e.name}`).join(", ")}` : " (not transcribed)"}. Place enemies on the new tile, then begin Combat.</>
+            : <>Rolled {last.r}: no encounter.</>}
+        </div>
+      )}
+      <p className="text-xs mt-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+        After the fourth empty tile the chance climbs +10 per tile (max 70%) and resets on an Encounter. The Encounter Table roll adds +10 per level above 1 of your highest-level hero. Rooms with no Encounter may still get an optional Dungeon Event.
+      </p>
+    </Panel>
+  );
+}
+
 function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToast }) {
   const [moraleEvent, setMoraleEvent] = useState(MORALE_EVENTS[0].label);
   const [xpAmount, setXpAmount] = useState(50);
@@ -13430,10 +13517,19 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
             </button>
           ))}
         </div>
+        <div className="grid grid-cols-2 gap-2 mt-3 text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+          <label>Quest Max Threat (0 = none)
+            <input type="number" value={party.maxThreat || 0} onChange={(e) => setParty({ ...party, maxThreat: Math.max(0, Number(e.target.value) || 0) })} className="w-full px-2 py-1 rounded text-sm" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} /></label>
+          <label>Quest Wandering Monster at Threat (0 = none)
+            <input type="number" value={party.wmTriggerAt || 0} onChange={(e) => setParty({ ...party, wmTriggerAt: Math.max(0, Number(e.target.value) || 0), wmTriggerFired: false })} className="w-full px-2 py-1 rounded text-sm" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} /></label>
+        </div>
+        {party.wmTriggerAt > 0 && <p className="text-xs mt-1" style={{ color: party.wmTriggerFired ? palette.crimson : palette.inkSoft }}>Quest Wandering Monster: {party.wmTriggerFired ? "already triggered this quest" : "not yet triggered"}</p>}
         <p className="text-xs mt-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-          Use "Start of Turn" on the Turn tab to roll the Scenario die and Threat automatically each turn, or the buttons above for one-off Threat changes.
+          At or above Max Threat the app tells you to place a Wandering Monster and drops Threat by 5 automatically. Use "Start of Turn" on the Turn tab to roll the Scenario die and Threat automatically each turn, or the buttons above for one-off Threat changes.
         </p>
       </Panel>
+
+      <EncounterTracker party={party} setParty={setParty} heroes={heroes} addLog={addLog} />
 
       <Panel className="mb-4">
         <SectionTitle icon={Users}>Party Morale (PM)</SectionTitle>
@@ -16023,7 +16119,7 @@ function QuestRollerPanel({ party, setParty, addLog }) {
         <SectionTitle icon={BookOpen}>Reading the Quests</SectionTitle>
         <div className="text-xs space-y-1.5" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
           <p>Each quest in the book is divided by border lines into stages — don't read past the first line until you begin, or the second until you reach the Quest Room, to avoid spoilers. Anything found in the "aftermath" can be looted off-table freely, with no traps or locks.</p>
-          <p><b>Wandering Monsters:</b> when a quest says one appears at Threat Level "XX", it triggers every time the Threat Level is <i>increased</i> to XX — not when it's decreased back down to XX after having gone higher.</p>
+          <p><b>Wandering Monsters:</b> when a quest says one appears at Threat Level "XX", it triggers when the Threat Level is <i>increased</i> to XX — and only <i>once per quest</i> (rulebook 2.571), not when it's decreased back down to XX. Set it in the Threat panel and the app tracks it for you.</p>
           <p><b>Ancient Lands access:</b> travelling there via the Outpost requires League of Dungeoneers membership (earned by completing the first campaign). Each hex costs 2 Movement Points and 2 rations/day per hero; a camel reduces travel time. A Travel Event roll of 10–12 triggers a Desert Event Card.</p>
         </div>
       </Panel>
@@ -16425,7 +16521,7 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
       }
     });
     setDungeonState("travel");
-    setParty((prev) => ({ ...prev, dungeonRestCount: 0 }));
+    setParty((prev) => ({ ...prev, dungeonRestCount: 0, wmTriggerFired: false, encounter: { empty: 0, eventBonus: 0, mod: 0 } }));
     setShowExitConfirm(false);
     const line = clearedCount > 0
       ? `Exited dungeon — cleared ${clearedCount} temporary effect${clearedCount === 1 ? "" : "s"} across ${heroesAffected} hero${heroesAffected === 1 ? "" : "es"}.`
@@ -17342,6 +17438,28 @@ export default function App() {
   const pushToast = useCallback((title, body) => {
     setToasts((prev) => [...prev, { id: uid(), title, body }]);
   }, []);
+
+  // Threat watchers (rulebook p164-165): at/over the quest's Maximum Threat, place a Wandering Monster
+  // and drop Threat by 5 (never below the floor); a quest's "WM at Threat X" fires once per quest.
+  const prevThreatRef = useRef(null);
+  useEffect(() => { prevThreatRef.current = null; }, [campaignId]);
+  useEffect(() => {
+    if (!campaignId) { prevThreatRef.current = null; return; }
+    const prev = prevThreatRef.current;
+    prevThreatRef.current = party.threat;
+    if (party.maxThreat > 0 && party.threat >= party.maxThreat) {
+      const next = Math.max(party.threatFloor, party.threat - 5);
+      setParty((p) => ({ ...p, threat: next }));
+      addLog(`Maximum Threat (${party.maxThreat}) reached: place a Wandering Monster on the start tile, Threat −5 → ${next}.`);
+      pushToast("Maximum Threat reached", `Place a Wandering Monster on the starting tile. Threat drops by 5 to ${next}.`);
+      return;
+    }
+    if (party.wmTriggerAt > 0 && !party.wmTriggerFired && prev !== null && party.threat > prev && party.threat >= party.wmTriggerAt && prev < party.wmTriggerAt) {
+      setParty((p) => ({ ...p, wmTriggerFired: true }));
+      addLog(`Threat reached ${party.wmTriggerAt}: the quest's Wandering Monster appears (once per quest).`);
+      pushToast("Wandering Monster", "The quest's Wandering Monster trigger has been reached. Place it now (this happens only once per quest).");
+    }
+  }, [party.threat, party.maxThreat, party.wmTriggerAt, party.wmTriggerFired, party.threatFloor, campaignId]);
   const dismissToast = useCallback((id) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);

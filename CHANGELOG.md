@@ -3,6 +3,16 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.64.0] — 2026-10-22
+
+### Added
+- Encounter Chance tracker on the Party tab (room 50% / corridor 30%, +10% per empty tile after the fourth, max 70%, resets on an Encounter, Encounter Table roll +10 per level above 1)
+- Maximum Threat: Wandering Monster prompt and automatic Threat −5
+- Quest Wandering Monster trigger that fires once per quest
+
+### Fixed
+- Quest rules note: the Wandering Monster trigger is once per quest; dungeon exit resets it
+
 ## [1.63.1] — 2026-10-22
 
 ### Fixed

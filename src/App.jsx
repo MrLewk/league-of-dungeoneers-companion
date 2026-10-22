@@ -452,7 +452,7 @@ function computeProfessionSkills(hero) {
 const BACKPACK_UPGRADES = {
   "": { label: "Small (starting, no bonus)", enc: 0, dexPenalty: 0, cost: 0 },
   Medium: { label: "Medium Backpack", enc: 10, dexPenalty: -5, cost: 350 },
-  Large: { label: "Large Backpack", enc: 25, dexPenalty: -10, cost: 600 },
+  Large: { label: "Large Backpack", enc: 25, dexPenalty: -15, cost: 600 },
 };
 function backpackEncBonus(hero) {
   return BACKPACK_UPGRADES[hero.backpackUpgrade || ""]?.enc || 0;
@@ -504,6 +504,9 @@ const defaultParty = () => ({
   mpSpent: 0,
   travelLog: [], // [{label, cost}] — hexes entered so far today
   hungry: false,
+  hungerDays: 0, // consecutive days without food (Hunger Track)
+  moraleMaxPenalty: 0, // current reduction to maximum Party Morale from hunger
+  fedToday: false, // has the party eaten (ration or forage) since the last overnight rest?
   hungerConDeltas: {}, // heroId -> amount subtracted from CON, restored when the party eats again
   estate: {
     owned: false, rooms: [], items: [], pendingRoom: null, shrineGod: null,
@@ -993,7 +996,7 @@ const SETTLEMENT_EVENTS = [
   { roll: 1, title: "Stray Dog", text: "A stray dog follows the party through the streets. After a small treat from a hero, you now own it. Randomise the kind of dog (Companions' Compendium), or if you already have one, treat as 'Nothing special happens'." },
   { roll: 2, title: "Scrolls Salesman", text: "A man approaches selling magic scrolls. Randomise three available spells. Each scroll costs 100c.", resolve: "scrolls" },
   { roll: 3, title: "Potion Salesman", text: "A man in purple robes sells premium potions. Use the Potions Table with an availability of 4 for every potion regardless of class, and -20c as a price modifier." },
-  { roll: 4, title: "Trinket Salesman", text: "An old man sells magic trinkets, 100c each, max 1 per hero. Roll 1d12 per trinket: 1-5 magic, 5-11 useless (cannot be sold), 12 cursed (roll on Curses Table). Decide ring or necklace." },
+  { roll: 4, title: "Trinket Salesman", text: "An old man sells magic trinkets, 100c each, max 1 per hero. Roll 1d12 per trinket: 1-4 magic, 5-11 useless (cannot be sold), 12 cursed (roll on Curses Table). Decide ring or necklace." },
   { roll: 5, title: "Sale!", text: "A settlement-wide sale — all stores sell items at a 20% discount." },
   { roll: 6, title: "Fresh Stocks", text: "All stores just restocked. All availabilities are modified by +2 (a result of 6 is automatically in stock)." },
   { roll: 7, title: "Settlement Feast", text: "A celebration boosts Party Morale by +2 (temporarily, can exceed max) if you stay the night. On 1d12 of 9-12, no beds are available and the party must continue travel without business (quest reward may still be claimed).", resolve: "feast" },
@@ -1034,15 +1037,15 @@ const QUEST_AVAILABILITY = [
 // Room costs and effects confirmed from rulebook p159. "Only one thing may be bought
 // in between every quest, and it cannot be used until after leaving the next dungeon."
 const MANOR_ROOMS = [
-  { name: "Alchemist Lab", cost: 500, effect: "An Alchemist making a recipe here may choose what kind of potion it yields. Only one recipe may be made between each dungeon visit." },
-  { name: "Archery Range", cost: 500, effect: "Any hero staying at the manor may increase their RS by +1d2, once between each visit to a dungeon. A hero may train at the Archery Range OR the Training Grounds, not both." },
-  { name: "Training Grounds", cost: 500, effect: "Any hero may increase CS or Dodge (choice) by +1d2, once between each visit to a dungeon. A hero may train at the Archery Range OR the Training Grounds, not both." },
-  { name: "Wizard's Study", cost: 500, effect: "A wizard may store any number of Familiars here for free (Companions' Expansion). Any Enchantment or Magic Scribble cast here gets a +20 modifier." },
-  { name: "Shrine", cost: 350, effect: "Dedicated to one god of the hero's choice (only one shrine, due to rivalry between gods). Any hero may pray at the shrine between quests for the standard boon, for free, succeeding on 1-4 on 1d6." },
-  { name: "Smithy", cost: 350, effect: "All heroes may automatically repair 1d3 Durability Points on all weapons and armour." },
-  { name: "Crops, Hen House, and Pigsty", cost: 200, effect: "If a hero spends at least a full day tending to these, the party receives 1d8 + the number of spent days in free rations." },
-  { name: "Garden", cost: 200, effect: "An Alchemist may gather 1d6+2 random ingredients from the garden, once between each quest." },
-  { name: "Kennel", cost: 75, requiresExpansion: "The Companions' Expansion", effect: "Leave any owned dogs behind between quests instead of bringing them." },
+  { name: "Alchemist Lab", cost: 1500, effect: "An Alchemist making a recipe here may choose what kind of potion it yields. Only one recipe may be made between each dungeon visit." },
+  { name: "Archery Range", cost: 1500, effect: "Any hero staying at the manor may make an RS Improvement Test (roll 1d00 — above current RS means +1 RS permanently), once between each visit to a dungeon. A hero may train at the Archery Range OR the Training Grounds, not both." },
+  { name: "Training Grounds", cost: 1500, effect: "Any hero may make an Improvement Test on CS or Dodge (choice): roll 1d00 — above the current value means +1 permanently, once between each visit to a dungeon. A hero may train at the Archery Range OR the Training Grounds, not both." },
+  { name: "Wizard's Study", cost: 1500, effect: "A wizard may store any number of Familiars here for free (Companions' Expansion). Any Enchantment or Magic Scribble cast here gets a +20 modifier." },
+  { name: "Shrine", cost: 1350, effect: "Dedicated to one god of the hero's choice (only one shrine, due to rivalry between gods). Any hero may pray at the shrine between quests for the standard boon, for free, succeeding on 1-4 on 1d6." },
+  { name: "Smithy", cost: 1350, effect: "All heroes may automatically repair 1d3 Durability Points on all weapons and armour." },
+  { name: "Crops, Hen House, and Pigsty", cost: 1200, effect: "If a hero spends at least a full day tending to these, the party receives 1d8 + the number of spent days in free rations." },
+  { name: "Garden", cost: 1200, effect: "An Alchemist may gather 1d6+2 random ingredients from the garden, once between each quest." },
+  { name: "Kennel", cost: 175, requiresExpansion: "The Companions' Expansion", effect: "Leave any owned dogs behind between quests instead of bringing them." },
 ];
 
 // Ghostly Events Table (p160-161). Trigger: roll 1d10 the night before departure — on 7-10,
@@ -1128,7 +1131,7 @@ const WEAPONS = [
   { name: "Arbalest", dmg: "3d6", enc: 20, class: 6, special: "Requires STR 55, AP(2)", cost: 400, avail: 2, reload: 3 },
   { name: "Crossbow", dmg: "1d10+3", enc: 15, class: 6, special: "AP(1)", cost: 250, avail: 3, reload: 2 },
   { name: "Crossbow Pistol", dmg: "1d8+1", enc: 5, class: 2, special: "Secondary Weapon", cost: 350, avail: 2, reload: 2 },
-  { name: "Elven Bow", dmg: "1d10+2", enc: 7, class: 4, special: "AP(1)", cost: 700, avail: 2, reload: 1 },
+  { name: "Elven Bow", dmg: "1d10+2", enc: 7, class: 6, special: "AP(1)", cost: 700, avail: 2, reload: 1 },
   { name: "Longbow", dmg: "1d10", enc: 10, class: 6, special: "AP(1)", cost: 100, avail: 4, reload: 1 },
   { name: "Shortbow", dmg: "1d8", enc: 5, class: 6, special: "", cost: 100, avail: 4, reload: 1 },
   { name: "Sling", dmg: "1d6", enc: 1, class: 6, special: "Unlimited Ammo", cost: 40, avail: 4, reload: null },
@@ -1284,8 +1287,8 @@ const FIGHTERS_GUILD_EQUIPMENT = [
   { name: "Gauntlets", enc: 1, dur: null, special: "Increases arm armour +1. Only one set worn at a time.", cost: 50, avail: 5 },
   { name: "Gorget", enc: 1, dur: null, special: "Increases head armour +1. Only one set worn at a time.", cost: 50, avail: 4 },
   { name: "Pain Killer", enc: 0, dur: 1, special: "Snort it (1 AP): remove any wound status marker and regain lost AP, lasting the whole battle. Wound status returns after the battle if still applicable.", cost: 50, avail: 3 },
-  { name: "Poleyns (metal knee pads)", enc: 1, dur: null, special: "Increases leg armour +1. Only one set worn at a time.", cost: 15, avail: 5 },
-  { name: "Shield Padding", enc: 1, dur: null, special: "Increases a shield's Durability by +1 (Durability 7; 9 for a magic shield).", cost: 50, avail: 4 },
+  { name: "Poleyns (metal knee pads)", enc: 1, dur: null, special: "Increases leg armour +1. Only one set worn at a time.", cost: 50, avail: 5 },
+  { name: "Shield Padding", enc: 1, dur: null, special: "Increases a shield's Durability by +1 (Durability 7; 9 for a magic shield).", cost: 15, avail: 4 },
   { name: "Shoulder Pads", enc: 1, dur: null, special: "Increases torso armour +1. Only one set worn at a time.", cost: 50, avail: 5 },
   { name: "Slayer Weapon Treatment", enc: null, dur: null, special: "+1 DMG on an edged weapon at full Durability, cumulative with other modifiers, lasts until the weapon breaks.", cost: 100, avail: 6 },
 ];
@@ -1298,6 +1301,7 @@ const RANGERS_GUILD_EQUIPMENT = [
   { name: "Compass", enc: 0, dur: 1, special: "Reroll one Travel Event per travel. Must be carried in a Quick Slot.", cost: 300, avail: 3 },
   { name: "Elven Skinning Knife", enc: 1, dur: null, special: "+10 Foraging only while skinning. Can be kept in the backpack.", cost: 250, avail: 3 },
   { name: "Skinning Knife", enc: 1, dur: null, special: "Lets a Ranger skin animals. Can be kept in the backpack.", cost: 100, avail: 5 },
+  { name: "Tough Leather Boots", enc: 2, dur: 6, special: "+2 DEF to legs; may be combined with armour up to Tier 3, no further-stacking block and no -10 DEX penalty. Also 2 DEF against Caltrops.", cost: 300, avail: 3 },
   { name: "Taxidermist tools", enc: 3, dur: null, special: "+10 Foraging only while rolling for a Trophy.", cost: 150, avail: 3 },
   { name: "Wild game traps", enc: 3, dur: null, special: "+10 Foraging when catching animals. Can be kept in the backpack.", cost: 150, avail: 5 },
 ];
@@ -1317,7 +1321,7 @@ const TAXIDERMIST_SELL_TABLE = [
 
 // Wizards' Guild — Buying Wizard's Staffs (p151). Staffs double as close-combat weapons
 // (same stats as a normal staff, DUR 8) and have 3 charges unless noted; recharging costs
-// half the purchase price.
+// a flat 250c.
 const WIZARDS_GUILD_STAFFS = [
   { name: "Arcane Staff", effect: "+5 modifier to Arcane Arts. When leaving a dungeon, roll 1d10 — on 9-10 the magic has dissipated and it's a normal staff until recharged.", cost: 400, avail: 4 },
   { name: "Fire Staff", effect: "Contains the Magic Flare spell.", cost: 400, avail: 3 },
@@ -1338,7 +1342,7 @@ const INNER_SANCTUM_EQUIPMENT = [
 ];
 
 // The Inner Sanctum — Crusades (p157)
-const CRUSADE_TABLE = ["Undead", "Bandits", "Orcs and Goblins", "Beasts", "Dark Elves", "Reptiles"];
+const CRUSADE_TABLE = ["Undead", "Bandits", "Orcs and Goblins", "Beasts", "Dark Elves", "Reptiles", "Ratkin", "Insectoids", "Shroomfolk", "Demons"];
 
 // Alchemists' Guild — Purchasing Ingredients & Parts (p152). A part or ingredient costs
 // 15c once the Availability Roll succeeds. Reuses MONSTER_PARTS_TABLE / INGREDIENTS_TABLE
@@ -1410,7 +1414,7 @@ const MONSTER_PARTS_TABLE = {
   "Giant Toad": { part: "Amphibian skin", qty: "1d3" }, "Giant Wolf": { part: "Fur", qty: 1 },
   "Gigantic Snake": { part: "Tongue", qty: "1d3" }, "Gigantic Spider": { part: "Spider fang", qty: "1d3" },
   "Gnoll": { part: "Beast heart", qty: 1 }, "Gnoll Sergeant": { part: "Beast heart", qty: 1 },
-  "Gnoll Shaman": { part: "Brain tissue", qty: "1d2" }, "Goblin": { part: "Goblin Eye", qty: "1d2" },
+  "Gnoll Shaman": { part: "Brain tissue", qty: 1 }, "Goblin": { part: "Goblin Eye", qty: "1d2" },
   "Goblin Shaman": { part: "Brain tissue", qty: 1 }, "Griffon": { part: "Feathers", qty: "1d4" },
   "Harpy": { part: "Feathers", qty: 1 }, "Hydra": { part: "Scales", qty: "1d8" },
   "Medusa": { part: "Medusas eye", qty: "1d2" }, "Mimic": { part: "Tongue", qty: 1 },
@@ -1432,7 +1436,7 @@ const MONSTER_PARTS_TABLE = {
   "Vampire Fledgling": { part: "Vampire blood", qty: 1 }, "Warlock": { part: "Brain tissue", qty: 1 },
   "Werewolf": { part: "Fur", qty: 1 }, "Wight": { part: "Bonemeal", qty: 1 },
   "Wraiths": { part: "Ectoplasm", qty: 1 }, "Wyvern": { part: "Scales", qty: "1d4" },
-  "Zombie": { part: "Zombie skin", qty: "1d4" }, "Zombie Ogre": { part: "Zombie skin", qty: 1 },
+  "Zombie": { part: "Zombie skin", qty: 1 }, "Zombie Ogre": { part: "Zombie skin", qty: "1d4" },
 };
 const ALCHEMY_PART_NAMES = [...new Set(Object.values(MONSTER_PARTS_TABLE).map((p) => p.part))].sort();
 
@@ -1681,7 +1685,7 @@ const GENERAL_EQUIPMENT = [
   { name: "Bed Roll", category: "Misc", enc: 5, dur: 0, cost: 200, avail: 3, special: "Auto-regains all Energy on a short rest" },
   { name: "Combat Harness", category: "Misc", enc: 0, dur: 6, cost: 500, avail: 2, special: "Quick Slots 3 -> 5" },
   { name: "Extended Battle Belt", category: "Misc", enc: 0, dur: 6, cost: 300, avail: 3, special: "Quick Slots 3 -> 4" },
-  { name: "Holy Water", category: "Misc", enc: 0, dur: 1, cost: 25, avail: 3, special: "1d3 dmg to undead; dip 5 arrows" },
+  { name: "Holy Water", category: "Misc", enc: 0, dur: 1, cost: 25, avail: 3, special: "2d3 dmg to undead; dip 5 arrows" },
   { name: "Iron Wedges", category: "Misc", enc: 4, dur: 6, cost: 50, avail: 4, special: "Blocks a door; enough for 2" },
   { name: "Parchment", category: "Misc", enc: 0, dur: 0, cost: 50, avail: 4, special: "Needed to make magic scrolls" },
   { name: "Partial Map", category: "Misc", enc: 0, dur: 0, cost: 75, avail: 4, special: "Look at 2 Exploration Cards" },
@@ -1690,9 +1694,9 @@ const GENERAL_EQUIPMENT = [
   { name: "Cooking Gear", category: "Tools", enc: 3, dur: 0, cost: 100, avail: 4, special: "Cooked rations heal +3 HP" },
   { name: "Crowbar", category: "Tools", enc: 10, dur: 6, cost: 55, avail: 3, special: "Breaks doors: 8+DB dmg, Threat +1" },
   { name: "Dwarven Pickaxe", category: "Tools", enc: 8, dur: 6, cost: 225, avail: 2, special: "Lighter, stronger pickaxe" },
-  { name: "Fishing Gear", category: "Tools", enc: 3, dur: 0, cost: 40, avail: 5, special: "+5 Foraging" },
+  { name: "Fishing Gear", category: "Tools", enc: 3, dur: 0, cost: 40, avail: 5, special: "+10 Foraging" },
   { name: "Lockpicks (5)", category: "Tools", enc: 0, dur: 1, cost: 30, avail: 3, special: "Needed for Pick Locks; 1 destroyed per fail" },
-  { name: "Pickaxe", category: "Tools", enc: 10, dur: 0, cost: 175, avail: 3, special: "Removes rubble" },
+  { name: "Pickaxe", category: "Tools", enc: 10, dur: 6, cost: 175, avail: 3, special: "Removes rubble" },
   { name: "Rope (old)", category: "Tools", enc: 2, dur: 1, cost: 20, avail: 5, special: "1-in-6 chance to break" },
   { name: "Rope", category: "Tools", enc: 2, dur: 1, cost: 50, avail: 4, special: "" },
   { name: "Trap Disarming Kit", category: "Tools", enc: 5, dur: 6, cost: 200, avail: 3, special: "+10 disarming traps" },
@@ -1888,8 +1892,8 @@ const SEARCH_TILE_TABLE = [
   { roll: [26, 40], text: "A Mundane Treasure." },
   { roll: [41, 45], text: "A set of levers are intricately hidden in the wall. They may be operated." },
   { roll: [46, 50], text: "4d20 coins." },
-  { roll: [51, 90], text: "Nothing." },
-  { roll: [91, 100], text: "You've sprung a trap! Draw a trap card." },
+  { roll: [51, 85], text: "Nothing." },
+  { roll: [86, 100], text: "You've sprung a trap! Draw a trap card." },
 ];
 function searchTileResult(roll) {
   const clamped = Math.min(100, roll);
@@ -2097,18 +2101,18 @@ const PRAYERS = [
   { name: "Charus, Walk with Us", lvl: 1, effect: "As long as Charus listens, all heroes regain an Energy point on any skill roll of 01-10 instead of the normal 01-05. Only affects Energy." },
   { name: "Metheia's Ward", lvl: 1, effect: "The priest regains 1 lost HP at the start of their activation, for the rest of the battle." },
   { name: "Power of the Gods", lvl: 1, effect: "Diverts divine power to a wizard — as long as active, any hero wizard gains +10 Arcane Arts." },
-  { name: "Methia's Balm", lvl: 1, effect: "Heals an adjacent hero (or the priest) for 1d6+1 HP. Prayer ends once resolved." },
+  { name: "Metheia's Balm", lvl: 1, effect: "Heals an adjacent hero (or the priest) for 1d6+1 HP. Prayer ends once resolved." },
   { name: "Litany of Metheia", lvl: 2, effect: "Every hero that passes a RES test at the start of their activation regains 1 HP." },
   { name: "Power of Faith", lvl: 2, effect: "Party gains immunity to fear and treats terror as fear. Scared heroes regain courage if this prayer succeeds." },
   { name: "Smite the Heretics!", lvl: 2, effect: "At the start of each turn, enemies within 4 squares of the priest must pass a RES test or lose 1 HP." },
   { name: "Verse of the Sane", lvl: 2, effect: "The hero targeted regains 1d3 Sanity Points. Once per hero per quest." },
   { name: "Shield of the Gods", lvl: 2, effect: "As long as active, one hero in LOS of the priest gets +2 Natural Armour." },
-  { name: "Strengths of Ohlnir", lvl: 3, effect: "All party members gain +1 DMG with close combat weapons." },
+  { name: "Strength of Ohlnir", lvl: 3, effect: "All party members gain +1 DMG with close combat weapons." },
   { name: "Warriors of Ramos", lvl: 3, effect: "All party members fight with +10 CS." },
   { name: "Stay Thy Hand!", lvl: 3, effect: "Enemies within 4 squares of the priest must pass a RES test at the start of every turn or lose 1 AP. Not cumulative with other action-loss effects." },
   { name: "Be Gone!", lvl: 3, effect: "Ethereal creatures within 4 squares must pass a RES test at the start of their turn or lose 1d3 HP." },
   { name: "Providence of Metheia", lvl: 3, effect: "While active, all heroes get +10 CON when resisting disease or poison." },
-  { name: "We Shalt Not Falter", lvl: 4, effect: "Party gains +5 HP, temporarily above current max. Reverts to normal max after the battle." },
+  { name: "We Shall Not Falter", lvl: 4, effect: "Party gains +5 HP, temporarily above current max. Reverts to normal max after the battle." },
   { name: "God's Champion", lvl: 4, effect: "Priest's CS +20, +2 DMG modifier, but loses an extra Energy point after the battle. If not enough Energy, CON is halved (RDD) until the next short rest or leaving the dungeon." },
 ];
 
@@ -2134,31 +2138,31 @@ const SPELLS = [
   { name: "Corruption", lvl: 3, cv: 18, mana: 16, upkeep: 1, special: "MM", school: "Necromancy", effect: "A storm of flies soars from the gaping mouth of the caster, surrounding the target. The cloud of flies makes it harder for the enemy to fight by reducing its CS by 10. The spell lasts for 1d3 turns." },
   { name: "Enchant Item", lvl: 3, cv: 25, mana: null, upkeep: 0, special: "I", school: "Enchantment", effect: "This spell can only be cast between quests and requires a powerstone. The power of the stone is then fused with an object such as a weapon, an armour or a piece of jewellery. See chapter on Crafting." },
   { name: "Healing", lvl: 3, cv: 15, mana: 12, upkeep: 0, special: "", school: "Restoration", effect: "The caster may heal a hero (including the caster) within 4 squares and in LOS. The target regains 1d/+2 Hit Points." },
-  { name: "Ice Pikes", lvl: 3, cv: 10, mana: 12, upkeep: 0, special: "", school: "Destruction", effect: "A series of razor-sharp Ice spikes shoot from the floor, striking the target from below. It causes 2d6+2 Frost DMG. Target must be in LOS." },
+  { name: "Ice Spikes", lvl: 3, cv: 10, mana: 12, upkeep: 0, special: "", school: "Destruction", effect: "A series of razor-sharp Ice spikes shoot from the floor, striking the target from below. It causes 2d6+2 Frost DMG. Target must be in LOS." },
   { name: "Lightning Bolt", lvl: 3, cv: 16, mana: 18, upkeep: 0, special: "MM", school: "Destruction", effect: "A crackling bolt leaps from the hand of the wizard, striking a victim within LOS, dealing 1d10 DMG, ignoring armour. The bolt then jumps to the nearest model (random if equal) and deals 1d8 DMG, ignoring armour. Finally, it makes its last jump, dealing 1d6 DMG, ignoring armour. It always jumps to the nearest model, and never strikes the same model twice. It never jumps more than 3 squares." },
   { name: "Magic Armour", lvl: 3, cv: 15, mana: 15, upkeep: 2, special: "", school: "Mysticism", effect: "The caster may bolster the armour of any target within LOS by +2 for all parts of the body. The spell lasts for Caster Level+2 turns." },
   { name: "Magic Bolt", lvl: 3, cv: 10, mana: 14, upkeep: 0, special: "Q, MM", school: "Destruction", effect: "A bolt of pure energy lashes from the caster to a target within LOS. Target loses 1D10 Hit Points, ignoring any armour." },
   { name: "Slow", lvl: 3, cv: 14, mana: 12, upkeep: 2, special: "", school: "Hex", effect: "A target within LOS of the caster must pass a Resolve test or lose one Action Point. Test again at the start of each enemy turn. The effect lasts until the enemy test succeeds." },
-  { name: "Summon Water Elemental", lvl: 3, cv: 18, mana: 15, upkeep: 5, special: "", school: "Conjuration", effect: "The caster summons one of the four Elementals to aid them in the battle. The Elemental fights for Caster Level number of turns. Immediately add one hero initiative token to the bag." },
-  { name: "Summon Wind Elemental", lvl: 3, cv: 20, mana: 18, upkeep: 5, special: "", school: "Conjuration", effect: "The caster summons one of the four Elementals to aid them in the battle. The Elemental fights for Caster Level number of turns. Immediately add one hero initiative token to the bag." },
+  { name: "Summon Water Elemental", lvl: 3, cv: 15, mana: 18, upkeep: 5, special: "", school: "Conjuration", effect: "The caster summons one of the four Elementals to aid them in the battle. The Elemental fights for Caster Level number of turns. Immediately add one hero initiative token to the bag." },
+  { name: "Summon Wind Elemental", lvl: 3, cv: 18, mana: 20, upkeep: 5, special: "", school: "Conjuration", effect: "The caster summons one of the four Elementals to aid them in the battle. The Elemental fights for Caster Level number of turns. Immediately add one hero initiative token to the bag." },
   { name: "Vampiric Touch", lvl: 3, cv: 15, mana: 14, upkeep: 0, special: "T", school: "Necromancy", effect: "Caster causes 1d6+2 DMG with no armour or NA, and the caster may heal by the same amount of HP up to their maximum Hit Points." },
   { name: "Banish Undead", lvl: 4, cv: 20, mana: 20, upkeep: 0, special: "", school: "Necromancy", effect: "This spell only hurts Undead with the Ethereal Rule. A successful spell damages the Undead creature with 2d6." },
-  { name: "Bolstered Mind", lvl: 4, cv: 12, mana: 15, upkeep: 0, special: "Q", school: "Mysticism", effect: "The caster infuses all members of the party with magical courage. Each hero gains +10 Resolve and may try to re-roll any failed fear test once. Lasts until end of turn." },
+  { name: "Bolstered Mind", lvl: 4, cv: 15, mana: 12, upkeep: 0, special: "Q", school: "Mysticism", effect: "The caster infuses all members of the party with magical courage. Each hero gains +10 Resolve and may try to re-roll any failed fear test once. Lasts until end of turn." },
   { name: "Frost Beam", lvl: 4, cv: 16, mana: 15, upkeep: 0, special: "MM", school: "Destruction", effect: "A beam of frost shoots from the hands of the caster towards the target, which must be in LOS. The target takes 2d8+2 Frost DMG." },
   { name: "Hold Creature", lvl: 4, cv: 20, mana: 20, upkeep: 6, special: "Q", school: "Hex", effect: "The wizard holds an enemy in LOS in its place, making it impossible to move or fight. The enemy makes a RES Test at the start of their turn, and if successful, it breaks free and acts as normal. The activation token should be added to the bag as usual, and the enemy tries to act in the normal order of activation." },
-  { name: "Ice Tomb", lvl: 4, cv: 20, mana: 25, upkeep: 0, special: "", school: "Destruction", effect: "Caster may trap a target in LOS in ice, forcing it to break free before being able to do anything else. The caster may roll Caster Level d10 to determine how strong the tomb is, and the target does its maximum damage (incl weapon) once per turn until the tomb breaks. It may act with both its actions on the turn the tomb breaks. For every turn, the target takes 1d4 points of Frost DMG." },
+  { name: "Ice Tomb", lvl: 4, cv: 25, mana: 20, upkeep: 0, special: "", school: "Destruction", effect: "Caster may trap a target in LOS in ice, forcing it to break free before being able to do anything else. The caster may roll Caster Level d10 to determine how strong the tomb is, and the target does its maximum damage (incl weapon) once per turn until the tomb breaks. It may act with both its actions on the turn the tomb breaks. For every turn, the target takes 1d4 points of Frost DMG." },
   { name: "Transpose", lvl: 4, cv: 15, mana: 25, upkeep: 0, special: "", school: "Alteration", effect: "The caster may shift the place of two heroes that are in LOS. If the spell fails, both heroes suffer 2 Sanity Points for the ordeal. The caster may not transpose themself." },
-  { name: "Second Sight", lvl: 4, cv: 15, mana: 25, upkeep: 0, special: "", school: "Divination", effect: "Caster can tell what is on the other side of a door. Place the tile and roll for Encounter before opening a door. The heroes gain 2 initiative tokens if there is an encounter on the other side of the door." },
+  { name: "Second Sight", lvl: 4, cv: 25, mana: 15, upkeep: 0, special: "", school: "Divination", effect: "Caster can tell what is on the other side of a door. Place the tile and roll for Encounter before opening a door. The heroes gain 2 initiative tokens if there is an encounter on the other side of the door." },
   { name: "Summon Demon", lvl: 4, cv: 25, mana: 15, upkeep: 0, special: "", school: "Conjuration", effect: "The caster lures a demon from its dimension over to this world. It will randomly be either a Blood Demon or a Plague Demon. The demon is placed in a random place on the same tile as the wizard and fights for the caster. Once summoned, immediately add a hero activation token to the bag and activate the demon just like a hero. However, at the start of the wizard's activation following the summoning, the caster must pass a Resolve Test. If the caster fails, the demon breaks free and escapes back to its own dimension. When it breaks free, it will make a Resolve Test of its own and if it succeeds, it takes part of the caster's mind with it. Deduct 1d3 Sanity Points from the caster. Once in our plane, the demon relishes the fighting, so no upkeep is needed." },
-  { name: "Summon Earth Elemental", lvl: 4, cv: 20, mana: 15, upkeep: 5, special: "", school: "Conjuration", effect: "The caster summons one of the four Elementals to aid them in the battle. The Elemental fights for ML number of turns. Immediately add one hero initiative token to the bag." },
-  { name: "Summon Fire Elemental", lvl: 4, cv: 25, mana: 15, upkeep: 5, special: "", school: "Conjuration", effect: "The caster summons one of the four Elementals to aid them in the battle. The Elemental fights for Caster level number of turns. Immediately add one hero initiative token to the bag." },
+  { name: "Summon Earth Elemental", lvl: 4, cv: 15, mana: 20, upkeep: 5, special: "", school: "Conjuration", effect: "The caster summons one of the four Elementals to aid them in the battle. The Elemental fights for ML number of turns. Immediately add one hero initiative token to the bag." },
+  { name: "Summon Fire Elemental", lvl: 4, cv: 18, mana: 25, upkeep: 5, special: "", school: "Conjuration", effect: "The caster summons one of the four Elementals to aid them in the battle. The Elemental fights for Caster level number of turns. Immediately add one hero initiative token to the bag." },
   { name: "Summon Souls", lvl: 4, cv: 12, mana: 15, upkeep: 0, special: "", school: "Necromancy", effect: "This spell conjures a host of restless spirits to torment your enemies. Each enemy on the tile takes 1d4 points of DMG with no armour and NA. Undead enemies are immune." },
   { name: "Weakness", lvl: 4, cv: 18, mana: 18, upkeep: 0, special: "T", school: "Hex", effect: "The caster can choose to lower the Strength or Constitution of a chosen target if the target fails a Resolve Test. If the target fails, it loses its NA armour or DMG bonus for 1d4 turns, depending on what the wizard chooses." },
   { name: "Cause Animosity", lvl: 5, cv: 18, mana: 18, upkeep: 0, special: "", school: "Illusion", effect: "May target any enemy in sight. Target must pass RES or attack the closest enemy during its next activation. Once that activation is over, the effect is gone." },
   { name: "Fire Rain", lvl: 5, cv: 23, mana: 25, upkeep: 0, special: "", school: "Destruction", effect: "A hail of sparks rains down over the target and any adjacent squares. The target takes 1d8+Caster Level Fire DMG and the adjacent squares take 1d4+Caster Level points of Fire DMG." },
   { name: "Fire Wall", lvl: 5, cv: 20, mana: 20, upkeep: 4, special: "", school: "Destruction", effect: "This spell creates a Fire Wall, up to 3 squares long. It may only be placed in a straight line and not in a square that contains an enemy. All except lower Undead and Fire Elementals will avoid or try to walk around. Spell lasts for 1d4+1 turns. Any Lower Undead walking through takes 1d6 Fire DMG. Fire Elementals are immune." },
   { name: "Levitate", lvl: 5, cv: 15, mana: 20, upkeep: 0, special: "", school: "Alteration", effect: "May target self or hero in LOS. Target may levitate for the entire turn. That means the character moves above the ground, not touching any traps or similar. It may be used to leave a pit and to traverse a pit. You cannot levitate through a square that contains a model or lava." },
-  { name: "Mirrored Self", lvl: 5, cv: 20, mana: 15, upkeep: 2, special: "Q", school: "Illusion", effect: "The caster makes a copy of themselves, which may be placed anywhere within 4 squares of the caster. Enemies treat this mirrored image as a target just like any other hero, even though it cannot take DMG. The mirrored self cannot move or attack. It lasts for 1d4 turns." },
+  { name: "Mirrored Self", lvl: 5, cv: 15, mana: 20, upkeep: 2, special: "Q", school: "Illusion", effect: "The caster makes a copy of themselves, which may be placed anywhere within 4 squares of the caster. Enemies treat this mirrored image as a target just like any other hero, even though it cannot take DMG. The mirrored self cannot move or attack. It lasts for 1d4 turns." },
   { name: "Speed", lvl: 5, cv: 15, mana: 15, upkeep: 0, special: "", school: "Mysticism", effect: "May target self or any friendly character in LOS. Character gains +1M. The spell lasts until a Scenario die roll of 9-10." },
   { name: "Time Freeze", lvl: 5, cv: 20, mana: 30, upkeep: 0, special: "", school: "Divination", effect: "All heroes that have acted may immediately put activation tokens back in the bag. They may act again as if it is a new turn. This spell may only be cast once during a battle." },
   { name: "Fireball", lvl: 6, cv: 32, mana: 30, upkeep: 0, special: "MM", school: "Destruction", effect: "The caster shoots a fireball at a square or an enemy. The target square suffers 3d6+2 Fire Damage. Adjacent squares suffer 2d6 Fire Damage." },
@@ -2166,7 +2170,7 @@ const SPELLS = [
   { name: "Life Force", lvl: 6, cv: 20, mana: 30, upkeep: 0, special: "", school: "Restoration", effect: "This spell restores all of a hero's Hit Points." },
   { name: "Raise Dead", lvl: 6, cv: 25, mana: 15, upkeep: 5, special: "", school: "Necromancy", effect: "The caster may try to raise a defeated Lower Undead or dead human in LOS. Add one hero activation token to the bag immediately. Any Zombie or Skeleton raised retains its stats and equipment. Any raised human gains the stats of a zombie and retains its weapon, but armour is 0." },
   { name: "Summon Greater Demon", lvl: 6, cv: 30, mana: 25, upkeep: 0, special: "", school: "Conjuration", effect: "The caster draws a demon from its dimension to do their bidding. The demon is placed in a random square on the same tile as the wizard and fights for the caster for 1d3 + Caster Level turns. Once in our plane, the demon relishes fighting, so no upkeep is needed. However, making a pact with a Greater Demon comes at a price, no matter how skilled a wizard may be. Deduct 1d6 Sanity Points from the caster." },
-  { name: "Teleportation", lvl: 6, cv: 14, mana: 20, upkeep: 0, special: "", school: "Alteration", effect: "The wizard may teleport themselves or one of their companions within LOS up to 4 squares. This is risky business though, and a failed spell costs the target one Sanity Point as they are partly in the void before coming back." },
+  { name: "Teleportation", lvl: 6, cv: 18, mana: 18, upkeep: 0, special: "", school: "Alteration", effect: "The wizard may teleport themselves or one of their companions within LOS up to 4 squares. This is risky business though, and a failed spell costs the target one Sanity Point as they are partly in the void before coming back." },
 ];
 
 
@@ -3748,6 +3752,28 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.57.0",
+    date: "2026-10-22",
+    sections: {
+      "Added": [
+        "Rangers' Guild: Tough Leather Boots",
+        "New Travel-tab panel: Make Camp (Overnight Rest) — applies recovery and the Hunger Track for you",
+      ],
+      "Changed": [
+        "Rulebook 2.571: Guild Skill Training now costs 200c and needs a roll — roll 1d00 above the skill and it rises by +2 (cap 80); a failed roll still costs the fee. Applies to every guild, and the Inner Sanctum now has its Skill Training box too (CS, Dodge, Battle Prayers)",
+        "Rulebook 2.571: Hunger is now the cumulative Hunger Track — day 1 half HP and no Energy, day 2 no HP and -1 Energy, day 3 -2 Energy, day 4 CON halved, day 5 Movement Points halved, day 6+ -1 HP; maximum Party Morale drops by 1 each hungry day (max -6). Eating (a ration or a successful forage) resets it. A failed forage no longer makes the party hungry on the spot",
+        "Rulebook 2.571: Estate room prices updated (Alchemist Lab, Archery Range, Training Grounds and Wizard's Study 1500c; Shrine and Smithy 1350c; Crops/Hen House/Pigsty and Garden 1200c; Kennel 175c). Archery Range and Training Grounds are now an Improvement Test (1d00 above the skill = +1 permanent)",
+        "Rulebook 2.571: nine spells had their CV and Mana swapped (Summon Water/Wind/Earth/Fire Elemental, Bolstered Mind, Ice Tomb, Second Sight, Mirrored Self, Teleportation) — corrected to the book",
+        "Rulebook 2.571: Inner Sanctum blessed armour now gives +2 DEF against Undead/Demons and no Durability bonus; the Crusade table is now 1d10 with all ten factions",
+        "Rulebook 2.571: Shield Padding 15c and Poleyns 50c (were swapped); staff recharge is a flat 250c; Elven Bow is class 6; Large Backpack DEX -15; Fishing Gear +10 Foraging; Holy Water 2d3; Pickaxe Durability 6; Trinket Salesman magic on 1-4; tile search trap on 86-00; Gnoll Shaman and Zombie harvest 1 part, Zombie Ogre 1d4",
+        "Short Rest Party Morale gain is now capped at the party's current maximum (and never above 20)",
+      ],
+      "Fixed": [
+        "Spell and prayer names corrected to the book (Ice Spikes, Metheia's Balm, We Shall Not Falter, Strength of Ohlnir) — existing saves are renamed automatically",
+      ],
+    },
+  },
   {
     version: "1.56.1",
     date: "2026-08-29",
@@ -5728,8 +5754,8 @@ function normalizeHero(h) {
     offhandWeapon: { ...base.offhandWeapon, ...(h.offhandWeapon || {}), dur: mergeDur(h.offhandWeapon && h.offhandWeapon.dur) },
     talents: h.talents || base.talents,
     perks: h.perks || base.perks,
-    spells: h.spells || base.spells,
-    prayers: h.prayers || base.prayers,
+    spells: (h.spells || base.spells).map((n) => (n === "Ice Pikes" ? "Ice Spikes" : n)),
+    prayers: (h.prayers || base.prayers).map((n) => ({ "Methia's Balm": "Metheia's Balm", "Strengths of Ohlnir": "Strength of Ohlnir", "We Shalt Not Falter": "We Shall Not Falter" }[n] || n)),
     specialRules: h.specialRules || base.specialRules,
     conditions: h.conditions || base.conditions,
     backpack: (h.backpack || base.backpack).map((it) => ({ slot: "backpack", ...it })),
@@ -9203,19 +9229,16 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
     const hero = heroes.find((h) => h.id === trainHero);
     if (!hero) { setTrainResult({ ok: false, line: "Pick a hero first." }); return; }
     if ((party.estate.heroTraining || {})[hero.id]) { setTrainResult({ ok: false, line: `${hero.name} already trained between this visit and the next dungeon.` }); return; }
-    const roll = rollDie(2);
-    let patch, line;
-    if (which === "Archery Range") {
-      patch = addTempEffect(hero, `Manor training: Archery Range (+${roll} RS)`, { skill: "rs", amount: roll });
-      line = `${hero.name} trains at the Archery Range: +${roll} RS.`;
-    } else {
-      // Training Grounds — choice of CS or Dodge
-      patch = addTempEffect(hero, `Manor training: Training Grounds (+${roll} ${trainChoice})`, { skill: trainChoice === "Dodge" ? "dodge" : "cs", amount: roll });
-      line = `${hero.name} trains at the Training Grounds: +${roll} ${trainChoice}.`;
-    }
+    const key = which === "Archery Range" ? "rs" : (trainChoice === "Dodge" ? "dodge" : "cs");
+    const label = which === "Archery Range" ? "RS" : trainChoice;
+    const cur = Number(hero.skills[key]) || 0;
+    const roll = rollDie(100);
+    const gained = roll > cur;
+    const line = `${hero.name} trains at the ${which} (${label} Improvement Test): rolled ${roll} vs ${cur} — ${gained ? `success, ${label} ${cur} → ${cur + 1}.` : "no improvement."}`;
+    const patch = gained ? { skills: { ...hero.skills, [key]: cur + 1 } } : {};
     updateHero({ ...hero, ...patch });
     setParty((prev) => ({ ...prev, estate: { ...prev.estate, heroTraining: { ...prev.estate.heroTraining, [hero.id]: which } } }));
-    setTrainResult({ ok: true, line: `${line} (see Temporary Effects on ${hero.name}'s card).` });
+    setTrainResult({ ok: gained, line });
     addLog(line);
   };
 
@@ -10410,7 +10433,7 @@ function GuildResultBox({ result }) {
   );
 }
 
-// Shared Skill Training box — 300c, +3 modifier, once per skill between dungeons.
+// Shared Skill Training box — 200c, 1d00 roll above the skill = +2, once per skill between dungeons.
 function SkillTrainingBox({ guildKey, skillKeys, heroes, party, setParty, updateHero, addLog }) {
   const [hero, setHero] = useState(heroes[0]?.id || "");
   const [skill, setSkill] = useState(skillKeys[0]);
@@ -10422,19 +10445,23 @@ function SkillTrainingBox({ guildKey, skillKeys, heroes, party, setParty, update
     const h = heroes.find((x) => x.id === hero);
     if (!h) { setResult({ ok: false, line: "Pick a hero first." }); return; }
     if (alreadyTrained) { setResult({ ok: false, line: `${h.name} already trained ${SKILL_LABELS[skill]} this cycle — reset via "Between Quests" on the Settlements tab.` }); return; }
-    if (party.coins < 300) { setResult({ ok: false, line: `Can't afford it: 300c needed, party only has ${party.coins}c.` }); return; }
-    setParty((prev) => ({ ...prev, coins: prev.coins - 300, guilds: { ...prev.guilds, training: { ...prev.guilds.training, [trainKey]: true } } }));
+    if (party.coins < 200) { setResult({ ok: false, line: `Can't afford it: 200c needed, party only has ${party.coins}c.` }); return; }
     const cur = Number(h.skills[skill]) || 0;
-    updateHero({ ...h, skills: { ...h.skills, [skill]: cur + 3 } });
-    const line = `${h.name} trains ${SKILL_LABELS[skill]}: ${cur} → ${cur + 3} for 300c (1 day).`;
-    setResult({ ok: true, line });
+    const roll = rollDie(100);
+    const success = roll > cur;
+    setParty((prev) => ({ ...prev, coins: prev.coins - 200, guilds: { ...prev.guilds, training: { ...prev.guilds.training, [trainKey]: true } } }));
+    if (success) updateHero({ ...h, skills: { ...h.skills, [skill]: Math.min(80, cur + 2) } });
+    const line = success
+      ? `${h.name} trains ${SKILL_LABELS[skill]} for 200c: rolled ${roll} (needed above ${cur}) — success! ${cur} → ${Math.min(80, cur + 2)}.`
+      : `${h.name} trains ${SKILL_LABELS[skill]} for 200c: rolled ${roll} (needed above ${cur}) — no improvement this time. The fee is still paid.`;
+    setResult({ ok: success, line });
     addLog(`${h.name} trains ${SKILL_LABELS[skill]} at the ${guildKey} (${line})`);
   };
 
   return (
     <div className="subsection mb-4">
       <p className="text-[11px] font-bold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Skill Training</p>
-      <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>+3 to a skill for 300c. Only one training session per skill can be taken between dungeons.</p>
+      <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>200c, then roll 1d00: above your current skill = +2 permanently (cap 80). A failed roll still costs the fee. One session per skill between dungeons.</p>
       <select value={hero} onChange={(e) => { setHero(e.target.value); setResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
         <option value="">Choose a hero…</option>
         {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
@@ -10443,7 +10470,7 @@ function SkillTrainingBox({ guildKey, skillKeys, heroes, party, setParty, update
         {skillKeys.map((k) => <option key={k} value={k}>{SKILL_LABELS[k]}</option>)}
       </select>
       <button onClick={train} disabled={!hero || alreadyTrained} className="w-full text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: (!hero || alreadyTrained) ? "#00000020" : palette.crimsonDark, color: palette.parchment, opacity: (!hero || alreadyTrained) ? 0.5 : 1 }}>
-        {alreadyTrained ? "Already trained this cycle" : "Train (300c, 1 day)"}
+        {alreadyTrained ? "Already trained this cycle" : "Train (200c, 1 day)"}
       </button>
       <GuildResultBox result={result} />
     </div>
@@ -10740,7 +10767,7 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
   // ---------- Inner Sanctum: Crusades ----------
   const crusade = party.guilds.crusade;
   const rollCrusade = () => {
-    const against = CRUSADE_TABLE[rollDie(6) - 1];
+    const against = CRUSADE_TABLE[rollDie(10) - 1];
     setParty((prev) => ({ ...prev, guilds: { ...prev.guilds, crusade: { against, killed: 0 } } }));
     addLog(`The High Priests declare a Crusade against ${against}.`);
   };
@@ -10760,8 +10787,8 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
     if (!piece?.name) { setBlessResult({ ok: false, line: "That armour slot is empty." }); return; }
     if (party.coins < 25) { setBlessResult({ ok: false, line: "Can't afford the 25c fee." }); return; }
     setParty((prev) => ({ ...prev, coins: prev.coins - 25 }));
-    updateHero({ ...h, armour: { ...h.armour, [loc]: { ...piece, dur: { cur: piece.dur.cur + 1, max: piece.dur.max + 1 }, blessed: true } } });
-    const line = `${piece.name} blessed for 25c — +1 Durability, lasts until the heroes leave the next dungeon.`;
+    updateHero({ ...h, armour: { ...h.armour, [loc]: { ...piece, blessed: true } } });
+    const line = `${piece.name} blessed for 25c — +2 DEF against attacks by Undead and Demons (no Durability bonus), lasts until the heroes leave the next dungeon.`;
     setBlessResult({ ok: true, line });
     addLog(`${h.name}'s ${piece.name} is blessed by the High Priests: ${line}`);
   };
@@ -11055,7 +11082,7 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
                     <GuildResultBox result={identifyResult} />
                   </div>
 
-                  <GuildShopList title="Buying Wizard's Staffs" desc="Staffs double as close-combat weapons (same stats as a normal staff, DUR 8) and hold 3 charges unless noted. Recharging costs half the purchase price — do that from the Hero tab once it's in a backpack." items={WIZARDS_GUILD_STAFFS.map((s) => ({ name: s.name, cost: s.cost, avail: s.avail, special: s.effect }))} heroes={heroes} party={party} setParty={setParty} updateHero={updateHero} addLog={addLog} sourceLabel="Wizards' Guild" />
+                  <GuildShopList title="Buying Wizard's Staffs" desc="Staffs double as close-combat weapons (same stats as a normal staff, DUR 8) and hold 3 charges unless noted. Recharging costs a flat 250c — do that from the Hero tab once it's in a backpack." items={WIZARDS_GUILD_STAFFS.map((s) => ({ name: s.name, cost: s.cost, avail: s.avail, special: s.effect }))} heroes={heroes} party={party} setParty={setParty} updateHero={updateHero} addLog={addLog} sourceLabel="Wizards' Guild" />
                 </>
               )}
 
@@ -11193,9 +11220,11 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
                     )}
                   </div>
 
+                  <SkillTrainingBox guildKey="Inner Sanctum" skillKeys={["cs", "dodge", "battlePrayers"]} heroes={heroes} party={party} setParty={setParty} updateHero={updateHero} addLog={addLog} />
+
                   <div className="subsection mb-4">
                     <p className="text-[11px] font-bold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Blessing Armour &amp; Weapons</p>
-                    <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>Armour: +1 Durability for 25c/piece. Weapons: +2 DMG vs Undead/Demons for 75c. Both last until the heroes leave the next dungeon.</p>
+                    <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>Armour/shields: +2 DEF vs Undead/Demons for 25c/piece (no Durability bonus). Magical and Legendary items can't be blessed. Weapons: +2 DMG vs Undead/Demons for 75c. Both last until the heroes leave the next dungeon.</p>
                     <select value={blessHero} onChange={(e) => { setBlessHero(e.target.value); setBlessResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
                       <option value="">Choose a hero…</option>
                       {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
@@ -12325,8 +12354,9 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
       return;
     }
 
-    const newMorale = party.morale + 2;
-    lines.push({ text: `Party Morale +2 (now ${newMorale}).` });
+    const moraleCap = (Number(party.startingMorale) || 0) > 0 ? Math.min(20, party.startingMorale - (party.moraleMaxPenalty || 0)) : 20;
+    const newMorale = Math.max(party.morale, Math.min(party.morale + 2, moraleCap));
+    lines.push({ text: `Party Morale +2, up to its maximum of ${moraleCap} (now ${newMorale}).` });
 
     heroes.forEach((h) => {
       const hpRoll = rollDie(6);
@@ -15575,24 +15605,33 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
 
   const rationCost = ancientLands ? 2 : 1;
 
+  const hungerDays = party.hungerDays || 0;
+  const moralePenalty = party.moraleMaxPenalty || 0;
+
+  // Eating (a ration, or a successful Foraging Test) resets the Hunger Track and lifts every
+  // ongoing hunger penalty. HP, Energy and current Party Morale already lost are NOT restored.
   const feedParty = () => {
-    if (party.hungry) {
+    if (hungerDays > 0 || party.hungry) {
       heroes.forEach((h) => {
         const delta = (party.hungerConDeltas || {})[h.id];
         if (delta) updateHero(h.id, { ...h, stats: { ...h.stats, CON: h.stats.CON + delta } });
       });
     }
-    setParty((prev) => ({ ...prev, hungry: false, hungerConDeltas: {} }));
+    setParty((prev) => ({ ...prev, hungry: false, hungerDays: 0, hungerConDeltas: {}, moraleMaxPenalty: 0, fedToday: true }));
   };
 
   const useRations = () => {
+    if (party.fedToday) {
+      setForageResult({ ok: false, line: "The party has already eaten today." });
+      return;
+    }
     if ((party.food || 0) < rationCost) {
       setForageResult({ ok: false, line: `Not enough rations: need ${rationCost}, party only has ${party.food || 0}.` });
       return;
     }
     setParty((prev) => ({ ...prev, food: prev.food - rationCost }));
     feedParty();
-    const line = `Party eats — ${rationCost} ration${rationCost > 1 ? "s" : ""} used.${party.hungry ? " Hunger penalty lifted." : ""}`;
+    const line = `Party eats — ${rationCost} ration${rationCost > 1 ? "s" : ""} used.${hungerDays > 0 ? " Hunger Track reset and hunger penalties lifted." : ""}`;
     setForageResult({ ok: true, line });
     addLog(`Rations: ${line}`);
   };
@@ -15600,36 +15639,85 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
   const rollForage = () => {
     const hero = heroes.find((h) => h.id === forageHero);
     if (!hero) { setForageResult({ ok: false, line: "Pick a hero to forage first." }); return; }
+    if (party.fedToday) { setForageResult({ ok: false, line: "The party has already eaten today." }); return; }
     const mod = forageTerrain === "trees" ? 10 : forageTerrain === "road" ? -10 : 0;
     const target = (Number(hero.skills.foraging) || 0) + mod;
     const roll = rollDie(100);
     const success = roll <= target;
+    const detail = `rolled ${roll} vs target ${target} (Foraging ${hero.skills.foraging}${mod !== 0 ? `, ${mod > 0 ? "+" : ""}${mod} terrain` : ""})`;
     if (success) {
       feedParty();
-      const line = `${hero.name} forages — rolled ${roll} vs target ${target} (Foraging ${hero.skills.foraging}${mod !== 0 ? `, ${mod > 0 ? "+" : ""}${mod} terrain` : ""}) — Success! Party fed for the day, no ration used.`;
+      const line = `${hero.name} forages — ${detail} — Success! Party fed for the day, no ration used.`;
       setForageResult({ ok: true, line });
       addLog(`Foraging: ${line}`);
     } else {
-      const wasAlreadyHungry = party.hungry;
-      const deltas = {};
-      heroes.forEach((h) => {
-        const delta = Math.floor((Number(h.stats.CON) || 0) / 2);
-        deltas[h.id] = delta;
-        if (!wasAlreadyHungry) updateHero(h.id, { ...h, stats: { ...h.stats, CON: h.stats.CON - delta } });
-      });
-      setParty((prev) => ({
-        ...prev,
-        hungry: true,
-        hungerConDeltas: wasAlreadyHungry ? prev.hungerConDeltas : deltas,
-        morale: wasAlreadyHungry ? prev.morale : prev.morale - 4,
-      }));
-      const line = `${hero.name} forages — rolled ${roll} vs target ${target} (Foraging ${hero.skills.foraging}${mod !== 0 ? `, ${mod > 0 ? "+" : ""}${mod} terrain` : ""}) — Failed. Party goes hungry${wasAlreadyHungry ? " (already hungry, no further penalty — not cumulative)" : ": every hero's CON halved, Party Morale -4, until they eat again"}.`;
+      const line = `${hero.name} forages — ${detail} — Failed. The party can still eat stored rations to avoid going hungry; otherwise make camp without food and the Hunger Track advances.`;
       setForageResult({ ok: false, line });
       addLog(`Foraging: ${line}`);
     }
   };
 
-  const mpPool = party.travelMode === "mounted" ? 6 : 3;
+  // Overnight rest at the end of a travel day, applying the cumulative Hunger Track.
+  const [campResult, setCampResult] = useState(null);
+  const makeCamp = () => {
+    const fed = !!party.fedToday;
+    const days = fed ? 0 : hungerDays + 1;
+    const lines = [];
+    if (fed) lines.push("The party ate today — normal overnight rest.");
+    else lines.push(`No food today — Hunger Track is now day ${days}.`);
+    const newDeltas = { ...(party.hungerConDeltas || {}) };
+    heroes.forEach((h) => {
+      const notes = [];
+      let hp = h.hp.cur;
+      let energy = h.energy.cur;
+      const hpRoll = rollDie(6);
+      if (days === 0) { const g = Math.min(h.hp.max - hp, hpRoll); hp += g; notes.push(`+${g} HP`); }
+      else if (days === 1) { const g = Math.min(h.hp.max - hp, Math.floor(hpRoll / 2)); hp += g; notes.push(`+${g} HP (half, hungry)`); }
+      else notes.push("no HP recovery (hungry)");
+      if (days >= 6) { hp = Math.max(0, hp - 1); notes.push("-1 HP (starving)"); }
+      if (days === 0) {
+        const hasBedroll = (h.backpack || []).some((it) => it.name === "Bed Roll");
+        if (hasBedroll) { notes.push(`Energy ${energy} → ${h.energy.max} (Bed Roll)`); energy = h.energy.max; }
+        else {
+          const missing = h.energy.max - energy;
+          let regained = 0;
+          for (let i = 0; i < missing; i++) if (rollDie(6) <= 3) regained++;
+          energy += regained;
+          notes.push(missing > 0 ? `+${regained}/${missing} Energy` : "Energy full");
+        }
+      } else {
+        const loss = days >= 3 ? 2 : days === 2 ? 1 : 0;
+        energy = Math.max(0, energy - loss);
+        notes.push(loss > 0 ? `no Energy regained, -${loss} Energy` : "no Energy regained");
+      }
+      let stats = h.stats;
+      if (days >= 4 && !newDeltas[h.id]) {
+        const delta = Math.floor((Number(h.stats.CON) || 0) / 2);
+        newDeltas[h.id] = delta;
+        stats = { ...h.stats, CON: h.stats.CON - delta };
+        notes.push(`CON halved (-${delta})`);
+      }
+      updateHero(h.id, { ...h, hp: { ...h.hp, cur: hp }, energy: { ...h.energy, cur: energy }, stats, mana: h.mana.max > 0 ? { ...h.mana, cur: h.mana.max } : h.mana });
+      lines.push(`${h.name}: ${notes.join(", ")}${h.mana.max > 0 ? ", Mana restored" : ""}.`);
+    });
+    if (days >= 5) lines.push("World Map Movement Points are halved (rounded down) while the party stays hungry.");
+    const base = Math.min(20, Number(party.startingMorale) || 0);
+    const newPenalty = fed ? 0 : Math.min(6, days);
+    let newMorale = party.morale;
+    if (base > 0) {
+      const maxNow = Math.max(0, base - newPenalty);
+      newMorale = maxNow;
+      lines.push(fed ? `Party Morale restored to its maximum (${maxNow}).` : `Party Morale maximum is now ${maxNow} (-${newPenalty} for hunger); morale set to ${maxNow}.`);
+    } else if (!fed) {
+      lines.push("Set a Starting Party Morale on the Dungeon tab so hunger can lower its maximum automatically.");
+    }
+    setParty((prev) => ({ ...prev, hungerDays: days, hungry: days > 0, hungerConDeltas: newDeltas, moraleMaxPenalty: newPenalty, morale: newMorale, fedToday: false }));
+    setCampResult(lines);
+    addLog(`Overnight rest: ${lines.join(" ")}`);
+  };
+
+  const mpPoolBase = party.travelMode === "mounted" ? 6 : 3;
+  const mpPool = hungerDays >= 5 ? Math.floor(mpPoolBase / 2) : mpPoolBase;
   const mpSpent = party.mpSpent || 0;
   const travelLog = party.travelLog || [];
 
@@ -15919,9 +16007,9 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
           Travelling in the Ancient Lands
         </label>
 
-        {party.hungry && (
+        {(party.hungry || hungerDays > 0) && (
           <div className="rounded p-2 text-xs mb-2 font-semibold" style={{ background: "#fff", border: `1px solid ${palette.crimson}`, color: palette.crimson, fontFamily: "Crimson Pro, serif" }}>
-            Party is hungry — every hero's CON is halved and Party Morale took -4, until they eat again.
+            Hunger Track: day {hungerDays}. Penalties are cumulative and lift when the party eats (HP, Energy and Morale already lost are not restored).
           </div>
         )}
 
@@ -15971,6 +16059,24 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
         {forageResult && (
           <div className="mt-2 rounded p-2 text-xs" style={{ background: "#fff", border: `1px solid ${forageResult.ok ? palette.line : palette.crimson}`, fontFamily: "Crimson Pro, serif", color: forageResult.ok ? palette.forestDark : palette.crimson, fontWeight: 600 }}>
             {forageResult.line}
+          </div>
+        )}
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={Bed}>Make Camp (Overnight Rest)</SectionTitle>
+        <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+          End of the travel day: eat or forage first (above), then rest. Each hero regains 1d6 HP, casters all Mana, and Energy on 1-3 per missing point. If the party has not eaten, the Hunger Track advances a day instead.
+        </p>
+        <p className="text-xs mb-2" style={{ fontFamily: "Crimson Pro, serif", color: party.fedToday ? palette.forestDark : palette.crimson }}>
+          {party.fedToday ? "The party has eaten today." : "The party has not eaten yet today."} Hunger Track: day {hungerDays}{moralePenalty > 0 ? ` · max Morale -${moralePenalty}` : ""}.
+        </p>
+        <button onClick={makeCamp} className="w-full text-xs px-2 py-2 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>
+          Rest for the Night
+        </button>
+        {campResult && (
+          <div className="mt-2 rounded p-2 text-xs space-y-1" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+            {campResult.map((l, i) => <p key={i}>{l}</p>)}
           </div>
         )}
       </Panel>

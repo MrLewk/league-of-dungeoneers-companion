@@ -3,6 +3,24 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.57.0] — 2026-10-22
+
+### Added
+- Rangers' Guild: Tough Leather Boots
+- New Travel-tab panel: Make Camp (Overnight Rest) — applies recovery and the Hunger Track for you
+
+### Changed
+- Rulebook 2.571: Guild Skill Training now costs 200c and needs a roll — roll 1d00 above the skill and it rises by +2 (cap 80); a failed roll still costs the fee. Applies to every guild, and the Inner Sanctum now has its Skill Training box too (CS, Dodge, Battle Prayers)
+- Rulebook 2.571: Hunger is now the cumulative Hunger Track — day 1 half HP and no Energy, day 2 no HP and -1 Energy, day 3 -2 Energy, day 4 CON halved, day 5 Movement Points halved, day 6+ -1 HP; maximum Party Morale drops by 1 each hungry day (max -6). Eating (a ration or a successful forage) resets it. A failed forage no longer makes the party hungry on the spot
+- Rulebook 2.571: Estate room prices updated (Alchemist Lab, Archery Range, Training Grounds and Wizard's Study 1500c; Shrine and Smithy 1350c; Crops/Hen House/Pigsty and Garden 1200c; Kennel 175c). Archery Range and Training Grounds are now an Improvement Test (1d00 above the skill = +1 permanent)
+- Rulebook 2.571: nine spells had their CV and Mana swapped (Summon Water/Wind/Earth/Fire Elemental, Bolstered Mind, Ice Tomb, Second Sight, Mirrored Self, Teleportation) — corrected to the book
+- Rulebook 2.571: Inner Sanctum blessed armour now gives +2 DEF against Undead/Demons and no Durability bonus; the Crusade table is now 1d10 with all ten factions
+- Rulebook 2.571: Shield Padding 15c and Poleyns 50c (were swapped); staff recharge is a flat 250c; Elven Bow is class 6; Large Backpack DEX -15; Fishing Gear +10 Foraging; Holy Water 2d3; Pickaxe Durability 6; Trinket Salesman magic on 1-4; tile search trap on 86-00; Gnoll Shaman and Zombie harvest 1 part, Zombie Ogre 1d4
+- Short Rest Party Morale gain is now capped at the party's current maximum (and never above 20)
+
+### Fixed
+- Spell and prayer names corrected to the book (Ice Spikes, Metheia's Balm, We Shall Not Falter, Strength of Ohlnir) — existing saves are renamed automatically
+
 ## [1.56.1] — 2026-08-29
 
 ### Fixed

@@ -572,7 +572,7 @@ const defaultParty = () => ({
   // rulebook it's meant to persist across multiple turns of the same battle (drawn tokens
   // for still-living models return to the bag and get reused each round), not reset every
   // turn. Living here means it also survives switching tabs mid-combat.
-  initiativeSetup: { enemyCount: 1, namedMonsterCount: 0, largeMonsterCount: 0, perfectHearing: false, swiftLeader: false, sneaky: false, doorBashed: false, ambushed: false },
+  initiativeSetup: { enemyCount: 1, namedMonsterCount: 0, largeMonsterCount: 0, perfectHearing: false, enemyPerfectHearing: false, swiftLeader: false, sneaky: false, doorBashed: false, ambushed: false },
   initiativeBag: null, // array of "hero"/"enemy" tokens still in the bag, or null before first build
   initiativeDrawOrder: [], // tokens drawn so far, in order
 });
@@ -3793,6 +3793,19 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.59.0",
+    date: "2026-10-22",
+    sections: {
+      "Added": [
+        "Character creation rerolls (rulebook 2.571 p27): after rolling starting stats, tap up to two of STR/CON/DEX/WIS/RES/HP to reroll — each must be a different original roll, and the higher of the two results is kept. Skills, Mana and HP update automatically",
+        "Initiative Bag: new \"Enemy Perfect Hearing\" toggle. If only one side has Perfect Hearing it gets +1 token; if both do, neither does (p56/p183), and the buttons show \"cancelled\"",
+      ],
+      "Changed": [
+        "Moving gear between the Backpack and Quick Slots no longer costs 2 AP (or needs spare AP) unless the party is in a dungeon — so you can set up loadouts at the settlement or on the road without editing AP first",
+      ],
+    },
+  },
+  {
     version: "1.58.0",
     date: "2026-10-22",
     sections: {
@@ -6375,9 +6388,13 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     if (!speciesData) return;
     const hpRoll = speciesData.hp.base + Array.from({ length: speciesData.hp.count }, () => rollDie(speciesData.hp.size)).reduce((a, b) => a + b, 0);
     const newStats = {};
+    const creationRolls = { used: [] };
     Object.entries(speciesData.stats).forEach(([k, base]) => {
-      newStats[k] = base + rollDie(10);
+      const die = rollDie(10);
+      creationRolls[k] = die;
+      newStats[k] = base + die;
     });
+    creationRolls.HP = hpRoll;
     let nextSkills = hero.profession ? computeProfessionSkills({ ...hero, stats: newStats }) : hero.skills;
     const isCaster = !!CASTER_SKILL[hero.profession];
     // Mana = WIS x 1.5, rounded down — Magic chapter.
@@ -6422,7 +6439,37 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     // Lucky (Halfling) — starts with 1 Luck Point; non-halflings start at 0.
     const luckPatch = speciesData.name === "Halfling" ? { luck: { cur: Math.max(hero.luck.cur, 1), max: Math.max(hero.luck.max, 1) } } : {};
 
-    update({ ...hero, stats: newStats, skills: nextSkills, hp: { cur: hpRoll, max: hpRoll }, creationPoints: 15, creationPointsSpent: { STR: 0, CON: 0, DEX: 0, WIS: 0, RES: 0 }, talents, perks, ...luckPatch, ...manaPatch, startingStatsRolled: true });
+    update({ ...hero, stats: newStats, skills: nextSkills, hp: { cur: hpRoll, max: hpRoll }, creationPoints: 15, creationPointsSpent: { STR: 0, CON: 0, DEX: 0, WIS: 0, RES: 0 }, talents, perks, ...luckPatch, ...manaPatch, startingStatsRolled: true, creationRolls });
+  };
+
+  // Rulebook 2.571 p27: up to two rerolls at creation, each on a different original roll
+  // (one of the five stat dice or HP); the higher result of the pair is kept.
+  const creationRerollsUsed = hero.creationRolls?.used?.length || 0;
+  const rerollCreation = (key) => {
+    const cr = hero.creationRolls;
+    if (!cr || !speciesData || cr.used.includes(key) || cr.used.length >= 2) return;
+    let patch = {};
+    let note;
+    if (key === "HP") {
+      const fresh = speciesData.hp.base + Array.from({ length: speciesData.hp.count }, () => rollDie(speciesData.hp.size)).reduce((a, b) => a + b, 0);
+      const kept = Math.max(cr.HP, fresh);
+      patch = { hp: { cur: hero.hp.cur + (kept - cr.HP), max: hero.hp.max + (kept - cr.HP) }, creationRolls: { ...cr, HP: kept, used: [...cr.used, key] } };
+      note = `HP reroll ${fresh} vs ${cr.HP} — keeps ${kept}.`;
+    } else {
+      const fresh = rollDie(10);
+      const kept = Math.max(cr[key], fresh);
+      const stats = { ...hero.stats, [key]: hero.stats[key] + (kept - cr[key]) };
+      patch = { stats, creationRolls: { ...cr, [key]: kept, used: [...cr.used, key] } };
+      if (hero.profession) patch.skills = computeProfessionSkills({ ...hero, stats });
+      if (key === "WIS" && CASTER_SKILL[hero.profession]) {
+        const m = Math.floor(stats.WIS * 1.5);
+        patch.mana = { cur: m, max: m };
+      }
+      note = `${key} reroll d10 ${fresh} vs ${cr[key]} — keeps ${kept}.`;
+    }
+    update({ ...hero, ...patch });
+    pushToast && pushToast(note);
+    addLog && addLog(`${hero.name}: ${note}`);
   };
 
   const recalcSkills = () => set({ skills: computeProfessionSkills(hero) });
@@ -6635,7 +6682,8 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
       }
     }
     const ap = hero.ap ?? 2;
-    if (ap < 2) {
+    const free = (party?.dungeonState || "settlement") !== "dungeon";
+    if (!free && ap < 2) {
       const msg = `${hero.name} doesn't have enough AP to rearrange gear (needs 2, has ${ap}). Check the Turn tab.`;
       setBackpackFeedback({ text: msg, tone: "bad" });
       addLog && addLog(`${hero.name}: not enough AP to rearrange gear (needs 2, has ${ap}).`);
@@ -6643,11 +6691,11 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     }
     update({
       ...hero,
-      ap: ap - 2,
+      ap: free ? ap : ap - 2,
       backpack: hero.backpack.map((it) => (it.id === item.id ? { ...it, slot: movingToQuick ? "quickslot" : "backpack" } : it)),
     });
     setBackpackFeedback({ text: `${item.name} moved to ${movingToQuick ? "a Quick Slot" : "the Backpack"}.`, tone: "good" });
-    addLog && addLog(`${hero.name} moves ${item.name} to ${movingToQuick ? "a Quick Slot" : "the backpack"} (2 AP).`);
+    addLog && addLog(`${hero.name} moves ${item.name} to ${movingToQuick ? "a Quick Slot" : "the backpack"}${free ? " (free outside a dungeon)" : " (2 AP)"}.`);
   };
 
   // Equips a backpack item that matches a real Weapon or Armour table entry, preserving
@@ -7135,6 +7183,24 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
             >
               <Dice5 size={12} /> Roll Starting Stats & HP ({speciesData.name})
             </button>
+          )}
+          {speciesData && hero.creationRolls && (
+            <div className="mt-1.5">
+              <div className="text-[10px] mb-1" style={{ color: palette.inkSoft }}>
+                Rerolls ({2 - creationRerollsUsed} left) — each on a different original roll, higher result kept (p27). Tap a roll:
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {["STR", "CON", "DEX", "WIS", "RES", "HP"].map((k) => {
+                  const used = hero.creationRolls.used.includes(k);
+                  const locked = used || creationRerollsUsed >= 2;
+                  return (
+                    <button key={k} disabled={locked} onClick={() => rerollCreation(k)} className="text-[11px] px-2 py-1 rounded font-semibold" style={{ border: `1px solid ${palette.line}`, background: used ? palette.line : "transparent", opacity: locked && !used ? 0.4 : 1, fontFamily: "JetBrains Mono, monospace" }}>
+                      {k} {hero.creationRolls[k]}{used ? " ✓" : ""}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           )}
           {allCreationDone && hero.creationToolsShown && (
             <div className="text-right mt-1">
@@ -12541,16 +12607,16 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
   // rulebook actually wants it to persist across turns of the same fight.
   const initSetup = party.initiativeSetup;
   const setInitSetup = (patch) => setParty((prev) => ({ ...prev, initiativeSetup: { ...prev.initiativeSetup, ...patch } }));
-  const { enemyCount, namedMonsterCount, largeMonsterCount, perfectHearing, swiftLeader, sneaky, doorBashed, ambushed } = initSetup;
+  const { enemyCount, namedMonsterCount, largeMonsterCount, perfectHearing, enemyPerfectHearing, swiftLeader, sneaky, doorBashed, ambushed } = initSetup;
   const bag = party.initiativeBag;
   const drawOrder = party.initiativeDrawOrder;
 
-  const heroTokenCount = heroes.length + (perfectHearing ? 1 : 0) + (swiftLeader ? 1 : 0);
+  const heroTokenCount = heroes.length + (perfectHearing && !enemyPerfectHearing ? 1 : 0) + (swiftLeader ? 1 : 0);
   const enemyTokenCount =
     Math.max(0, Number(enemyCount) || 0) +
     Math.max(0, Number(namedMonsterCount) || 0) +
     Math.max(0, Number(largeMonsterCount) || 0) +
-    (sneaky ? 1 : 0) + (doorBashed ? 2 : 0) + (ambushed ? 3 : 0);
+    (enemyPerfectHearing && !perfectHearing ? 1 : 0) + (sneaky ? 1 : 0) + (doorBashed ? 2 : 0) + (ambushed ? 3 : 0);
 
   const buildBag = () => {
     const tokens = [...Array(heroTokenCount).fill("hero"), ...Array(enemyTokenCount).fill("enemy")];
@@ -12639,7 +12705,8 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
         </div>
         <div className="flex flex-wrap gap-1.5 mb-3">
           {[
-            ["Perfect Hearing (+1 hero)", "perfectHearing", perfectHearing],
+            [enemyPerfectHearing && perfectHearing ? "Hero Perfect Hearing (cancelled)" : "Perfect Hearing (+1 hero)", "perfectHearing", perfectHearing],
+            [enemyPerfectHearing && perfectHearing ? "Enemy Perfect Hearing (cancelled)" : "Enemy Perfect Hearing (+1 enemy)", "enemyPerfectHearing", enemyPerfectHearing],
             ["Swift Leader (+1 hero)", "swiftLeader", swiftLeader],
             ["Sneaky (+1 enemy)", "sneaky", sneaky],
             ["Door bashed (+2 enemy)", "doorBashed", doorBashed],

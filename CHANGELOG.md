@@ -3,6 +3,15 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.59.0] — 2026-10-22
+
+### Added
+- Character creation rerolls (rulebook 2.571 p27): after rolling starting stats, tap up to two of STR/CON/DEX/WIS/RES/HP to reroll — each must be a different original roll, and the higher of the two results is kept. Skills, Mana and HP update automatically
+- Initiative Bag: new "Enemy Perfect Hearing" toggle. If only one side has Perfect Hearing it gets +1 token; if both do, neither does (p56/p183), and the buttons show "cancelled"
+
+### Changed
+- Moving gear between the Backpack and Quick Slots no longer costs 2 AP (or needs spare AP) unless the party is in a dungeon — so you can set up loadouts at the settlement or on the road without editing AP first
+
 ## [1.58.0] — 2026-10-22
 
 ### Added

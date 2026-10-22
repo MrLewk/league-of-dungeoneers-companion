@@ -164,8 +164,9 @@ const SPECIES = SPECIES_DATA.map((s) => s.name);
 const BACKGROUNDS_DATA = [
   {
     id: "wanderlust", roll: 1, name: "Wanderlust",
-    text: "Personal Quest: Visit all settlements on the map (11 total). Once done, gain 1500 XP.",
-    reward: { type: "xp", amount: 1500 },
+    text: "Personal Quest: Visit all settlements (11 total). A settlement counts when the hero begins a visit there. Gain the Streetwise and Pathfinder Talents.",
+    reward: { type: "talents", talents: ["Streetwise", "Pathfinder"] },
+    counterLabel: "Settlements visited", counterTarget: 11,
   },
   {
     id: "the-well", roll: 2, name: "The Well",
@@ -176,34 +177,36 @@ const BACKGROUNDS_DATA = [
   },
   {
     id: "fables", roll: 3, name: "Fables",
-    text: "Personal Quest: Visit 3 Quest Sites in the Ancient Lands. Once you leave the third site, gain 1500 XP.",
-    reward: { type: "xp", amount: 1500 },
+    text: "Personal Quest: Leave three distinct Quest Sites in the Ancient Lands after entering them. Successful quest completion is not required. Gain the Cartographer and Trapfinder Talents.",
+    reward: { type: "talents", talents: ["Cartographer", "Trapfinder"] },
+    counterLabel: "Quest Sites left", counterTarget: 3,
   },
   {
     id: "the-heirloom", roll: 4, name: "The Heirloom",
-    text: "Personal Quest: Find your Great Aunt's sword. At the start of each quest, roll 1d10 — on a 1, that dungeon holds it (place a secondary Quest Card; the room after always has enemies, roll twice on the encounter table; the highest-XP enemy carries it). Reward: a silver shortsword, +1 DMG and +2 Durability. Cannot be sold.",
+    text: "Personal Quest: Find your Great Aunt's sword. At the start of each dungeon quest using an Exploration Deck, roll 1d10 — on a 1, insert a Secondary Objective Card in the first half. The next room contains two combined Encounter Table results. The highest-XP enemy carries a silver Shortsword with +1 Damage and +2 maximum DUR. The sword belongs to the hero but may be lent; it cannot be sold.",
     reward: { type: "item", name: "Great Aunt's Silver Shortsword", note: "+1 DMG, +2 Durability. Cannot be sold." },
   },
   {
     id: "arachnophobia", roll: 5, name: "Arachnophobia",
-    text: "Personal Trait and Quest: Starts with Arachnophobia (see Psychology chapter) — not curable at the Asylum. Instead, fight and survive 3 battles with spiders to cure it. Reward: cured, plus a permanent +10 CS whenever attacking a spider.",
+    text: "Personal Trait and Quest: Starts with Arachnophobia (see Psychology chapter) — not curable at the Asylum. Instead, survive 3 battles involving Spiders to remove it and gain the unique benefit +10 CS when attacking Spiders.",
     startsWithCondition: "Arachnophobia",
     reward: { type: "cure", note: "Cures the starting Arachnophobia and grants permanent +10 CS vs spiders." },
     counterLabel: "Spider battles survived", counterTarget: 3,
   },
   {
     id: "the-lost-brother", roll: 6, name: "The Lost Brother",
-    text: "Personal Quest: Find your lost brother. Track dungeons entered; at the start of each quest roll 1d10 — on a 1, he's in that dungeon. Once found, roll 1d100 + dungeons entered. 60+: he's dead — choose to leave or bury him (either way -3 Sanity, +250 XP; burying grants +10 RES permanently but you can't carry loot until he's laid to rest). Below 60: he's alive and travels with you — if he makes it to a settlement, +1500 XP (if he dies en route, treat as the 60+ result).",
+    text: "Personal Quest: Find your lost brother. Track dungeon quests entered; at each dungeon quest start roll 1d10 — on a 1, place a Secondary Objective Card in the half without the Objective Room; the next tile contains the brother. Roll 1d100 + dungeons entered. 60+: he's dead — leave him or bury him (either way -3 Sanity and +250 XP; burying him means carrying him through the dungeon, no other loot carried, and grants +10 RES permanently). Below 60: he's alive and badly wounded (Bandit Monster Card, 6 HP; moves like a hero). If he reaches the next settlement you gain the Strong-Minded Talent. If he dies in the dungeon, treat it as 60+.",
+    counterLabel: "Dungeon quests entered", counterTarget: 0,
     reward: { type: "branch", options: [
       { label: "Found dead — left him", xp: 250, note: "-3 Sanity", effect: { sanity: -3 } },
       { label: "Found dead — buried him", xp: 250, note: "-3 Sanity, +10 RES permanently", effect: { sanity: -3, stat: "RES", amount: 10 } },
-      { label: "Found alive — reached a settlement", xp: 1500, note: null },
+      { label: "Found alive — reached a settlement", xp: 0, talent: "Strong-Minded", note: "gain the Strong-Minded Talent" },
     ] },
   },
   {
-    id: "revenge-bandits", roll: 7, name: "Revenge",
-    text: "Talent: Hate all enemies from the Bandits and Brigands faction. Personal Quest: for every 5 enemies from that faction killed with the killing blow, gain an additional 250 XP.",
-    reward: { type: "xpPerKills", amount: 250, per: 5, counterLabel: "Bandits/Brigands killed" },
+    id: "revenge-bandits", roll: 7, name: "Ambushed",
+    text: "Personal Trait and Quest: You hate all enemies from the Bandits and Brigands faction (add the Hate Talent from the Compendium). For every 5 enemies from that faction where you deliver the killing blow, you may increase the skill used to do it by +1.",
+    reward: { type: "skillPerKills", per: 5, counterLabel: "Bandits/Brigands killed" },
   },
   {
     id: "bad-tempered", roll: 8, name: "Bad Tempered",
@@ -212,8 +215,8 @@ const BACKGROUNDS_DATA = [
   },
   {
     id: "poverty", roll: 9, name: "Poverty",
-    text: "Personal Trait and Quest: May never make a purchase, or lend money, that would leave you with less than 10c. Must accumulate 1000c for your family — deliver it at your (randomised, non-Silver-City) home settlement for 1 Movement Point. Reward: 2000 XP.",
-    reward: { type: "xp", amount: 2000, note: "Claim once you've saved 1000c and delivered it home." },
+    text: "Personal Trait and Quest: You may never make a purchase, or lend out money, that would leave you with less than 10c. You must try to accumulate 1000c for your family. Randomise which village (not Silver City) you were born and raised in (Dwarves: randomise between the two Dwarven settlements). Once ready, visit and hand over the money (1 Point of Movement in that village) and gain the Pious Talent.",
+    reward: { type: "poverty", amount: 1000, talents: ["Pious"] },
   },
   {
     id: "proving-your-worth", roll: 10, name: "Proving Your Worth",
@@ -222,10 +225,9 @@ const BACKGROUNDS_DATA = [
   },
   {
     id: "the-fraud", roll: 11, name: "The Fraud",
-    text: "Not applicable for Wizards — reroll if you are one. Personal Trait: starts -10 CS, RS, and Dodge (no formal training), and -10 RES (temporary). Personal Quest: once CS, RS, and Dodge are each improved by +10 from their starting value, RES is restored (and increased a further +10), plus 1500 XP.",
-    startEffect: { stat: "RES", amount: -10 },
-    startsWithNote: "-10 CS, -10 RS, -10 Dodge at creation (apply directly to those skills when picking this background — not automated here since they're skills, not a single stat).",
-    reward: { type: "xp", amount: 1500, note: "Claim once CS/RS/Dodge are each +10 above their starting values — also manually apply +20 RES total (removes the -10 penalty and adds +10) and reverse the starting -10 RES applied here." },
+    text: "Not applicable for Wizards — reroll if you are one. Personal Trait: -5 CS, RS and Dodge (no formal training or experience) and -5 RES (temporary). Personal Quest: once CS, RS and Dodge have each improved by +5 from their starting values, all three Skill penalties and the temporary RES penalty are removed, and you gain a permanent +10 RES and the Veteran Talent. The app applies the penalties and resolves the quest automatically.",
+    startEffects: [{ stat: "RES", amount: -5 }, { skill: "cs", amount: -5 }, { skill: "rs", amount: -5 }, { skill: "dodge", amount: -5 }],
+    reward: { type: "fraud" },
   },
   {
     id: "the-noble", roll: 12, name: "The Noble",
@@ -235,28 +237,31 @@ const BACKGROUNDS_DATA = [
   },
   {
     id: "sworn-enemy", roll: 13, name: "Sworn Enemy",
-    text: "Personal Quest: Whenever you end up in battle with bandits, roll 1d10 — on a 10, add a Bandit Leader to the encounter (Hate vs. the whole party, plus Frenzy). Once it's killed, gain 500 XP.",
-    reward: { type: "xp", amount: 500, note: "Claim once the Bandit Leader is killed." },
+    text: "Personal Quest: Whenever you end up in battle with bandits, roll 1d10 — on a 10, add one Bandit Leader to the encounter (Hate vs. the whole party, plus Frenzy). Once it's killed you've rid your family of this sworn enemy and gain the Death Blow Talent.",
+    reward: { type: "talents", talents: ["Death Blow"] },
   },
   {
     id: "the-family-keep", roll: 14, name: "The Family Keep",
-    text: "Randomise one quest location (white numbers) for your ancestral Keep's ruins. Personal Quest: fully clear that dungeon (every tile placed, all enemies killed — use the generic Dungeon Generator if going there specifically for this). Reward: 1500 XP.",
-    reward: { type: "xp", amount: 1500 },
+    text: "Randomise one quest location (white numbers) for your ancestral Keep's ruins. Personal Quest: clear out the Keep — every tile placed and every enemy killed (going there on purpose: use 4+4 tiles and randomise one faction as the enemies). Once cleared, the Keep may be restored for 4,500c in the nearest settlement and then used and upgraded like the Bergmeister Estate (no ghosts; can't be a random Quest location). Compatible with Background 17.",
+    reward: { type: "keep", cost: 4500 },
   },
   {
     id: "troll-slayer", roll: 15, name: "Troll Slayer",
-    text: "Personal Quest: Land the killing blow on a troll (of any kind). Reward: +1000 XP.",
-    reward: { type: "xp", amount: 1000 },
+    text: "Personal Quest: Land the killing blow on a troll (of any kind). You've honoured your lineage and gain the Braveheart or Fearless Talent.",
+    reward: { type: "branch", options: [
+      { label: "Take Braveheart", xp: 0, talent: "Braveheart", note: "gain the Braveheart Talent" },
+      { label: "Take Fearless", xp: 0, talent: "Fearless", note: "gain the Fearless Talent" },
+    ] },
   },
   {
     id: "revenge-minotaur", roll: 16, name: "Revenge",
-    text: "Talent: Hate Minotaurs. Personal Quest: every time you fight a Minotaur, roll 1d6 — on a 1, you recognise the scar from your village's attacker. If you defeat that beast, gain an additional 1000 XP.",
-    reward: { type: "xp", amount: 1000 },
+    text: "Talent: You hate Minotaurs (add the Hate Talent from the Compendium). Personal Quest: every time you fight a Minotaur, roll 1d6 — on a 1, you recognise the scar. If you defeat that beast, gain the Underdog Talent.",
+    reward: { type: "talents", talents: ["Underdog"] },
   },
   {
     id: "a-new-home", roll: 17, name: "A New Home",
-    text: "Personal Quest: Acquire the Bergmeister Estate. Reward: 1500 XP.",
-    reward: { type: "xp", amount: 1500 },
+    text: "Personal Quest: Acquire the Bergmeister Estate. Once you have, you may buy upgrades to it for 75% of the listed price — the Settlement tab applies this discount automatically while this hero is in the party.",
+    estateDiscount: 0.75,
   },
   {
     id: "the-apprentice", roll: 18, name: "The Apprentice",
@@ -482,6 +487,11 @@ function computeProfessionSkills(hero) {
     if (hero.freeSkill === skillKey) val += 10;
     next[skillKey] = val;
   });
+  // Unresolved Fraud background: its starting skill penalties survive a recalculation.
+  const bgData = getBackgroundData(hero);
+  if (bgData?.startEffects && !hero.backgroundClaimed) {
+    bgData.startEffects.forEach((e) => { if (e.skill && next[e.skill] !== undefined) next[e.skill] += e.amount; });
+  }
   return next;
 }
 
@@ -3214,6 +3224,8 @@ const TALENTS = [
   { name: "Strong", type: "Physical", effect: "+5 to Strength." },
   { name: "Strong Build", type: "Physical", effect: "+2 to Hit Points." },
   { name: "Strong-Minded", type: "Mental", effect: "+1 Sanity Point." },
+  { name: "Death Blow", type: "Combat", effect: "Automatically kills an adjacent enemy with 4 or less HP left. No damage roll is needed, but a To Hit roll is still needed. Close Combat only." },
+  { name: "Underdog", type: "Combat", effect: "+5 CS and +5 RS when attacking a Large or X-Large enemy." },
   { name: "Stupid", type: "Racial", effect: "Half-ogre: roll 1d6 each battle turn; on a 6, inactive for the turn (ignored if frenzied)." },
   { name: "Summoner", type: "Magic", effect: "Creatures summoned stay 2 turns longer than the wizard's CL normally allows." },
   { name: "Survivalist", type: "Common", effect: "Forage 1 ration from any Beast-category monster after a skirmish, on a successful Forage roll." },
@@ -3793,6 +3805,23 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.61.0",
+    date: "2026-10-22",
+    sections: {
+      "Added": [
+        "Compendium: new Talents Death Blow (auto-kills an adjacent enemy on 4 HP or less) and Underdog (+5 CS/RS vs Large and X-Large enemies), as required by the new Backgrounds",
+      ],
+      "Changed": [
+        "Backgrounds rewritten to rulebook 2.571 (pp 36–42): quests now grant Talents instead of XP. Wanderlust (Streetwise + Pathfinder), Fables (Cartographer + Trapfinder), Poverty (Pious, hands over 1,000c from the hero's pouch), Sworn Enemy (Death Blow), Revenge/Minotaurs (Underdog), Troll Slayer (choose Braveheart or Fearless), The Lost Brother (alive = Strong-Minded; dead = 250 XP, −3 Sanity, burying = +10 RES). Each has a one-tap claim button, and Wanderlust/Fables show a progress counter",
+        "Background 7 is now called Ambushed (it was \"Revenge\"): every 5 Bandit/Brigand killing blows lets you add +1 to the skill used — tap the kill counter, then choose which skill",
+        "The Fraud now follows 2.571: −5 CS, RS, Dodge and −5 RES are applied automatically when picked (and survive stat rerolls), and once all three skills have improved +5 the quest resolves itself — penalties removed, +10 RES permanently and the Veteran Talent, with progress shown on the card",
+        "The Family Keep: tick \"Keep dungeon cleared\", then \"Restore the Keep\" to take the 4,500c from the Party Pot",
+        "A New Home: Estate room upgrades in the Settlement tab are automatically 75% price while a hero with this background is in the party",
+        "The Apprentice, Weak, Afraid of Heights, Heirloom, Well and Arachnophobia text refreshed to the 2.571 wording",
+      ],
+    },
+  },
   {
     version: "1.60.0",
     date: "2026-10-22",
@@ -6527,8 +6556,9 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
   const setBackground = (newId) => {
     const oldData = getBackgroundData(hero);
     const newData = BACKGROUNDS_DATA.find((b) => b.id === newId) || null;
-    let patch = { background: newId, backgroundCounter: 0, backgroundClaimed: false };
+    let patch = { background: newId, backgroundCounter: 0, backgroundClaimed: false, backgroundStage: 0, backgroundSkillClaims: 0, backgroundBaseline: null, coinPenaltyActive: hero.coinPenaltyActive };
     if (oldData?.startEffect) patch = { ...patch, ...applyEffectDelta(hero, oldData.startEffect, -1) };
+    if (oldData?.startEffects && !hero.backgroundClaimed) oldData.startEffects.forEach((e) => { patch = { ...patch, ...applyEffectDelta({ ...hero, ...patch }, e, -1) }; });
     // Noble: undo an active "below 150c" RES penalty when leaving the background.
     if (hero.coinPenaltyActive && oldData?.coinPenalty) {
       patch = { ...patch, ...applyEffectDelta({ ...hero, ...patch }, oldData.coinPenalty.effect, -1), coinPenaltyActive: false };
@@ -6542,6 +6572,13 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     }
     const heroAfterReversal = { ...hero, ...patch };
     if (newData?.startEffect) patch = { ...patch, ...applyEffectDelta(heroAfterReversal, newData.startEffect, 1) };
+    if (newData?.startEffects) {
+      newData.startEffects.forEach((e) => { patch = { ...patch, ...applyEffectDelta({ ...hero, ...patch }, e, 1) }; });
+      if (newData.reward?.type === "fraud") {
+        const sk = { ...hero, ...patch }.skills;
+        patch.backgroundBaseline = { cs: sk.cs, rs: sk.rs, dodge: sk.dodge };
+      }
+    }
     const oldSanityMax = sanityMaxFor({ ...hero, background: oldData?.id });
     const newSanityMax = sanityMaxFor({ ...hero, background: newData?.id });
     if (oldSanityMax !== newSanityMax) {
@@ -6568,11 +6605,68 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     update({ ...hero, xp: hero.xp + xpAmount, backgroundClaimed: true });
     addLog && addLog(`${hero.name} completes their Personal Quest: +${xpAmount} XP.${note ? ` ${note}` : ""}`);
   };
+  // Adds Talents to a hero (skipping ones already held) and applies each one's numeric effect.
+  const withTalents = (h, names) => {
+    let out = { ...h };
+    (names || []).forEach((n) => {
+      if (out.talents.includes(n)) return;
+      out = { ...out, ...talentEffectPatch(out, n, 1), talents: [...out.talents, n] };
+    });
+    return out;
+  };
   const claimBackgroundBranch = (option) => {
     const patch = option.effect ? applyEffectDelta(hero, option.effect, 1) : {};
-    update({ ...hero, ...patch, xp: hero.xp + option.xp, backgroundClaimed: true });
-    addLog && addLog(`${hero.name} completes their Personal Quest (${option.label}): +${option.xp} XP.${option.note ? ` ${option.note}` : ""}`);
+    const next = withTalents({ ...hero, ...patch, xp: hero.xp + (option.xp || 0), backgroundClaimed: true }, option.talent ? [option.talent] : []);
+    update(next);
+    addLog && addLog(`${hero.name} completes their Personal Quest (${option.label})${option.xp ? `: +${option.xp} XP` : ""}.${option.note ? ` ${option.note}` : ""}`);
   };
+  const claimBackgroundTalents = () => {
+    const r = backgroundData?.reward;
+    if (!r) return;
+    update(withTalents({ ...hero, backgroundClaimed: true }, r.talents));
+    pushToast && pushToast(`${hero.name} gains ${r.talents.join(" & ")}.`);
+    addLog && addLog(`${hero.name} completes their Personal Quest: gains ${r.talents.join(" & ")}.`);
+  };
+  const claimPoverty = () => {
+    const r = backgroundData.reward;
+    if ((Number(hero.coins) || 0) < r.amount) return;
+    update(withTalents({ ...hero, coins: hero.coins - r.amount, backgroundClaimed: true }, r.talents));
+    addLog && addLog(`${hero.name} hands ${r.amount}c to their family and gains ${r.talents.join(" & ")}.`);
+  };
+  const advanceKeep = () => {
+    const r = backgroundData.reward;
+    const stage = hero.backgroundStage || 0;
+    if (stage === 0) {
+      update({ ...hero, backgroundStage: 1 });
+      addLog && addLog(`${hero.name}'s Family Keep has been cleared.`);
+      return;
+    }
+    if (!party || party.coins < r.cost) return;
+    setParty((prev) => ({ ...prev, coins: prev.coins - r.cost }));
+    update({ ...hero, backgroundStage: 2, backgroundClaimed: true });
+    addLog && addLog(`${hero.name}'s Family Keep is restored for ${r.cost}c from the Party Pot.`);
+  };
+  // Ambushed (#7): every 5th killing blow earns +1 to the skill used — pick which.
+  const ambushedKills = hero.backgroundCounter || 0;
+  const skillPointsOwed = backgroundData?.reward?.type === "skillPerKills" ? Math.floor(ambushedKills / backgroundData.reward.per) - (hero.backgroundSkillClaims || 0) : 0;
+  const claimKillSkill = (key) => {
+    if (skillPointsOwed <= 0) return;
+    update({ ...hero, skills: { ...hero.skills, [key]: (Number(hero.skills[key]) || 0) + 1 }, backgroundSkillClaims: (hero.backgroundSkillClaims || 0) + 1 });
+    addLog && addLog(`${hero.name}: +1 ${SKILL_LABELS[key] || key} from Ambushed (5 more Bandit/Brigand killing blows).`);
+  };
+  // The Fraud: resolve automatically once CS, RS and Dodge are each +5 above their starting values.
+  useEffect(() => {
+    const bg = getBackgroundData(hero);
+    const base = hero.backgroundBaseline;
+    if (bg?.reward?.type !== "fraud" || hero.backgroundClaimed || !base) return;
+    if (["cs", "rs", "dodge"].every((k) => (Number(hero.skills[k]) || 0) >= base[k] + 5)) {
+      const restored = { ...hero, skills: { ...hero.skills, cs: hero.skills.cs + 5, rs: hero.skills.rs + 5, dodge: hero.skills.dodge + 5 }, backgroundClaimed: true };
+      const resPatch = { stats: { ...restored.stats, RES: restored.stats.RES + 5 + 10 } }; // temp -5 removed, +10 permanent
+      update(withTalents({ ...restored, ...resPatch }, ["Veteran"]));
+      pushToast && pushToast(`${hero.name} is no longer a Fraud! Penalties removed, +10 RES and Veteran gained.`);
+      addLog && addLog(`${hero.name} completes The Fraud quest: skill and RES penalties removed, +10 RES permanently, gains Veteran.`);
+    }
+  }, [hero.skills, hero.backgroundBaseline, hero.backgroundClaimed, hero.background]); // eslint-disable-line react-hooks/exhaustive-deps
   const claimBackgroundItem = (item) => {
     update({
       ...hero,
@@ -7686,9 +7780,46 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                       className="w-full text-xs px-2 py-1.5 rounded font-semibold text-left"
                       style={{ background: "#8B6239", color: "#fff", fontFamily: "Crimson Pro, serif" }}
                     >
-                      {opt.label} — +{opt.xp} XP{opt.note ? ` (${opt.note})` : ""}
+                      {opt.label}{opt.xp ? ` — +${opt.xp} XP` : ""}{opt.note ? ` (${opt.note})` : ""}
                     </button>
                   ))}
+                </div>
+              )}
+              {backgroundData.reward?.type === "talents" && !hero.backgroundClaimed && (
+                <button onClick={claimBackgroundTalents} className="w-full text-xs px-2 py-1.5 rounded font-semibold" style={{ background: "#8B6239", color: "#fff", fontFamily: "Cinzel, serif" }}>
+                  Quest Complete — Gain {backgroundData.reward.talents.join(" & ")}
+                </button>
+              )}
+              {backgroundData.reward?.type === "poverty" && !hero.backgroundClaimed && (
+                <button onClick={claimPoverty} disabled={(Number(hero.coins) || 0) < backgroundData.reward.amount} className="w-full text-xs px-2 py-1.5 rounded font-semibold" style={{ background: "#8B6239", color: "#fff", fontFamily: "Cinzel, serif", opacity: (Number(hero.coins) || 0) < backgroundData.reward.amount ? 0.5 : 1 }}>
+                  Hand over {backgroundData.reward.amount}c — Gain Pious ({Number(hero.coins) || 0}/{backgroundData.reward.amount}c in pouch)
+                </button>
+              )}
+              {backgroundData.reward?.type === "keep" && !hero.backgroundClaimed && (
+                <button onClick={advanceKeep} disabled={(hero.backgroundStage || 0) === 1 && (!party || party.coins < backgroundData.reward.cost)} className="w-full text-xs px-2 py-1.5 rounded font-semibold" style={{ background: "#8B6239", color: "#fff", fontFamily: "Cinzel, serif", opacity: (hero.backgroundStage || 0) === 1 && (!party || party.coins < backgroundData.reward.cost) ? 0.5 : 1 }}>
+                  {(hero.backgroundStage || 0) === 0 ? "Keep dungeon cleared" : `Restore the Keep — ${backgroundData.reward.cost}c from the Party Pot (${party?.coins ?? 0}c)`}
+                </button>
+              )}
+              {backgroundData.reward?.type === "fraud" && !hero.backgroundClaimed && hero.backgroundBaseline && (
+                <p className="text-[10px] font-semibold" style={{ color: "#8B6239", fontFamily: "Crimson Pro, serif" }}>
+                  Progress: {["cs", "rs", "dodge"].map((k) => `${k.toUpperCase()} +${Math.max(0, (Number(hero.skills[k]) || 0) - hero.backgroundBaseline[k])}/5`).join(" · ")} — resolves automatically.
+                </p>
+              )}
+              {backgroundData.reward?.type === "skillPerKills" && (
+                <div>
+                  <button onClick={() => update({ ...hero, backgroundCounter: ambushedKills + 1 })} className="w-full text-xs px-2 py-1.5 rounded font-semibold" style={{ background: "#8B6239", color: "#fff", fontFamily: "Cinzel, serif" }}>
+                    +1 {backgroundData.reward.counterLabel} ({ambushedKills % backgroundData.reward.per}/{backgroundData.reward.per} toward +1 skill)
+                  </button>
+                  {skillPointsOwed > 0 && (
+                    <div className="mt-1">
+                      <p className="text-[10px] mb-1 font-semibold" style={{ color: "#8B6239" }}>+1 skill earned ({skillPointsOwed} to spend) — which skill did the killing blow use?</p>
+                      <div className="flex flex-wrap gap-1">
+                        {["cs", "rs", "arcaneArts", "battlePrayers"].filter((k) => hero.skills[k] !== undefined && visibleSkills.includes(k)).map((k) => (
+                          <button key={k} onClick={() => claimKillSkill(k)} className="text-[11px] px-2 py-1 rounded font-semibold" style={{ border: "1px solid #8B6239", color: "#8B6239" }}>{SKILL_LABELS[k]} +1</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               {backgroundData.reward?.type === "xpPerKills" && (
@@ -9448,7 +9579,11 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
   };
 
   // ---------- Estate: Furnishing the Manor resolvers ----------
-  const buyRoom = (room) => {
+  // A New Home (background 17): Bergmeister Estate upgrades cost 75% while such a hero is in the party.
+  const estateRate = heroes.some((h) => getBackgroundData(h)?.estateDiscount) ? 0.75 : 1;
+  const roomPrice = (room) => Math.round(room.cost * estateRate);
+  const buyRoom = (rawRoom) => {
+    const room = { ...rawRoom, cost: roomPrice(rawRoom) };
     if (party.estate.pendingRoom) { setEstateMsg({ ok: false, line: "Only one thing may be commissioned between quests — activate the pending room first (once you've returned from your next dungeon trip)." }); return; }
     if (party.coins < room.cost) { setEstateMsg({ ok: false, line: `Can't afford ${room.name}: ${room.cost}c needed, party only has ${party.coins}c.` }); return; }
     setParty((prev) => ({ ...prev, coins: prev.coins - room.cost, estate: { ...prev.estate, pendingRoom: { name: room.name, cost: room.cost } } }));
@@ -10001,7 +10136,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
                           <span className="font-semibold" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>{room.name}</span>
                           {room.requiresExpansion && <span className="block text-[10px]" style={{ color: palette.crimson }}>Requires {room.requiresExpansion}</span>}
                           {room.unconfirmed && <span className="block text-[10px]" style={{ color: palette.crimson }}>Unconfirmed — see note below</span>}
-                          {!owned && !isPending && <span className="block text-[10px] italic" style={{ color: palette.inkSoft }}>{room.cost}c</span>}
+                          {!owned && !isPending && <span className="block text-[10px] italic" style={{ color: palette.inkSoft }}>{roomPrice(room)}c{estateRate < 1 ? ` (was ${room.cost}c)` : ""}</span>}
                         </div>
                         {owned ? (
                           <span className="text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 ml-2" style={{ background: "#00000010", color: palette.forestDark }}>Built</span>

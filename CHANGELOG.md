@@ -3,6 +3,19 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.61.0] — 2026-10-22
+
+### Added
+- Compendium: new Talents Death Blow (auto-kills an adjacent enemy on 4 HP or less) and Underdog (+5 CS/RS vs Large and X-Large enemies), as required by the new Backgrounds
+
+### Changed
+- Backgrounds rewritten to rulebook 2.571 (pp 36–42): quests now grant Talents instead of XP. Wanderlust (Streetwise + Pathfinder), Fables (Cartographer + Trapfinder), Poverty (Pious, hands over 1,000c from the hero's pouch), Sworn Enemy (Death Blow), Revenge/Minotaurs (Underdog), Troll Slayer (choose Braveheart or Fearless), The Lost Brother (alive = Strong-Minded; dead = 250 XP, −3 Sanity, burying = +10 RES). Each has a one-tap claim button, and Wanderlust/Fables show a progress counter
+- Background 7 is now called Ambushed (it was "Revenge"): every 5 Bandit/Brigand killing blows lets you add +1 to the skill used — tap the kill counter, then choose which skill
+- The Fraud now follows 2.571: −5 CS, RS, Dodge and −5 RES are applied automatically when picked (and survive stat rerolls), and once all three skills have improved +5 the quest resolves itself — penalties removed, +10 RES permanently and the Veteran Talent, with progress shown on the card
+- The Family Keep: tick "Keep dungeon cleared", then "Restore the Keep" to take the 4,500c from the Party Pot
+- A New Home: Estate room upgrades in the Settlement tab are automatically 75% price while a hero with this background is in the party
+- The Apprentice, Weak, Afraid of Heights, Heirloom, Well and Arachnophobia text refreshed to the 2.571 wording
+
 ## [1.60.0] — 2026-10-22
 
 ### Added

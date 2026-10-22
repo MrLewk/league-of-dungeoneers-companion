@@ -3,6 +3,18 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.58.0] — 2026-10-22
+
+### Added
+- Level-up picks: each level now tells you which Talent category (and, at even levels, which Perk category) your profession earns, from the new per-level tables, with a shortcut to the Compendium. Talents in the Compendium now show their category
+- Spending IP on WIS now raises a caster's maximum and current Mana, and spending it on RES to a new multiple of 10 raises Party Morale (up to 20) — refunds reverse both
+
+### Changed
+- Rulebook 2.571: the Improvement Point cost table is replaced for all eight professions (1–3 IP per +1, HP +1 costs 5 or 10). Skills and stats a profession can't improve in the book (Arcane Arts for most, Battle Prayers for all but Warrior Priests) no longer appear
+- Rulebook 2.571: per-level Improvement caps are now +3 per stat/skill and +1 HP (were +5 and +2); the Free Skill never costs more than 2 IP, and every point from 70 upwards costs double
+- Rulebook 2.571: automatic HP per level is 1d2−1 (0 or 1), with the first level-up (level 2) a plain 1d2
+- Rulebook 2.571: XP no longer levels a hero instantly. A hero gains one level per completed quest, on the first night of a settlement visit — a green "Level N ready — Level Up" button appears on the Hero card, and the app asks before you break either rule. The Between Quests reset starts a new quest cycle
+
 ## [1.57.1] — 2026-10-22
 
 ### Changed

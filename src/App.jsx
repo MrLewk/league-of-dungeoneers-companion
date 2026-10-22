@@ -370,60 +370,98 @@ const XP_LEVELLING = [
   { level: 10, xp: 220000, hpDie: true, luck: false, energy: false },
 ];
 
-// Auto-applies every level-up a hero's current XP qualifies for (loops, so a big XP
-// award that crosses two thresholds at once levels up twice), rolling the same
-// HP/Luck/Energy gains and +15 Improvement Points as the manual Level Up button.
-// Returns the updated hero plus a list of what happened, for a toast/log message.
-function applyAutoLevelUps(hero) {
-  let cur = hero;
-  const events = [];
-  while (true) {
-    const nextLevel = cur.level + 1;
-    const entry = XP_LEVELLING.find((l) => l.level === nextLevel);
-    if (!entry || cur.xp < entry.xp) break;
-    const patch = { level: nextLevel, improvementPoints: cur.improvementPoints + 15, ipSpentThisLevel: {} };
-    const notes = ["+15 Improvement Points"];
+// Talent and Perk categories granted at each level, per profession (Rulebook 2.571, p85).
+// A level-up earns one Talent from the listed category (and, at even levels, one Perk). If no legal
+// pick remains, any legal Talent/Perk from a category the profession already unlocked is allowed.
+const LEVEL_TALENT_CATEGORY = {
+  Alchemist: { 2: "Alchemist", 3: "Mental", 4: "Common", 5: "Alchemist", 6: "Combat", 7: "Mental", 8: "Common", 9: "Alchemist", 10: "Alchemist" },
+  Barbarian: { 2: "Physical", 3: "Combat", 4: "Mental", 5: "Common", 6: "Combat", 7: "Physical", 8: "Combat", 9: "Common", 10: "Combat" },
+  Ranger: { 2: "Physical", 3: "Combat", 4: "Common", 5: "Mental", 6: "Combat", 7: "Physical", 8: "Common", 9: "Mental", 10: "Combat" },
+  Rogue: { 2: "Physical", 3: "Sneaky", 4: "Combat", 5: "Mental", 6: "Physical", 7: "Combat", 8: "Sneaky", 9: "Common", 10: "Combat" },
+  Thief: { 2: "Sneaky", 3: "Common", 4: "Sneaky", 5: "Combat", 6: "Mental", 7: "Physical", 8: "Common", 9: "Combat", 10: "Sneaky" },
+  Warrior: { 2: "Mental", 3: "Combat", 4: "Physical", 5: "Combat", 6: "Common", 7: "Mental", 8: "Combat", 9: "Common", 10: "Combat" },
+  "Warrior Priest": { 2: "Mental", 3: "Faith", 4: "Combat", 5: "Physical", 6: "Faith", 7: "Combat", 8: "Mental", 9: "Faith", 10: "Combat" },
+  Wizard: { 2: "Magic", 3: "Common", 4: "Mental", 5: "Magic", 6: "Mental", 7: "Physical", 8: "Magic", 9: "Common", 10: "Mental" },
+};
+const LEVEL_PERK_CATEGORY = {
+  Alchemist: { 2: "Alchemist", 4: "Leader", 6: "Combat", 8: "Alchemist", 10: "Common" },
+  Barbarian: { 2: "Combat", 4: "Common", 6: "Combat", 8: "Common", 10: "Combat" },
+  Ranger: { 2: "Combat", 4: "Common", 6: "Combat", 8: "Common", 10: "Common" },
+  Rogue: { 2: "Combat", 4: "Sneaky", 6: "Common", 8: "Combat", 10: "Sneaky" },
+  Thief: { 2: "Sneaky", 4: "Common", 6: "Sneaky", 8: "Combat", 10: "Sneaky" },
+  Warrior: { 2: "Leader", 4: "Combat", 6: "Combat", 8: "Common", 10: "Combat" },
+  "Warrior Priest": { 2: "Faith", 4: "Leader", 6: "Combat", 8: "Faith", 10: "Common" },
+  Wizard: { 2: "Arcane", 4: "Leader", 6: "Arcane", 8: "Common", 10: "Arcane" },
+};
+
+// Applies exactly ONE level-up (Rulebook 2.571: a hero gains at most one level per completed
+// quest, and only on the first night of a settlement visit). Automatic HP is 1d2-1 (0 or 1);
+// the very first level-up (level 1 -> 2) is a plain 1d2. Luck/Energy per the table above, +15 IP.
+// Returns the updated hero plus the notes, for a toast/log message.
+function applyOneLevelUp(hero) {
+  const nextLevel = hero.level + 1;
+  const entry = XP_LEVELLING.find((l) => l.level === nextLevel);
+  const patch = { level: nextLevel, improvementPoints: hero.improvementPoints + 15, ipSpentThisLevel: {} };
+  const notes = ["+15 Improvement Points"];
+  const talentCat = LEVEL_TALENT_CATEGORY[hero.profession]?.[nextLevel];
+  const perkCat = LEVEL_PERK_CATEGORY[hero.profession]?.[nextLevel];
+  if (talentCat) { patch.pendingTalent = talentCat; notes.push(`choose a ${talentCat} Talent`); }
+  if (perkCat) { patch.pendingPerk = perkCat; notes.push(`choose a ${perkCat} Perk`); }
+  if (entry) {
     if (entry.hpDie) {
-      const roll = rollDie(2);
-      patch.hp = { ...cur.hp, cur: cur.hp.cur + roll, max: cur.hp.max + roll };
-      notes.push(`+${roll} HP`);
+      const roll = nextLevel === 2 ? rollDie(2) : rollDie(2) - 1;
+      patch.hp = { ...hero.hp, cur: hero.hp.cur + roll, max: hero.hp.max + roll };
+      notes.push(`+${roll} HP (max now ${patch.hp.max})`);
     }
     if (entry.luck) {
-      patch.luck = { cur: cur.luck.cur + 1, max: cur.luck.max + 1 };
+      patch.luck = { cur: hero.luck.cur + 1, max: hero.luck.max + 1 };
       notes.push("+1 Luck");
     }
     if (entry.energy) {
-      patch.energy = { ...cur.energy, cur: cur.energy.cur + 1, max: cur.energy.max + 1 };
+      patch.energy = { ...hero.energy, cur: hero.energy.cur + 1, max: hero.energy.max + 1 };
       notes.push("+1 Energy");
     }
-    cur = { ...cur, ...patch };
-    events.push({ level: nextLevel, notes });
   }
-  return { hero: cur, events };
+  return { hero: { ...hero, ...patch }, notes };
 }
 
-// Improvement Point cost table (p54) — cost to raise a stat/skill by +1, per profession.
-// Knight and Druid aren't in the official QRS table (they're extra professions this app
-// added beyond the base 8), so they're left out — IP spending for them stays manual.
+// How many levels the hero's XP has already earned but not yet taken (levels are taken one
+// at a time, on the first night of a settlement visit).
+function levelsReady(hero) {
+  let lvl = hero.level;
+  let n = 0;
+  while (true) {
+    const entry = XP_LEVELLING.find((l) => l.level === lvl + 1);
+    if (!entry || hero.xp < entry.xp) break;
+    lvl += 1; n += 1;
+  }
+  return n;
+}
+
+// Improvement Point cost table (Rulebook 2.571, p84) — cost to raise a stat/skill by +1, per
+// profession. Knight and Druid (False Prophet) aren't professions in this app, so they're omitted.
+// A missing key means that profession can't improve it (N/A or '-' in the book).
 const IMPROVEMENT_COSTS = {
-  Barbarian: { STR: 2, DEX: 2, CON: 2, WIS: 5, RES: 3, cs: 1, rs: 3, dodge: 3, pickLocks: 5, perception: 4, heal: 4, foraging: 4, barter: 5, alchemy: 5, hp: 5 },
-  Warrior: { STR: 2, DEX: 2, CON: 2, WIS: 5, RES: 3, cs: 1, rs: 2, dodge: 3, pickLocks: 5, perception: 4, heal: 4, foraging: 4, barter: 4, alchemy: 5, hp: 5 },
-  Ranger: { STR: 3, DEX: 2, CON: 1, WIS: 4, RES: 3, cs: 3, rs: 1, dodge: 3, pickLocks: 5, perception: 2, heal: 2, foraging: 1, barter: 3, alchemy: 4, hp: 10 },
-  "Warrior Priest": { STR: 3, DEX: 3, CON: 3, WIS: 3, RES: 2, cs: 2, rs: 2, dodge: 3, pickLocks: 5, perception: 4, heal: 2, battlePrayers: 1, foraging: 4, barter: 3, alchemy: 4, hp: 10 },
-  Wizard: { STR: 5, DEX: 4, CON: 4, WIS: 2, RES: 3, cs: 5, rs: 4, dodge: 3, pickLocks: 4, perception: 2, heal: 2, arcaneArts: 1, foraging: 5, barter: 1, alchemy: 3, hp: 10 },
-  Thief: { STR: 5, DEX: 2, CON: 4, WIS: 3, RES: 3, cs: 5, rs: 2, dodge: 1, pickLocks: 1, perception: 1, heal: 4, foraging: 1, barter: 2, alchemy: 4, hp: 10 },
-  Rogue: { STR: 3, DEX: 2, CON: 3, WIS: 4, RES: 3, cs: 3, rs: 3, dodge: 3, pickLocks: 3, perception: 3, heal: 3, foraging: 3, barter: 3, alchemy: 4, hp: 10 },
-  Alchemist: { STR: 5, DEX: 4, CON: 4, WIS: 2, RES: 3, cs: 3, rs: 3, dodge: 4, pickLocks: 4, perception: 2, heal: 3, arcaneArts: 1, foraging: 4, barter: 3, alchemy: 1, hp: 10 },
+  Alchemist: { STR: 3, DEX: 3, CON: 3, WIS: 2, RES: 3, cs: 2, rs: 2, dodge: 3, pickLocks: 3, perception: 2, heal: 2, foraging: 3, barter: 2, alchemy: 1, hp: 10 },
+  Barbarian: { STR: 1, DEX: 2, CON: 2, WIS: 3, RES: 3, cs: 1, rs: 2, dodge: 2, pickLocks: 3, perception: 3, heal: 3, foraging: 3, barter: 3, alchemy: 3, hp: 5 },
+  Ranger: { STR: 2, DEX: 2, CON: 1, WIS: 3, RES: 2, cs: 2, rs: 1, dodge: 3, pickLocks: 3, perception: 2, heal: 2, foraging: 1, barter: 3, alchemy: 3, hp: 10 },
+  Rogue: { STR: 3, DEX: 2, CON: 2, WIS: 3, RES: 3, cs: 2, rs: 2, dodge: 2, pickLocks: 2, perception: 2, heal: 2, foraging: 2, barter: 2, alchemy: 3, hp: 10 },
+  Thief: { STR: 3, DEX: 1, CON: 3, WIS: 2, RES: 2, cs: 3, rs: 2, dodge: 1, pickLocks: 1, perception: 1, heal: 3, foraging: 3, barter: 2, alchemy: 3, hp: 10 },
+  Warrior: { STR: 2, DEX: 1, CON: 2, WIS: 3, RES: 3, cs: 1, rs: 2, dodge: 3, pickLocks: 3, perception: 3, heal: 3, foraging: 3, barter: 3, alchemy: 3, hp: 5 },
+  "Warrior Priest": { STR: 2, DEX: 2, CON: 2, WIS: 2, RES: 2, cs: 2, rs: 2, dodge: 2, pickLocks: 3, perception: 3, heal: 2, battlePrayers: 1, foraging: 3, barter: 2, alchemy: 3, hp: 10 },
+  Wizard: { STR: 3, DEX: 3, CON: 3, WIS: 2, RES: 3, cs: 3, rs: 3, dodge: 2, pickLocks: 3, perception: 2, heal: 2, arcaneArts: 1, foraging: 3, barter: 1, alchemy: 2, hp: 10 },
 };
-const IP_STAT_SKILL_CAP_PER_LEVEL = 5; // no stat/skill may rise more than +5 per level
-const IP_HP_CAP_PER_LEVEL = 2; // HP may only rise +2 per level via IP spend (separate from the automatic level-up roll)
-const IP_DOUBLE_COST_THRESHOLD = 70; // cost doubles once the stat/skill has passed 70
+const IP_STAT_SKILL_CAP_PER_LEVEL = 3; // no stat/skill may rise more than +3 through IP per level
+const IP_HP_CAP_PER_LEVEL = 1; // HP may only be bought +1 per level (separate from the automatic level-up roll)
+const IP_DOUBLE_COST_THRESHOLD = 70; // each point from 70 upwards costs double
+const IP_FREE_SKILL_MAX_COST = 2; // the Free Skill never costs more than 2 IP (before the doubling above 70)
 
 function ipCostFor(hero, key) {
   const table = IMPROVEMENT_COSTS[hero.profession];
   if (!table || table[key] == null) return null;
-  const base = table[key];
+  let base = table[key];
   if (key === "hp") return base;
+  if (hero.freeSkill && key === hero.freeSkill) base = Math.min(base, IP_FREE_SKILL_MAX_COST);
   const current = STAT_KEYS.includes(key) ? Number(hero.stats[key]) || 0 : Number(hero.skills[key]) || 0;
   return current >= IP_DOUBLE_COST_THRESHOLD ? base * 2 : base;
 }
@@ -503,6 +541,7 @@ const defaultParty = () => ({
   allCamels: false,
   mpSpent: 0,
   travelLog: [], // [{label, cost}] — hexes entered so far today
+  questCycle: 0, // +1 each time a dungeon trip is completed (Between Quests) — a hero gains at most one level per cycle
   hungry: false,
   hungerDays: 0, // consecutive days without food (Hunger Track)
   moraleMaxPenalty: 0, // current reduction to maximum Party Morale from hunger
@@ -3402,7 +3441,7 @@ function CompendiumTab({ heroes, updateHero, addLog, initialCat, initialHero }) 
   const [cat, setCat] = useState(initialCat || "talents");
   const [heroPick, setHeroPick] = useState(initialHero || "");
   const cats = [
-    ["talents", "Talents", TALENTS, true, false, "talents"],
+    ["talents", "Talents", TALENTS, true, true, "talents"],
     ["perks", "Perks", PERKS, false, true, "perks"],
     ["prayers", "Prayers", PRAYERS, true, false, "prayers"],
     ["spells", "Spells", SPELLS, true, true, "spells"],
@@ -3417,8 +3456,9 @@ function CompendiumTab({ heroes, updateHero, addLog, initialCat, initialHero }) 
     if (!pickedHero || !field || isLearnedElsewhere) return;
     const list = pickedHero[field] || [];
     if (list.includes(name)) return;
+    const pendingClear = field === "talents" ? { pendingTalent: null } : field === "perks" ? { pendingPerk: null } : {};
     const effectPatch = field === "talents" ? talentEffectPatch(pickedHero, name, 1) : field === "legendaryItems" ? legendaryItemEffectPatch(pickedHero, name, 1) : {};
-    updateHero({ ...pickedHero, [field]: [...list, name], ...effectPatch });
+    updateHero({ ...pickedHero, [field]: [...list, name], ...pendingClear, ...effectPatch });
     const eff = field === "talents" ? TALENT_EFFECTS[name] : field === "legendaryItems" ? LEGENDARY_ITEM_EFFECTS[name] : null;
     if (eff && addLog) addLog(`${pickedHero.name}: gained ${field === "talents" ? "Talent" : "Legendary Item"} "${name}" (${eff.label}, applied automatically).`);
   };
@@ -3752,6 +3792,22 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.58.0",
+    date: "2026-10-22",
+    sections: {
+      "Added": [
+        "Level-up picks: each level now tells you which Talent category (and, at even levels, which Perk category) your profession earns, from the new per-level tables, with a shortcut to the Compendium. Talents in the Compendium now show their category",
+        "Spending IP on WIS now raises a caster's maximum and current Mana, and spending it on RES to a new multiple of 10 raises Party Morale (up to 20) — refunds reverse both",
+      ],
+      "Changed": [
+        "Rulebook 2.571: the Improvement Point cost table is replaced for all eight professions (1–3 IP per +1, HP +1 costs 5 or 10). Skills and stats a profession can't improve in the book (Arcane Arts for most, Battle Prayers for all but Warrior Priests) no longer appear",
+        "Rulebook 2.571: per-level Improvement caps are now +3 per stat/skill and +1 HP (were +5 and +2); the Free Skill never costs more than 2 IP, and every point from 70 upwards costs double",
+        "Rulebook 2.571: automatic HP per level is 1d2−1 (0 or 1), with the first level-up (level 2) a plain 1d2",
+        "Rulebook 2.571: XP no longer levels a hero instantly. A hero gains one level per completed quest, on the first night of a settlement visit — a green \"Level N ready — Level Up\" button appears on the Hero card, and the app asks before you break either rule. The Between Quests reset starts a new quest cycle",
+      ],
+    },
+  },
   {
     version: "1.57.1",
     date: "2026-10-22",
@@ -6449,44 +6505,31 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     update({ ...hero, freeSkill: newKey, skills });
   };
 
-  const levelUp = () => {
-    const nextLevel = hero.level + 1;
-    const entry = XP_LEVELLING.find((l) => l.level === nextLevel);
-    const patch = { level: nextLevel, improvementPoints: hero.improvementPoints + 15, ipSpentThisLevel: {} };
-    const notes = ["+15 Improvement Points"];
-    if (entry) {
-      if (entry.hpDie) {
-        const roll = rollDie(2);
-        patch.hp = { ...hero.hp, cur: hero.hp.cur + roll, max: hero.hp.max + roll };
-        notes.push(`+${roll} HP (max now ${patch.hp.max})`);
-      }
-      if (entry.luck) {
-        patch.luck = { cur: hero.luck.cur + 1, max: hero.luck.max + 1 };
-        notes.push("+1 Luck");
-      }
-      if (entry.energy) {
-        patch.energy = { ...hero.energy, cur: hero.energy.cur + 1, max: hero.energy.max + 1 };
-        notes.push("+1 Energy");
-      }
-    }
-    update({ ...hero, ...patch });
-    addLog && addLog(`${hero.name} leveled up to ${nextLevel}: ${notes.join(", ")}`);
+  // Rulebook 2.571: a hero gains at most one level per completed quest, and only on the first
+  // night of a settlement visit. XP never levels a hero automatically any more — the Level Up
+  // button does it, one level at a time, and asks before breaking either rule.
+  const levelUp = (override = false) => {
+    if (!override && levelsReady(hero) < 1) return;
+    const cycle = party?.questCycle || 0;
+    const warnings = [];
+    if (party && (party.dungeonState || "settlement") !== "settlement") warnings.push("the party isn't in a settlement (levelling happens on the first night of a settlement visit)");
+    if (hero.lastLevelCycle === cycle) warnings.push(`${hero.name} has already levelled since the last completed quest`);
+    if (!override && warnings.length > 0 && !window.confirm(`Level up anyway? Rulebook 2.571 says ${warnings.join(" and ")}.`)) return;
+    const { hero: leveled, notes } = applyOneLevelUp(hero);
+    update({ ...leveled, lastLevelCycle: cycle });
+    addLog && addLog(`${hero.name} leveled up to ${leveled.level}: ${notes.join(", ")}`);
+    pushToast && pushToast(`${hero.name} leveled up!`, `Now level ${leveled.level} — ${notes.join(", ")}`);
   };
 
   const nextLevelEntry = XP_LEVELLING.find((l) => l.level === hero.level + 1);
   const xpToNext = nextLevelEntry ? Math.max(0, nextLevelEntry.xp - hero.xp) : null;
 
   const setXP = (newXP) => {
-    const { hero: leveled, events } = applyAutoLevelUps({ ...hero, xp: newXP });
-    update(leveled);
-    if (events.length > 0) {
-      const finalLevel = events[events.length - 1].level;
-      const allNotes = events.flatMap((e) => e.notes).join(", ");
-      pushToast && pushToast(
-        `${hero.name} leveled up!`,
-        events.length > 1 ? `Now level ${finalLevel} (+${events.length} levels) — ${allNotes}` : `Now level ${finalLevel} — ${allNotes}`
-      );
-      addLog && addLog(`${hero.name} leveled up to ${finalLevel}: ${allNotes}`);
+    const next = { ...hero, xp: newXP };
+    const ready = levelsReady(next) - levelsReady(hero);
+    update(next);
+    if (ready > 0) {
+      pushToast && pushToast(`${hero.name} has earned a level`, "Take it with Level Up on the first night of the next settlement visit (one level per completed quest).");
     }
   };
 
@@ -6511,8 +6554,18 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
       patch.skills = { ...hero.skills, [key]: (Number(hero.skills[key]) || 0) + 1 };
       label = SKILL_LABELS[key] || key;
     }
+    const extra = [];
+    if (key === "WIS" && hero.mana.max > 0) {
+      const oldMax = Math.floor((Number(hero.stats.WIS) || 0) * 1.5);
+      const newMax = Math.floor(patch.stats.WIS * 1.5);
+      if (newMax !== oldMax) { patch.mana = { cur: hero.mana.cur + (newMax - oldMax), max: hero.mana.max + (newMax - oldMax) }; extra.push(`max Mana +${newMax - oldMax}`); }
+    }
+    if (key === "RES" && patch.stats.RES % 10 === 0 && setParty) {
+      setParty((prev) => ({ ...prev, morale: Math.min(20, prev.morale + 1), startingMorale: Math.min(20, (prev.startingMorale || 0) + 1) }));
+      extra.push("Party Morale +1 (RES reached a new multiple of 10)");
+    }
     update({ ...hero, ...patch });
-    addLog && addLog(`${hero.name}: spent ${cost} IP on ${label} (+1)`);
+    addLog && addLog(`${hero.name}: spent ${cost} IP on ${label} (+1)${extra.length ? ` — ${extra.join(", ")}` : ""}`);
   };
 
   const refundIP = (key) => {
@@ -6541,6 +6594,14 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     }
     const refund = ipCostFor(costHero, key) ?? 0;
     patch.improvementPoints = hero.improvementPoints + refund;
+    if (key === "WIS" && hero.mana.max > 0) {
+      const oldMax = Math.floor((Number(hero.stats.WIS) || 0) * 1.5);
+      const newMax = Math.floor(patch.stats.WIS * 1.5);
+      if (newMax !== oldMax) patch.mana = { cur: Math.max(0, hero.mana.cur + (newMax - oldMax)), max: hero.mana.max + (newMax - oldMax) };
+    }
+    if (key === "RES" && (Number(hero.stats.RES) || 0) % 10 === 0 && setParty) {
+      setParty((prev) => ({ ...prev, morale: Math.max(0, prev.morale - 1), startingMorale: Math.max(0, (prev.startingMorale || 0) - 1) }));
+    }
     update({ ...hero, ...patch });
     addLog && addLog(`${hero.name}: refunded ${refund} IP from ${label} (−1)`);
   };
@@ -6792,7 +6853,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               />
               {nextLevelEntry && (
                 <span className="text-[10px]" style={{ fontFamily: "Crimson Pro, serif" }}>
-                  {xpToNext > 0 ? `/ ${nextLevelEntry.xp} (${xpToNext} to go)` : `— level ${nextLevelEntry.level} ready`}
+                  {xpToNext > 0 ? `/ ${nextLevelEntry.xp} (${xpToNext} to go)` : `— level ${nextLevelEntry.level} ready (take it on the first night in a settlement)`}
                 </span>
               )}
             </div>
@@ -6867,8 +6928,34 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               })()}
             </div>
           )}
+          {(hero.pendingTalent || hero.pendingPerk) && (
+            <div className="rounded p-2 mt-1 text-xs" style={{ background: "#fff", border: `1px solid ${palette.forestDark}`, fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+              <b>Level {hero.level} picks:</b>{" "}
+              {hero.pendingTalent && <>a <b>{hero.pendingTalent}</b> Talent</>}
+              {hero.pendingTalent && hero.pendingPerk && " and "}
+              {hero.pendingPerk && <>a <b>{hero.pendingPerk}</b> Perk</>}.
+              <span className="block text-[10px]" style={{ color: palette.inkSoft }}>If no legal pick remains, any legal one from a category your profession has already unlocked is allowed.</span>
+              <button
+                onClick={() => goToTab("compendium", { cat: hero.pendingTalent ? "talents" : "perks", hero: hero.id })}
+                className="mt-1 text-[11px] px-2 py-1 rounded font-semibold"
+                style={{ background: palette.forestDark, color: palette.parchment }}
+              >
+                Choose in Compendium
+              </button>
+              <button onClick={() => set({ pendingTalent: null, pendingPerk: null })} className="mt-1 ml-1 text-[11px] px-2 py-1 rounded" style={{ border: `1px solid ${palette.line}` }}>Dismiss</button>
+            </div>
+          )}
+          {levelsReady(hero) > 0 && (
+            <button
+              onClick={() => levelUp(false)}
+              className="w-full text-xs px-2 py-2 rounded font-semibold mt-1"
+              style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+            >
+              Level {hero.level + 1} ready — Level Up
+            </button>
+          )}
           <button
-            onClick={levelUp}
+            onClick={() => levelUp(true)}
             className="text-[10px] px-2 py-0.5 rounded mt-1"
             style={{ background: "transparent", color: palette.inkSoft, border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
             title="Manual override — forces a level regardless of XP (house rules, corrections). Grants +15 Improvement Points and the automatic HP/Luck/Energy gains for the new level. Levelling up normally happens automatically when XP crosses the threshold above."
@@ -7552,7 +7639,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
           )}
 
           <p className="text-[10px] mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
-            Creation Points: the +/− buttons under each stat (above) spend/refund from the 15-point pool, capped at 10 into any single stat. Improvement Points: +15 each level-up (Level Up also rolls the automatic HP/Luck/Energy gains for the new level) — the buttons below apply the actual increase and enforce the +5/stat-skill and +2/HP per-level caps; cost doubles once a stat/skill has passed 70.
+            Creation Points: the +/− buttons under each stat (above) spend/refund from the 15-point pool, capped at 10 into any single stat. Improvement Points: +15 each level-up (Level Up also rolls the automatic HP/Luck/Energy gains for the new level) — the buttons below apply the actual increase and enforce the +3 per stat/skill and +1 HP per-level caps; each point from 70 upwards costs double; the Free Skill never costs more than 2 (before doubling).
           </p>
 
           <div className="rounded p-2 mb-3 flex items-center justify-between" style={{ background: "#00000008" }}>
@@ -9225,6 +9312,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
       },
       magicWorkshop: { enchantUsed: false, scrollAttempts: 0 },
       guilds: { training: {}, bountyHunt: { rolled: [], claimed: [] }, crusade: null, taxidermistAttempts: {} },
+      questCycle: (prev.questCycle || 0) + 1,
     }));
     const lines = [];
     if (pending) lines.push(`${pending.name} is now ready to use.`);
@@ -12897,17 +12985,11 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
     let anyLeveledUp = false;
     heroes.forEach((h) => {
       const withXP = { ...h, xp: h.xp + Number(xpAmount) };
-      const { hero: leveled, events } = applyAutoLevelUps(withXP);
-      updateHero(h.id, leveled);
-      if (events.length > 0) {
+      updateHero(h.id, withXP);
+      if (levelsReady(withXP) > levelsReady(h)) {
         anyLeveledUp = true;
-        const finalLevel = events[events.length - 1].level;
-        const allNotes = events.flatMap((e) => e.notes).join(", ");
-        pushToast && pushToast(
-          `${h.name} leveled up!`,
-          events.length > 1 ? `Now level ${finalLevel} (+${events.length} levels) — ${allNotes}` : `Now level ${finalLevel} — ${allNotes}`
-        );
-        addLog(`${h.name} leveled up to ${finalLevel}: ${allNotes}`);
+        pushToast && pushToast(`${h.name} has earned a level`, "Take it with Level Up on the Hero tab on the first night of the next settlement visit.");
+        addLog(`${h.name} has enough XP for level ${h.level + 1} — to be taken on the first night of the next settlement visit.`);
       }
     });
     addLog(`Awarded ${xpAmount} XP to all ${heroes.length} hero${heroes.length === 1 ? "" : "es"}`);

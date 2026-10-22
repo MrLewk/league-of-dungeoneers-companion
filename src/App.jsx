@@ -3135,113 +3135,116 @@ const LORE_ENTRIES = [
 ];
 
 const TALENTS = [
-  { name: "Assassin", type: "Sneaky", effect: "Automatically hits any target from behind with a class 1 or 2 weapon." },
-  { name: "Axeman", type: "Combat", effect: "Bloodlust triggers on 1-10 (instead of 1-5) with all axes." },
-  { name: "Backstabber", type: "Sneaky", effect: "Ignores enemy armour and NA when attacking from behind." },
-  { name: "Bard", type: "Common", effect: "+10 WIS modifier when using instruments." },
+  { name: "Assassin", type: "Sneaky", effect: "A melee attack made from behind with a class 1 or 2 weapon automatically hits. Pay normal AP and roll Damage normally. Because no To Hit roll is made, Bloodlust cannot trigger." },
+  { name: "Axeman", type: "Combat", effect: "Bloodlust triggers on an unmodified To Hit roll of 01-10 when attacking with an axe. Does not stack with another effect already granting 01-10." },
+  { name: "Backstabber", type: "Sneaky", effect: "Ignore Armour and Natural Armour when attacking from behind." },
+  { name: "Bard", type: "Common", effect: "+10 WIS on Tests involving playing or using a musical instrument." },
   { name: "Battle Hardened", type: "Racial", effect: "Any permanent wound gives +10 RES; a lasting wound gives +5 RES until it's healed." },
-  { name: "Blood Magic", type: "Magic", effect: "Wizard spends HP to create Mana — every 2 HP spent grants 5 Mana. Free during the wizard's turn." },
-  { name: "Braveheart", type: "Mental", effect: "+10 bonus on Fear and Terror tests." },
-  { name: "Bruiser", type: "Combat", effect: "Bloodlust triggers on 1-10 with hammers, flails, staffs, and morning stars." },
-  { name: "Cartographer", type: "Common", effect: "Pass a WIS test before entering a dungeon: exploration deck uses 2 fewer cards (1 corridor, 1 room). Max 2 cards removed regardless of heroes with this talent." },
+  { name: "Blood Magic", type: "Magic", effect: "During the Wizard's activation, freely convert 2 HP into 15 Mana per conversion, up to maximum Mana. Any number of conversions may be made. The Wizard cannot voluntarily fall below 1 HP. The HP loss ignores protection and cannot be prevented." },
+  { name: "Braveheart", type: "Mental", effect: "+10 on Fear and Terror Tests." },
+  { name: "Bruiser", type: "Combat", effect: "Bloodlust triggers on an unmodified To Hit roll of 01-10 when attacking with a weapons dealing Crushing damage. Does not stack with another effect already granting 01-10." },
+  { name: "Cartographer", type: "Common", effect: "Before entering a dungeon, one Cartographer may make a WIS Test. On success, remove one random ordinary corridor card and one random ordinary room card before shuffling the Exploration Deck. Never remove Objective, Side Objective or fixed scenario cards. Only one attempt per dungeon." },
   { name: "Cat and Dog", type: "Racial", effect: "Goblins and Dwarfs have a hard time getting along — if there is a Goblin and a Dwarf in the same party, Party Morale suffers a -3 modifier. Situational — apply by hand when party composition changes." },
   { name: "Catlike", type: "Physical", effect: "+5 DEX." },
-  { name: "Charming", type: "Common", effect: "This hero negotiates all rewards, +5% Reward Bonus on all quests." },
+  { name: "Charming", type: "Common", effect: "Increase the final coin reward explicitly paid for completing a quest by 5%, rounded up. Apply after fixed reward additions. Does not affect treasure, bounty, Crusade, sale or incidental coin income. Multiple Charming Talents do not stack." },
   { name: "Chivalrous", type: "Profession", effect: "Rescue quests trigger a +30 RES bonus from taking the quest until reward or failure." },
-  { name: "Confident", type: "Mental", effect: "+5 bonus to RES." },
-  { name: "Conjurer", type: "Magic", effect: "+5 Arcane Arts casting Conjuration spells; Mana cost reduced by 5." },
-  { name: "Cutpurse", type: "Sneaky", effect: "Once per settlement visit, roll 1d6 to steal a purse: 1-2 gains 1d100 coins, 6 = caught and chased out until the party leaves." },
-  { name: "Death Lament", type: "Combat", effect: "Each time reduced to 0 HP, roll 1d6: 1-3 regains 1 HP." },
-  { name: "Devoted", type: "Faith", effect: "Extra Energy point usable only for praying." },
-  { name: "Disarm", type: "Combat", effect: "Special attack using target's DEX as a negative modifier; success = no damage but enemy drops weapon (DEX test to retrieve)." },
-  { name: "Disciplined", type: "Common", effect: "+10 RES; rest of party +5 RES while this hero isn't knocked out. Not cumulative across heroes." },
-  { name: "Divinator", type: "Magic", effect: "+5 Arcane Arts casting Divination spells; Mana cost reduced by 5." },
-  { name: "Dual Wield", type: "Combat", effect: "Requires DEX 60. Adds +X DMG to hits with an offhand Dual Wield weapon; parrying with two weapons gets +5." },
-  { name: "Evaluate", type: "Sneaky", effect: "A successful Barter roll gives +15% instead of +10%." },
-  { name: "Expert Mixer", type: "Alchemist", effect: "Throwable damage potions get +1 DMG on every target." },
-  { name: "Fast", type: "Physical", effect: "Permanent +1 to Movement." },
-  { name: "Fast Reflexes", type: "Magic", effect: "+15 Combat Skill bonus when casting Touch spells." },
-  { name: "Fast Reload", type: "Combat", effect: "Bow/sling can reload and shoot in one action per turn. Crossbow reload 1 action, fire next; Arbalest reload 2 actions, fire next." },
-  { name: "Fearless", type: "Mental", effect: "Immune to fear (treats terror as fear). Requires Braveheart." },
-  { name: "Focused", type: "Magic", effect: "+15 Arcane Arts when focusing." },
-  { name: "Gatherer", type: "Alchemist", effect: "+10 Alchemy when searching for ingredients in the wild." },
+  { name: "Confident", type: "Mental", effect: "+5 RES." },
+  { name: "Conjurer", type: "Magic", effect: "+5 AA and -5 Mana cost when casting a Conjuration spell. Mana cost cannot fall below 0." },
+  { name: "Cutpurse", type: "Sneaky", effect: "Once per settlement visit, after resolving the Settlement Event but before lodging or voluntary activity, roll 1d6. On 1-2 gain 1d100 c; on 3-5 nothing happens; on 6 this hero is expelled until the party leaves. The expelled hero receives no settlement services or recovery, must eat normally and may forage outside once per day." },
+  { name: "Death Lament", type: "Combat", effect: "Whenever reduced to 0 HP, immediately roll 1d6. On 1-3, set current HP to 1 and do not apply Bleeding Out. On 4-6, resolve 0 HP normally. May trigger repeatedly, but cannot prevent automatic death or an effect that explicitly blocks recovery." },
+  { name: "Devoted", type: "Faith", effect: "The hero gains an extra Energy Point that can only be used for praying." },
+  { name: "Disarm", type: "Combat", effect: "Make a 1 AP melee special attack using CS minus the target's DEX. On success, inflict no Damage and force the target to drop one carried weapon chosen by the attacker. Use the normal dropped-weapon rules. It cannot affect natural, integrated, bound or otherwise undroppable weapons." },
+  { name: "Disciplined", type: "Common", effect: "The hero gains +10 RES. Other heroes gain +5 RES while this hero is conscious and not Bleeding Out. A Disciplined hero never receives the +5 from another Disciplined hero, and multiple party-wide bonuses do not stack." },
+  { name: "Divinator", type: "Magic", effect: "+5 AA and -5 Mana cost when casting a Divination spell. Mana cost cannot fall below 0." },
+  { name: "Dual Wield", type: "Combat", effect: "Requires DEX 55. Wield two legal one-handed weapons; one must have the Dual Wield rule and is used in the off hand. Attacks are made with the main-hand weapon and add the off- hand weapon's listed +X Damage once per successful hit. Legal Weapon Parries gain +5 while both weapons are wielded." },
+  { name: "Evaluate", type: "Sneaky", effect: "When this hero succeeds on a Barter Test, the relevant bonus becomes +15% instead of +10%." },
+  { name: "Expert Mixer", type: "Alchemist", effect: "Damaging throwable potions brewed by this Alchemist gain +1 Damage. For an area potion, add the bonus to the shared Damage Roll before halving Damage for adjacent squares." },
+  { name: "Fast", type: "Physical", effect: "+1 Movement. Second movement is RDD." },
+  { name: "Fast Reflexes", type: "Magic", effect: "+15 CS on the touch attack made after successfully casting a Touch Spell. This changes the normal CS +20 touch attack to CS +35." },
+  { name: "Fast Reload", type: "Combat", effect: "Once per activation, reduce the AP required for one reload by 1, to a minimum of 0 AP. Reload progress may still be split across turns." },
+  { name: "Fearless", type: "Mental", effect: "Requires Braveheart. The hero is immune to Fear. When exposed to Terror, make a Fear Test instead and apply only the normal Fear consequences on failure." },
+  { name: "Focused", type: "Magic", effect: "Each AP spent on Focus grants +15 AA instead of +10. Up to 2 AP may be spent; final AA remains capped at 80 and Miscast range still expands by 5 per AP." },
+  { name: "Gatherer", type: "Alchemist", effect: "+10 Alchemy when this hero makes the party's Gathering Test." },
   { name: "God's Chosen", type: "Faith", effect: "+1 Luck." },
-  { name: "Harvester", type: "Alchemist", effect: "+10 Alchemy when harvesting parts." },
-  { name: "Hate", type: "Mental", effect: "+5 CS attacking a chosen hated enemy, but -5 parry/dodge when struck by them. Can be taken multiple times for different enemies." },
-  { name: "Hunter", type: "Common", effect: "+10 to Foraging." },
-  { name: "Keen Eye", type: "Alchemist", effect: "May reroll the ingredient-gathering result; second stands." },
+  { name: "Harvester", type: "Alchemist", effect: "+10 Alchemy when this hero makes a Harvesting Test." },
+  { name: "Hate", type: "Mental", effect: "Choose one clearly defined enemy word or category. Gain +5 CS when attacking matching enemies, but suffer -5 on Weapon Parry, Shield Parry and Dodge Tests against their attacks. May be selected again only for a different enemy category. Matching several chosen categories does not stack." },
+  { name: "Hunter", type: "Common", effect: "+10 Foraging when this hero is chosen to make the party's Foraging Test." },
+  { name: "Keen Eye", type: "Alchemist", effect: "After seeing the complete ingredient result from Gathering, reroll all dice used to determine the gathered ingredients. The second complete result stands. This does not reroll the Gathering Test." },
   { name: "Leatherworker", type: "Common", effect: "May craft hide armour using the crafting rules." },
-  { name: "Lethal Shot", type: "Combat", effect: "+2 DMG with all ranged weapons." },
-  { name: "Lockpicker", type: "Sneaky", effect: "May reroll a failed lockpick attempt." },
-  { name: "Lucky", type: "Common", effect: "+1 Luck Point." },
+  { name: "Lethal Shot", type: "Combat", effect: "+1 Damage per successful hit with a ranged weapon. Does not apply to thrown potions or spells." },
+  { name: "Lockpicker", type: "Sneaky", effect: "Immediately reroll a failed lockpicking attempt without additional AP. The second roll stands. Consequences of the first failed or catastrophic result are replaced by the reroll." },
+  { name: "Lucky", type: "Common", effect: "+1 Luck." },
   { name: "Magic Resistance", type: "Racial", effect: "On negative magic, may take a RES test to ignore the effect entirely." },
-  { name: "Marksman", type: "Combat", effect: "Bloodlust triggers on 1-10 with all ranged weapons." },
-  { name: "Master Cook", type: "Common", effect: "Party gains +2 extra HP when resting with rations. Not cumulative across heroes." },
-  { name: "Master Healer", type: "Alchemist", effect: "Brewed healing potions heal +2 HP more than normal." },
+  { name: "Marksman", type: "Combat", effect: "Bloodlust triggers on an unmodified To Hit roll of 01-10 when attacking with a ranged weapon. Does not stack with another effect already granting 01-10." },
+  { name: "Master Cook", type: "Common", effect: "When the party consumes a ration during a dungeon rest or overnight travel rest, each hero regains +2 HP. Multiple Master Cooks do not stack. An interrupted rest grants no bonus." },
+  { name: "Master Healer", type: "Alchemist", effect: "Every Healing Potion brewed by this Alchemist restores +2 HP. The bonus becomes part of each dose and stacks with the Perfect Healer Perk." },
   { name: "Mechanical Genius", type: "Sneaky", effect: "+10 when disarming traps." },
-  { name: "Messiah", type: "Faith", effect: "All heroes on the priest's tile gain +5 RES." },
-  { name: "Mighty Blow", type: "Combat", effect: "+1 bonus on Damage Rolls with melee weapons." },
+  { name: "Messiah", type: "Faith", effect: "The Priest and all other heroes on the same tile gain +5 RES. Multiple Messiah Talents do not stack. An unconscious, Bleeding-Out or dead Priest provides no bonus." },
+  { name: "Mighty Blow", type: "Combat", effect: "+1 Damage once per successful hit with a melee weapon." },
   { name: "Miner", type: "Common", effect: "May re-roll the STR test when extracting valuables." },
   { name: "Mithril Smith", type: "Common", effect: "Learned in a dwarven settlement (level up, pay 400c) — may forge mithril using the crafting rules." },
   { name: "Mounted Combat", type: "Common", effect: "Allows fighting while mounted on a steed." },
-  { name: "Mystic", type: "Magic", effect: "+5 Arcane Arts casting Mysticism spells; Mana cost reduced by 5." },
+  { name: "Mystic", type: "Magic", effect: "+5 AA and -5 Mana cost when casting a Mysticism spell. Mana cost cannot fall below 0." },
   { name: "Natural Illusionist", type: "Racial", effect: "+10 Arcane Arts casting Illusion spells. Starts with one level 1 Illusion spell of choice, regardless of profession." },
   { name: "Natural Killer", type: "Racial", effect: "+1d6 Damage attacking from behind." },
-  { name: "Natural Leader", type: "Common", effect: "+2 to Party Morale permanently. Not cumulative across heroes." },
+  { name: "Natural Leader", type: "Common", effect: "Increase Starting Morale and maximum Party Morale by 2, Limited to a maximum PM of 20. Multiple Natural Leaders do not stack." },
   { name: "Natural Swimmers", type: "Racial", effect: "Ignores negative effects of water, moves through it at normal speed." },
-  { name: "Necromancer", type: "Magic", effect: "+5 Arcane Arts casting Necromantic spells; Mana cost reduced by 5. Exclusive with Restorer." },
-  { name: "Night Vision", type: "Physical", effect: "+10 Perception; not affected by darkness. Only for a newly-created character with this in their species." },
-  { name: "Nimble", type: "Sneaky", effect: "May dodge twice per battle instead of once." },
-  { name: "Observant", type: "Physical", effect: "Rangers only. -10 to ambush risk during a rest; party starts battles standing even if quest says otherwise; negates surprise/ambush tokens." },
-  { name: "Parry Master", type: "Combat", effect: "In Parry Stance, may parry twice with a weapon in one turn." },
-  { name: "Pathfinder", type: "Common", effect: "+1 HP for all heroes when resting." },
-  { name: "Perfect Hearing", type: "Physical", effect: "+1 hero initiative token on the first round after opening a door and encountering enemies (not if the door was broken down)." },
-  { name: "Perfect Shot", type: "Combat", effect: "If a ranged Damage Roll is odd, ignores armour (not NA)." },
-  { name: "Perfect Toss", type: "Alchemist", effect: "+10 RS lobbing a potion over the heads of others." },
-  { name: "Persistent", type: "Magic", effect: "Permanent +15 Mana." },
-  { name: "Pious", type: "Common", effect: "May use relics even without being a Warrior Priest (cannot be taken by one)." },
-  { name: "Poisoner", type: "Alchemist", effect: "Poisons created inflict +2 extra HP per turn." },
-  { name: "Powerful Missiles", type: "Magic", effect: "Magic Missile spells do +1 Damage." },
-  { name: "Powerful Potions", type: "Alchemist", effect: "All basic stat (not M) enhancing potions grant an additional +5." },
+  { name: "Necromancer", type: "Magic", effect: "+5 AA and -5 Mana cost when casting a Necromantic spell. Mana cost cannot fall below 0. Cannot be combined with Restorer." },
+  { name: "Night Vision", type: "Physical", effect: "The hero suffers no penalties caused by darkness, may see and draw LOS normally in darkness, and gains +10 PER at all times. This does not provide vision to other heroes. Available only to eligible species during character creation." },
+  { name: "Nimble", type: "Sneaky", effect: "The hero may Dodge twice per battle instead of once." },
+  { name: "Observant", type: "Physical", effect: "Rangers only. During an ambush caused by a dungeon rest, reduce the ambush chance by 10. If the ambush occurs, all heroes begin standing and any extra enemy Initiative tokens granted by that rest ambush are removed. Multiple Observant Talents do not stack." },
+  { name: "Parry Master", type: "Combat", effect: "Gain one additional legal Weapon Parry each combat turn. Both Parries require Parry Stance unless another rule independently permits one." },
+  { name: "Pathfinder", type: "Common", effect: "During overnight travel rest, every hero regains +1 HP. Multiple Pathfinders do not stack. It does not apply during dungeon rests or settlement lodging." },
+  { name: "Perfect Hearing", type: "Physical", effect: "After an encounter is revealed directly by opening a door, add one ordinary hero Initiative token for the first combat turn only. It improves activation probability and grants no extra activation. Multiple copies add only one token. It does not apply if the door was forced, destroyed or opened by an enemy. If both sides have Perfect Hearing, neither side gains an extra token." },
+  { name: "Perfect Shot", type: "Combat", effect: "When the final Damage total from a ranged weapon is odd, ignore worn Armour but not Natural Armour." },
+  { name: "Perfect Toss", type: "Alchemist", effect: "+10 RS when throwing a potion if LOS to the target or target square passes through at least one intervening model or object that would cause a negative to RS. Stacks with the Pitcher Perk." },
+  { name: "Persistent", type: "Magic", effect: "This Talent grants +15 maximum Mana." },
+  { name: "Pious", type: "Common", effect: "A non-Warrior Priest gains the normal two Relic Slots and may benefit from Relics. This does not grant prayers, Priest services or other Priest abilities. Warrior Priests cannot select Pious." },
+  { name: "Poisoner", type: "Alchemist", effect: "Ongoing poison effects created by this Alchemist inflict +2 HP Damage each time their periodic Damage is resolved. This applies to poisons applied to weapons and does not increase immediate Damage." },
+  { name: "Powerful Missiles", type: "Magic", effect: "Magic Missile spells deal +1 Damage. Apply the bonus to each separately rolled missile or target, or to the shared Damage Roll if the spell uses one." },
+  { name: "Powerful Potions", type: "Alchemist", effect: "Potions brewed by this Alchemist that enhance STR, DEX, CON, PER, WIS or RES grant an additional +5. Every dose receives the bonus and normal temporary-bonus stacking rules apply." },
   { name: "Prospector", type: "Common", effect: "+20 WIS identifying nodes; if identified by this hero, party may reroll the number of valuables found." },
-  { name: "Pure", type: "Faith", effect: "Demons attacking the priest do so at -10 CS." },
-  { name: "Quick Fingers", type: "Sneaky", effect: "Picking a lock takes 1 AP instead of 2." },
-  { name: "Reliquary", type: "Faith", effect: "May channel 3 relics instead of the standard 2." },
-  { name: "Resilient", type: "Physical", effect: "+5 to Constitution." },
-  { name: "Resistance to Disease", type: "Physical", effect: "+25 on CON tests to resist disease." },
-  { name: "Resistance to Poison", type: "Physical", effect: "+25 on CON tests to resist poison." },
-  { name: "Restorer", type: "Magic", effect: "Healing spells heal +2 HP extra. Exclusive with Necromancer." },
-  { name: "Ringbearer", type: "Common", effect: "May use two magic rings simultaneously instead of one." },
-  { name: "Riposte Master", type: "Combat", effect: "Successful weapon parry causes 2 DMG to the enemy, ignoring Armour and NA. Only with class 3 weapons or lower." },
-  { name: "Sense for Gold", type: "Sneaky", effect: "-1 on Furniture Table treasure rolls." },
-  { name: "Shadow Walker", type: "Sneaky", effect: "Moving, ignores movement restrictions from enemy ZOC." },
-  { name: "Sharp-eyed", type: "Sneaky", effect: "+10 bonus on Perception Tests." },
+  { name: "Pure", type: "Faith", effect: "Demons suffer -10 CS when attacking the Priest. Pure does not work against spells, automatic damage and effects without an attack roll." },
+  { name: "Quick Fingers", type: "Sneaky", effect: "Picking a lock costs 1 AP instead of 2." },
+  { name: "Reliquary", type: "Faith", effect: "Increase the Priest's Relic Slot limit from two to three." },
+  { name: "Resilient", type: "Physical", effect: "+5 CON." },
+  { name: "Resistance to Disease", type: "Physical", effect: "+25 on CON Tests to resist Disease." },
+  { name: "Resistance to Poison", type: "Physical", effect: "+25 on CON Tests to resist Poison." },
+  { name: "Restorer", type: "Magic", effect: "HP-restoring spells heal +2 HP to each recipient. It does not affect condition removal, resurrection or temporary HP. Cannot be combined with Necromancer." },
+  { name: "Ringbearer", type: "Common", effect: "The hero may benefit from two rings simultaneously. Necklace and Relic limits are unchanged." },
+  { name: "Riposte Master", type: "Combat", effect: "After each successful Weapon Parry made with a class 1-3 melee weapon, the attacker suffers 2 direct HP Damage, ignoring Armour and Natural Armour." },
+  { name: "Sense for Gold", type: "Sneaky", effect: "When this hero rolls on the Furniture Table, subtract 1 from the 1d10 result to a minimum of 1. This does not affect subsequent Treasure rolls." },
+  { name: "Shadow Walker", type: "Sneaky", effect: "Ignore enemy ZOC movement restrictions." },
+  { name: "Sharp-eyed", type: "Sneaky", effect: "+10 PER." },
   { name: "Shunned", type: "Racial", effect: "Some species are looked upon with scepticism. Whenever shunned heroes enter a settlement, roll on the Shunned table (once per group, regardless of how many shunned heroes are present). Luck cannot be used to re-roll." },
   { name: "Slippery", type: "Racial", effect: "-10 to the Dodge skill, but may dodge 2 times per battle instead of once." },
   { name: "Smith", type: "Common", effect: "May craft weapons and armour using the crafting rules." },
-  { name: "Sniper", type: "Combat", effect: "Aim action gives +15 instead of +10." },
-  { name: "Streetwise", type: "Sneaky", effect: "Rogue only. Every availability roll modified by -1." },
-  { name: "Strong", type: "Physical", effect: "+5 to Strength." },
-  { name: "Strong Build", type: "Physical", effect: "+2 to Hit Points." },
-  { name: "Strong-Minded", type: "Mental", effect: "+1 Sanity Point." },
-  { name: "Death Blow", type: "Combat", effect: "Automatically kills an adjacent enemy with 4 or less HP left. No damage roll is needed, but a To Hit roll is still needed. Close Combat only." },
-  { name: "Underdog", type: "Combat", effect: "+5 CS and +5 RS when attacking a Large or X-Large enemy." },
+  { name: "Sniper", type: "Combat", effect: "Aim grants +15 RS instead of +10. This does not stack with an Aim Attachment; use the highest Aim bonus. Aim cannot be used during Overwatch." },
+  { name: "Streetwise", type: "Sneaky", effect: "Rogues only. Increase an item's Availability by 1, to a maximum of 6, when this hero makes the Availability roll. The normal party-wide block after the first failure still applies." },
+  { name: "Strong", type: "Physical", effect: "+5 STR." },
+  { name: "Strong Build", type: "Physical", effect: "+2 maximum HP and +2 current HP." },
+  { name: "Resilient to Hunger", type: "Mental", effect: "The hero suffers no effects from hunger until the third day without food. From that point onwards, use the normal Hunger Table, treating the third day as the first day without food." },
+  { name: "Mule", type: "Physical", effect: "Increase maximum carried ENC by 20. The hero may carry up to STR +35. The normal over-STR penalty begins when carried ENC exceeds STR." },
+  { name: "Healer", type: "Faith", effect: "Bandages applied by this Priest restore +1 HP." },
+  { name: "Strong-Minded", type: "Mental", effect: "+1 current and maximum Sanity." },
+  { name: "Death Blow", type: "Combat", effect: "The character automatically kills an adjacent enemy with 4 or less HP left. No damage roll is needed, but a To Hit roll is still needed. Close Combat only." },
+  { name: "Underdog", type: "Combat", effect: "+5 CS and +5 RS when the character is attacking a Large or X-Large enemy." },
   { name: "Stupid", type: "Racial", effect: "Half-ogre: roll 1d6 each battle turn; on a 6, inactive for the turn (ignored if frenzied)." },
-  { name: "Summoner", type: "Magic", effect: "Creatures summoned stay 2 turns longer than the wizard's CL normally allows." },
-  { name: "Survivalist", type: "Common", effect: "Forage 1 ration from any Beast-category monster after a skirmish, on a successful Forage roll." },
-  { name: "Sustainer", type: "Magic", effect: "Upkeep for the wizard's spells reduced by 1." },
-  { name: "Swift Leader", type: "Common", effect: "Party may always add one initiative token to the bag. Not cumulative across heroes." },
-  { name: "Swordsman", type: "Combat", effect: "Bloodlust triggers on 1-10 with all swords." },
-  { name: "Tank", type: "Physical", effect: "Ignores the Clunky special rule from heavy armour." },
-  { name: "Thrifty", type: "Magic", effect: "Requires 2 less Mana on every spell cast." },
-  { name: "Tight Grip", type: "Combat", effect: "+10 STR when calculating usable weapon class." },
+  { name: "Summoner", type: "Magic", effect: "Creatures summoned by the Wizard remain for two additional turns. The casting turn counts as turn 1 for the spell's normal duration and the summon expires at the end of its final counted turn. Upkeep, interruption, cancellation and dismissal rules still apply; the duration cannot extend beyond the battle unless the spell says otherwise." },
+  { name: "Survivalist", type: "Common", effect: "After a dungeon encounter or Skirmish resulting in a dead Beast, this hero may make a Foraging Test to produce one ration. This may be done in parallel with an Alchemist harvesting parts. Only one Survivalist attempt may be made per encounter or Skirmish." },
+  { name: "Sustainer", type: "Magic", effect: "Reduce each spell's Upkeep cost by 1 Mana, to a minimum of 0. Initial casting cost is unchanged." },
+  { name: "Swift Leader", type: "Common", effect: "Add one ordinary hero Initiative token at the start of every combat turn. It improves activation probability only, and each hero may still activate once. Multiple Swift Leaders do not stack." },
+  { name: "Swordsman", type: "Combat", effect: "Bloodlust triggers on an unmodified To Hit roll of 01-10 when attacking with a sword. Does not stack with another effect already granting 01-10." },
+  { name: "Tank", type: "Physical", effect: "Ignore the -10 DEX penalty from the Clunky rule." },
+  { name: "Thrifty", type: "Magic", effect: "Reduce the initial modified Mana cost of every spell by 2, to a minimum of 0. It does not reduce Upkeep and stacks with the applicable school Talent." },
+  { name: "Tight Grip", type: "Combat", effect: "Add +10 STR when determining which weapon class the hero may use." },
   { name: "Tough Mind", type: "Profession", effect: "+2 Sanity Points (raises max Sanity by 2)." },
-  { name: "Trapfinder", type: "Sneaky", effect: "+10 PER bonus detecting traps. Cumulative with Sharp-eyed." },
-  { name: "Tunnel Fighter", type: "Combat", effect: "+10 CS fighting in a corridor." },
+  { name: "Trapfinder", type: "Sneaky", effect: "+10 PER when detecting traps. This stacks with Sharp-eyed Equipment" },
+  { name: "Tunnel Fighter", type: "Combat", effect: "+10 CS while occupying a corridor square. This affects close-combat attacks and all Parries resolved with CS." },
   { name: "Unconventional", type: "Combat", effect: "May use armour one class higher than their profession permits." },
-  { name: "Veteran", type: "Common", effect: "May use equipment from a Quick Slot without spending an AP (once per turn)." },
+  { name: "Veteran", type: "Common", effect: "Once per combat or exploration turn, use one item already in a Quick Slot without paying its normal AP cost. Other costs, rolls and restrictions remain; Does not apply to a multi-AP activity free or access a backpack." },
   { name: "Weak with Destruction Magic", type: "Racial", effect: "-10 Arcane Arts when casting Destruction magic." },
-  { name: "Wise", type: "Mental", effect: "May re-roll a failed WIS test." },
+  { name: "Wise", type: "Mental", effect: "Whenever a WIS Test fails, reroll it. The second result stands. It does not affect non-Test random rolls." },
 ];
 
 // Talents with an unconditional, always-on numeric bonus — these auto-apply to the hero
@@ -3324,52 +3327,52 @@ function clearAllTempEffects(hero) {
 }
 
 const PERKS = [
-  { name: "Battle Fury", type: "Combat", effect: "May perform 2 Power Attacks in one turn as if they only cost 1 AP each." },
-  { name: "Call to Action", type: "Leader", effect: "When activating this hero, once 2 AP spent, take a hero token from the bag and activate another hero within LOS." },
-  { name: "Careful Touch", type: "Alchemist", effect: "Chance of an Exquisite ingredient/part increased to 20. Declare before harvesting or gathering." },
+  { name: "Battle Fury", type: "Combat", effect: "During this activation, the hero may make up to two Power Attacks, each costing 1 AP. All normal Power Attack restrictions apply. Activate at the start of the hero's activation." },
+  { name: "Call to Action", type: "Leader", effect: "After completing the Leader's activation, choose another hero within LOS who has not yet activated this turn. Remove one hero token from the Initiative Bag and immediately activate that hero. Play then returns to the normal Initiative sequence. Costs 1 Energy and no AP. The Leader acts normally before using it." },
+  { name: "Careful Touch", type: "Alchemist", effect: "For one Gathering or Harvesting roll, the Exquisite range becomes 01-20. It applies to every ingredient or part produced by that roll. Declare before rolling." },
   { name: "Challenge", type: "Profession", effect: "A knight may issue a challenge to an enemy within 4 squares — +10 CS attacking it, and it will always try to attack the knight back." },
-  { name: "Clever Fingers", type: "Sneaky", effect: "+25 bonus to a single pick lock or disarm trap attempt. Use before rolling." },
-  { name: "Connoisseur", type: "Alchemist", effect: "+10 bonus to identify a potion brewed by someone else. Energy spent at the same time as the attempt." },
-  { name: "Deadly Strike", type: "Combat", effect: "+25 CS to your next attack." },
-  { name: "Dispel Master", type: "Arcane", effect: "+20 Arcane Arts when rolling to dispel." },
-  { name: "Encouragement", type: "Leader", effect: "+10 on an upcoming Fear or Terror Test. Usable outside normal acting order." },
-  { name: "Energy to Mana", type: "Arcane", effect: "Each Energy Point spent grants the wizard 20 Mana." },
-  { name: "Fate Forger", type: "Faith", effect: "Spend an Energy Point to force a reroll of the Scenario die, as soon as it's rolled." },
-  { name: "Frenzy", type: "Combat", effect: "Barbarians only. Each damaging standard attack grants one more free standard attack, for 2 turns (max 8 attacks total). While frenzied, can only move or attack — no parry, dodge, or potions." },
-  { name: "God's Favourite", type: "Faith", effect: "Decrease the Threat Level by 1d6." },
-  { name: "Healer", type: "Faith", effect: "+3 HP when applying a bandage. Used with the Healing Skill." },
-  { name: "Heroic Force of Will", type: "Common", effect: "+10 to any Skill or Stat for a single check of any kind." },
-  { name: "Hide in the Shadows", type: "Sneaky", effect: "No enemy targets this hero if more than 2 squares away when it starts its turn (unless it's adjacent to another enemy)." },
-  { name: "Hunter's Eye", type: "Combat", effect: "Shoot two arrows with one Ranged Attack (bow/sling only), same target, roll each separately." },
-  { name: "Ignore Wounds", type: "Common", effect: "Gains Natural Armour 2, lasting one battle." },
-  { name: "In Tune with the Magic", type: "Arcane", effect: "May Focus before identifying a Magic Item, but risks a miscast (95-00 on 1 Focus action, +5 risk per extra action)." },
-  { name: "Inner Power", type: "Arcane", effect: "Magic Missiles do an extra 1d6 Damage. Declared before casting." },
+  { name: "Clever Fingers", type: "Sneaky", effect: "Add +25 to one Pick Locks or Disarm Trap Test. Declare before rolling." },
+  { name: "Connoisseur", type: "Alchemist", effect: "Add +10 Alchemy to one attempt to identify one potion. Declare before the Test. Failure still consumes that hero's attempt for the potion." },
+  { name: "Deadly Strike", type: "Combat", effect: "Add +25 CS to one melee attack. Declare before the To Hit roll. Spent even if the attack misses." },
+  { name: "Dispel Master", type: "Arcane", effect: "Add +20 Arcane Arts to one attempt to dispel enemy magic. Declare before the Dispel Test." },
+  { name: "Encouragement", type: "Leader", effect: "One hero within LOS gains +10 on one Fear or Terror Test. Declare before the affected hero rolls. It can be used even if the declaring hero already used their activation’s APs." },
+  { name: "Energy to Mana", type: "Arcane", effect: "Spend any chosen number of Energy and gain 20 Mana per Energy spent, up to the Wizard's normal maximum Mana. Use during the Wizard's activation." },
+  { name: "Fate Forger", type: "Faith", effect: "Reroll the Scenario die. The second result replaces the first and must stand. This Perk can only be used when a Scenario die is rolled, unless the current scenario or game mode explicitly states an alternative procedure. Declare immediately after the Scenario die is rolled, before resolving it. Only one reroll per Scenario die." },
+  { name: "Frenzy", type: "Combat", effect: "Barbarians only. For the current and next Barbarian activation, every melee Standard Attack costs 1 AP. The Barbarian may only Move or make melee Standard Attacks. Each attack that inflicts at least 1 HP Damage grants one immediate free Standard Attack. A free attack cannot generate another free attack. The Barbarian cannot Dodge, Parry, use potions or perform any other Action, limited to eight attacks across both activations. Activate at the start of the Barbarian's activation." },
+  { name: "God's Favourite", type: "Faith", effect: "Reduce Threat by 1d6, but never below the scenario minimum. This does not remove a Wandering Monster already generated. Use during the hero's activation. The same hero may use only one Threat-reducing Perk during the turn." },
+  { name: "Healer", type: "Faith", effect: "Add +3 HP to the final amount restored by one bandage. This stacks with the Healer Talent. Declare when applying the bandage." },
+  { name: "Heroic Force of Will", type: "Common", effect: "Add +10 to one Stat Test or Skill Test. All Stats and Skills can benefit from this. Declare before rolling." },
+  { name: "Hide in the Shadows", type: "Sneaky", effect: "Until the end of the current turn, enemies do not select the hero as a target if the hero was more than two squares away when that enemy began its activation. If adjacent to the hidden hero, the enemy must attack another adjacent legal target if one exists; otherwise it may attack the hidden hero. This affects targeting only. Use during the hero's activation." },
+  { name: "Hunter's Eye", type: "Combat", effect: "When making one ranged Attack with a bow or sling, make two separate attacks against the same target. Roll To Hit and Damage separately. A bow consumes two arrows; a sling uses normal unlimited ammunition. Declare before the Attack Action." },
+  { name: "Ignore Wounds", type: "Common", effect: "Gain Natural Armour 2 for the current battle. If the hero already has Natural Armour, use the higher value rather than stacking. Activate during the hero's activation or immediately when battle begins." },
+  { name: "In Tune with the Magic", type: "Arcane", effect: "Before attempting to identify a Magic Item, spend up to 2 AP on Focus. Gain +10 Arcane Arts per AP, increase the Miscast range by 5 per AP and cap Arcane Arts at 80. A Miscast is resolved on the normal Miscast Table. The attempt still counts as that Wizard's identification attempt for the item. Use before the identification Test." },
+  { name: "Intense Focus", type: "Arcane", effect: "Spend 1 AP and Gain +20 Arcane Arts on one spell, and increase the Miscast range by 5. It counts as one Focus level and may combine with ordinary Focus up to the normal maximum of two levels. Declare when casting." },
+  { name: "Inner Power", type: "Arcane", effect: "Add 1d6 Damage to one magic-missile spell. If the spell uses one shared Damage Roll, add the result to each affected target; otherwise add it to one selected missile or target. Declare before casting." },
   { name: "Jumper", type: "Racial", effect: "Spend 1 Energy Point to jump across two squares (moves 3 squares total). Always succeeds, no DEX test needed. May leap hazards (traps, chasms), objects (barrels, tables), and normal-sized characters. Can never jump through a door opening." },
-  { name: "Keep Calm and Carry On!", type: "Leader", effect: "Increase Party Morale by +2 (cannot exceed starting morale)." },
+  { name: "Keep Calm and Carry On!", type: "Leader", effect: "Increase Party Morale by 2, up to the party's current maximum PM. Use during exploration or combat." },
   { name: "Linked to the Void", type: "Racial", effect: "When failing an Arcane Arts roll, may spend 1 Energy Point to make it a success instead." },
-  { name: "Living on Nothing", type: "Sneaky", effect: "Spending an Energy Point counts as consuming a ration. Can't regain that Energy in the same rest." },
-  { name: "Loot Goblin", type: "Sneaky", effect: "May reroll a gold amount once; decide after the first roll." },
-  { name: "Lucky Git", type: "Sneaky", effect: "Reduce the Threat Level by 2." },
-  { name: "My Will Be Done", type: "Faith", effect: "+10 RES, lasting until the end of the next battle." },
+  { name: "Living on Nothing", type: "Sneaky", effect: "When food is resolved, the hero may spend 1 Energy and is treated as fed even if the party has no ration. The rest of the party is unaffected. The spent Energy cannot be recovered during that same rest. Use when resolving food for the day (The Travel Day point 5. Page 204)." },
+  { name: "Loot Goblin", type: "Sneaky", effect: "Reroll one complete rolled amount of coins. If the result uses several dice, reroll all of them. The second complete result stands. Use after seeing the first result. Does not affect sale prices, bank results, item quantities or treasure tiers." },
+  { name: "Lucky Git", type: "Sneaky", effect: "Reduce Threat by 2, but never below the scenario minimum. This does not remove a Wandering Monster already generated. Use during the hero's activation. The same hero may use only one Threat-reducing Perk during the turn." },
+  { name: "My Will Be Done", type: "Faith", effect: "The Priest gains +10 RES. Multiple uses do not stack. If activated during battle it lasts until that battle ends. If activated outside battle, lasts through the next battle." },
   { name: "Now You See Me…", type: "Racial", effect: "Spend 1 Energy Point to become invisible to all — removed from the table and treated as not present, though it keeps its initiative token. Becomes visible again as soon as it takes any action after disappearing, placed as close to its original position as possible." },
-  { name: "Perfect Aim", type: "Combat", effect: "+25 RS on your next Ranged Attack." },
-  { name: "Perfect Healer", type: "Alchemist", effect: "Your next mixed Healing Potion heals +3 HP. Used when the potion is mixed." },
-  { name: "Pitcher", type: "Alchemist", effect: "+10 RS on your next potion throw. One potion, declared before throwing." },
-  { name: "Powerful Blow", type: "Combat", effect: "+1d6 extra damage. Declared before the attack." },
-  { name: "Precise Mixing", type: "Alchemist", effect: "May reroll the potion-creation result; second stands. Energy spent after the first roll." },
-  { name: "Quick Dodge", type: "Sneaky", effect: "May dodge even if the normal dodge has already been used." },
-  { name: "Quick Focus", type: "Arcane", effect: "+10 Arcane Arts without spending an action on focus (used with casting, lasts that spell). Miscast risk still +5." },
-  { name: "Rally", type: "Leader", effect: "A hero that failed a Fear or Terror Test may immediately retake it. Usable outside normal order." },
+  { name: "Perfect Aim", type: "Combat", effect: "Add +25 RS to one ranged attack. Declare before the To Hit roll. Spent even if the attack misses." },
+  { name: "Perfect Healer", type: "Alchemist", effect: "One Healing Potion produced gains +3 HP restored. This stacks with Master Healer. If several doses are produced, select one unless 1 Energy is spent for each enhanced potion. Declare when mixing." },
+  { name: "Pitcher", type: "Alchemist", effect: "Add +10 RS to one thrown potion, whether aimed at a model or an empty square. Declare before the RS roll. Spent even if the throw misses and scatters." },
+  { name: "Powerful Blow", type: "Combat", effect: "Add 1d6 Damage to one successful melee attack. Declare before the To Hit roll." },
+  { name: "Precise Mixing", type: "Alchemist", effect: "Reroll the complete result determining which potion or potions were created. The second complete result stands and ingredients are not consumed again. A catastrophic result may not be rerolled. Use after seeing the first result." },
+  { name: "Quick Dodge", type: "Sneaky", effect: "Make one additional legal Dodge after the hero's normal Dodge for the turn has already been used. Declare when attacked. Does not restore the ordinary Dodge for later attacks." },
+  { name: "Rally", type: "Leader", effect: "One hero within LOS who has just failed a Fear or Terror Test immediately retakes it. On success, remove the current Fear or Terror penalties and Stunned condition; Sanity and PM already lost remain lost. Declare immediately after the failed Test. Only one Rally may be used on that failed Test." },
   { name: "Shapeshifter", type: "Profession", effect: "Druid-exclusive; detailed in the Druid chapter." },
-  { name: "Shield Bash", type: "Combat", effect: "Push an enemy of the same size or smaller 1 square with CS. Target must pass a DEX Test or fall prone. Requires a Heater or Tower shield; Flyers immune." },
-  { name: "Shield Wall", type: "Combat", effect: "May parry twice in one turn while in Parry Stance. Usable when attacked." },
-  { name: "Sixth Sense", type: "Common", effect: "+20 to a dodge result when attacked, or +20 to a Perception Test avoiding a triggered trap." },
-  { name: "Sprint", type: "Common", effect: "Spend 1 Energy to move up to 6 squares on the first move; second move still at half." },
-  { name: "Strike to Injure", type: "Sneaky", effect: "Ignores the enemy's armour for all attacks this turn. Declared before attacking." },
-  { name: "Stunning Strike", type: "Combat", effect: "Standard Attack at -10 CS; on success, target performs no actions next turn. Melee only, no effect on Large/X-Large." },
-  { name: "Surgeon", type: "Alchemist", effect: "Doubles parts harvested from up to 3 enemies. Only works on one enemy per Energy Point spent." },
-  { name: "Taste for Blood", type: "Common", effect: "Bloodlust triggers on a To-Hit roll of 01-10 instead of 01-05, for the entire battle. Used before the Damage Roll." },
-  { name: "Taunt", type: "Common", effect: "Forces an enemy not locked in melee to attack this hero, ignoring normal targeting. Chosen before rolling." },
+  { name: "Shield Bash", type: "Combat", effect: "Requires a shield with DEF 5 or higher. Make a 1 AP melee special attack using CS and the target's normal To Hit modifier. On success, inflict no Damage and push an enemy of the same size or smaller one square directly away. The target then makes a DEX Test and becomes Prone on failure. The hero may advance into the vacated square. If no legal square exists behind the target, it is not pushed but still tests DEX. Flyers are immune." },
+  { name: "Shield Wall", type: "Combat", effect: "Gain one additional legal Shield Parry during the current turn. Declare when making the second Shield Parry. Does not expand what attacks the shield may normally parry." },
+  { name: "Sixth Sense", type: "Common", effect: "Add +20 to one Dodge Test or to one PER Test made to avoid or mitigate a trap that has already triggered. Declare before rolling. Does not apply to detecting traps during exploration." },
+  { name: "Sprint", type: "Common", effect: "The hero's first Move Action during the activation allows movement of up to six squares for 1 AP. Terrain and movement penalties still apply. A second Move Action may still be made at the hero's normal half Movement, rounded down. Cannot be used for a Charge unless another rule permits it." },
+  { name: "Strike to Injure", type: "Sneaky", effect: "Ignore Armour for all attacks made by the hero during the current activation. Natural Armour, shields, magical reduction and immunity still apply. Activate before the first attack. No other Perk may modify those Attack Actions." },
+  { name: "Stunning Strike", type: "Combat", effect: "Make a melee Standard Attack with -10 CS. On success, inflict no Damage and no Damage-dependent weapon effect. A normal-sized target loses its next activation; a Large target loses 1 AP from its next activation; X-Large or Stun-immune targets are unaffected. Declare before the To Hit roll." },
+  { name: "Surgeon", type: "Alchemist", effect: "Choose up to two corpses included in one Harvesting attempt. If the Harvesting Test succeeds, parts from those corpses are automatically Exquisite. Other selected corpses produce normal-quality parts. Declare before the Harvesting Test." },
+  { name: "Taste for Blood", type: "Common", effect: "For the rest of the battle, the hero triggers Bloodlust on an unmodified To Hit roll of 01-10. Activate before an attack. Does not stack with Axeman, Bruiser, Marksman, Swordsman or another effect already granting 01-10." },
+  { name: "Taunt", type: "Common", effect: "Choose one enemy within LOS that is not locked in close combat. On its next activation, it treats the taunting hero as its target and follows its normal Behaviour and movement rules. If it cannot legally reach or attack the hero, it returns to normal targeting. Use during the hero's activation. Expires after that enemy's next activation." },
 ];
 
 // Returns a hero's attached Talents/Perks of type "Combat", for the Combat tab's quick
@@ -3497,6 +3500,15 @@ function CompendiumTab({ heroes, updateHero, addLog, initialCat, initialHero }) 
         <Panel className="mb-4">
           <p className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
             Legendary Items are unique (unless otherwise noted, only found once) and can never be sold. Unlike ordinary magic items, they never run out of magic and can't be damaged — but they must be identified (see the Wizards' Guild or a Scryer on the Settlements tab) before use. Attaching one below auto-applies its bonus if it's a flat stat increase; effects that need live combat judgement stay as reference text only.
+          </p>
+        </Panel>
+      )}
+      {(cat === "perks" || cat === "talents") && (
+        <Panel className="mb-4">
+          <p className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+            {cat === "perks"
+              ? "Unless a Perk states otherwise, using it costs 1 Energy and no Action Points. A hero may use several Perks in one activation, but no more than one Perk may modify the same Action, attack, Test, defence or other single resolution. Reactive Perks may be used outside the normal acting order (even after the hero has activated) while the hero is conscious and able to act — they use no AP and don't consume the activation."
+              : "Talents are permanent abilities that are always active unless their description says otherwise. A hero may never select the same Talent twice (several heroes may share one). Differently named bonuses stack unless a rule says otherwise; party-wide benefits say whether multiple copies stack."}
           </p>
         </Panel>
       )}
@@ -3805,6 +3817,26 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.62.0",
+    date: "2026-10-22",
+    sections: {
+      "Added": [
+        "New Apply a Bandage tool on the Actions tab: pick the healer, patient and a bandage from the healer's Quick Slot; it rolls the Heal Test (herbal wrap +15), heals 1d4/1d8/1d10, adds the Healer Talent (+1) and optionally the Healer Perk (+3, 1 Energy), spends 1 AP (2 for self-treatment), counts down the bundle of 3 bandages, revives a bleeding-out patient and gives the patient 1 fewer AP at the start of their next turn",
+        "New Talents Healer (Priest bandages +1 HP), Mule (carry up to STR +35 — shown on the Hero card) and Resilient to Hunger, plus the new Perk Intense Focus (replaces Quick Focus; existing heroes with Quick Focus are converted automatically)",
+        "Spell casting: Intense Focus checkbox for heroes with the Perk (1 AP + 1 Energy: +20 AA, Miscast +5, counts as one of the two Focus levels); the Focused Talent now gives +15 AA per Focus AP; final Arcane Arts is capped at 80 as the rulebook states",
+        "Resilient to Hunger automated in Make Camp: that hero suffers no hunger effects until the third day without food, which then counts as their first",
+        "Master Cook (+2 HP per hero when a ration is eaten on a Short Rest or Make Camp), Pathfinder (+1 HP per hero on an overnight travel rest) and Natural Leader (+2 Starting Party Morale, max 20, when you press Set Starting Morale) now apply automatically",
+        "Compendium: Perks and Talents tabs now open with the 2.571 rules for how they work (1 Energy and no AP, one Perk per action, reactive Perks, no duplicate Talents)",
+      ],
+      "Changed": [
+        "Every Perk and Talent description reworded to the rulebook 2.571 text (88 Talents and 40 Perks updated) — including Surgeon, Stunning Strike, Shield Bash (needs a shield with DEF 5+), Frenzy, Call to Action, Rally, Keep Calm and Carry On!, Cutpurse, Lethal Shot (+1), Dual Wield, Fast Reload, Parry Master, Disciplined, Messiah, Charming and more",
+        "Ranger starting Talents now match 2.571: Observant, Resilient to Hunger and a choice of Marksman or Hunter; starting weapon is a Longbow, Shortbow or Sling (arrows are skipped for the sling)",
+        "Rogue now chooses between a Small and a Medium Backpack at creation (it was always given a Medium)",
+        "Relic slot hint updated: two Relic Slots (three with Reliquary), and non-Priests need Pious",
+      ],
+    },
+  },
   {
     version: "1.61.0",
     date: "2026-10-22",
@@ -5884,6 +5916,7 @@ function normalizeHero(h) {
     mentalConditions: h.mentalConditions || [],
     backgroundCounter: h.backgroundCounter || 0,
     backgroundClaimed: h.backgroundClaimed || false,
+    perks: (h.perks || []).map((p) => (p === "Quick Focus" ? "Intense Focus" : p)),
     alchemyComponents: h.alchemyComponents || [],
     alchemyRecipes: h.alchemyRecipes || [],
     startingStatsRolled: h.startingStatsRolled || false,
@@ -5976,16 +6009,16 @@ const STARTING_EQUIPMENT = {
   },
   Barbarian: { weaponOptions: "any", armour: null, backpackItems: [], manualNote: "" },
   Ranger: {
-    weaponOptions: ["Longbow"],
+    weaponOptions: ["Longbow", "Shortbow", "Sling"],
     armour: null,
-    backpackItems: [{ name: "Arrows x10", enc: 2 }],
+    backpackItems: [{ name: "Arrows x10", enc: 2, bowOnly: true }],
     manualNote: "",
   },
   Rogue: {
     weaponOptions: ["Shortsword", "Rapier"],
     armour: "Padded Jacket",
     backpackItems: [{ name: "Lock Picks x10", enc: 2 }],
-    backpackUpgrade: "Medium",
+    backpackChoice: true,
     manualNote: "",
   },
   Thief: {
@@ -6018,7 +6051,7 @@ const PROFESSION_STARTING_TALENTS = {
   Warrior: { talents: ["Disciplined"], perks: ["Heroic Force of Will"], choices: [{ label: "Starting Talent", kind: "talent", options: ["Mighty Blow", "Braveheart"] }], pickNote: "" },
   Barbarian: { talents: [], perks: ["Heroic Force of Will", "Frenzy"], choices: [], pickNote: "" },
   Alchemist: { talents: ["Resistance to Poison"], perks: ["Heroic Force of Will"], choices: [], pickNote: "" },
-  Ranger: { talents: ["Observant", "Marksman"], perks: ["Heroic Force of Will"], choices: [], pickNote: "" },
+  Ranger: { talents: ["Observant", "Resilient to Hunger"], perks: ["Heroic Force of Will"], choices: [{ label: "Starting Talent", kind: "talent", options: ["Marksman", "Hunter"] }], pickNote: "" },
   Rogue: { talents: ["Backstabber", "Streetwise"], perks: ["Heroic Force of Will"], choices: [], pickNote: "" },
   Thief: { talents: ["Evaluate"], perks: ["Heroic Force of Will"], choices: [], pickNote: "" },
   "Warrior Priest": { talents: [], perks: ["Heroic Force of Will"], choices: [{ label: "Starting Talent", kind: "talent", options: ["Confident", "Braveheart"] }], pickNote: "Plus 2 level-1 Prayers, via the Inner Sanctum." },
@@ -6097,6 +6130,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
   };
 
   const [startWeaponChoice, setStartWeaponChoice] = useState("");
+  const [startBackpackChoice, setStartBackpackChoice] = useState("");
   const [startRelicGod, setStartRelicGod] = useState("");
   const [startRelicType, setStartRelicType] = useState("Ring");
   const [startEquipResult, setStartEquipResult] = useState(null);
@@ -6128,7 +6162,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
         lines.push(a.name);
       }
     }
-    const newBackpackItems = (startingCfg.backpackItems || []).map((it) => ({ id: uid(), name: it.name, value: it.value ?? "", enc: it.enc ?? "", dur: "" }));
+    const newBackpackItems = (startingCfg.backpackItems || []).filter((it) => !(it.bowOnly && weaponName === "Sling")).map((it) => ({ id: uid(), name: it.name, value: it.value ?? "", enc: it.enc ?? "", dur: "" }));
     if (startingCfg.relicChoice) {
       const relicEffect = RELIC_EFFECTS[startRelicGod];
       newBackpackItems.push({ id: uid(), name: `Religious Relic of ${startRelicGod} (${startRelicType})`, value: "", enc: 0, dur: "" });
@@ -6143,6 +6177,10 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     if (startingCfg.backpackUpgrade) {
       patch.backpackUpgrade = startingCfg.backpackUpgrade;
       lines.push(`${startingCfg.backpackUpgrade} Backpack`);
+    }
+    if (startingCfg.backpackChoice && startBackpackChoice === "Medium") {
+      patch.backpackUpgrade = "Medium";
+      lines.push("Medium Backpack (−5 DEX)");
     }
     update({ ...hero, ...patch, startingEquipmentApplied: true });
     const line = `Starting equipment applied: ${lines.join(", ")}.${startingCfg.manualNote ? ` ${startingCfg.manualNote}` : ""}`;
@@ -7205,10 +7243,16 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                     : startingCfg.weaponOptions.map((w) => <option key={w} value={w}>{w}</option>)}
                 </select>
               )}
+              {startingCfg.backpackChoice && (
+                <select value={startBackpackChoice} onChange={(e) => setStartBackpackChoice(e.target.value)} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+                  <option value="">Small Backpack</option>
+                  <option value="Medium">Medium Backpack (−5 DEX, more capacity)</option>
+                </select>
+              )}
               {startingCfg.relicChoice && (
                 <>
                   <p className="text-[10px] mb-1" style={{ color: palette.inkSoft }}>
-                    Only 2 relics may be worn at once unless the Reliquary talent is known. Counts as a magic item.
+                    A Priest has two Relic Slots (three with the Reliquary Talent); non-Priests need the Pious Talent to use Relics at all. Counts as a magic item.
                   </p>
                   <div className="flex gap-1.5 mb-1.5">
                     <select
@@ -8373,7 +8417,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
             <div className="flex items-center justify-between">
               <span style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase">Encumbrance</span>
               <span className="text-sm font-bold" style={{ fontFamily: "JetBrains Mono, monospace", color: isEncumbered ? palette.crimson : palette.ink }}>
-                {totalEnc} / {carryCapacity} <span style={{ color: palette.inkSoft, fontWeight: "normal" }}>(max {carryCapacity + 15})</span>
+                {totalEnc} / {carryCapacity} <span style={{ color: palette.inkSoft, fontWeight: "normal" }}>(max {carryCapacity + 15 + ((hero.talents || []).includes("Mule") ? 20 : 0)}{(hero.talents || []).includes("Mule") ? ", Mule" : ""})</span>
               </span>
             </div>
             {backpackEncBonus(hero) > 0 && (
@@ -11684,7 +11728,7 @@ const MISCAST_DEMON_TABLE = [
 // still costs the FULL intended Mana (only a plain failure costs half); miscast uses the
 // same half-Mana-as-failure rule for every spell type, including Incantations.
 function resolveSpellCast(hero, spell, opts) {
-  const { focusAP, wounded, increasedPower, hasLOS, enemyAdjacent, inSettlement, canDispel, enemyRS } = opts;
+  const { focusAP, intenseFocus, wounded, increasedPower, hasLOS, enemyAdjacent, inSettlement, canDispel, enemyRS } = opts;
   const type = spellTypeOf(spell);
   const powerAllowed = spell.school === "Restoration" || spell.school === "Destruction";
   const effectivePower = powerAllowed ? increasedPower : 0;
@@ -11700,8 +11744,11 @@ function resolveSpellCast(hero, spell, opts) {
     return { blocked: true, type, msg: "No line of sight to the target — can't cast. Choose a different action." };
   }
 
-  const threshold = miscastThreshold({ wounded, focusAP, increasedPower: effectivePower });
-  const aa = (Number(hero.skills.arcaneArts) || 0) + focusAP * 10;
+  const threshold = miscastThreshold({ wounded, focusAP: focusAP + (intenseFocus ? 1 : 0), increasedPower: effectivePower });
+  // Focus (p91): +10 AA per AP (+15 with the Focused Talent), Intense Focus adds +20 and counts
+  // as one Focus level; final AA can never exceed 80.
+  const perFocusAP = (hero.talents || []).includes("Focused") ? 15 : 10;
+  const aa = Math.min(80, (Number(hero.skills.arcaneArts) || 0) + focusAP * perFocusAP + (intenseFocus ? 20 : 0));
   const aaTarget = aa - (spell.cv || 0);
 
   // Touch spells: CS+20 touch roll first (parry/dodge not modelled) — failing it costs
@@ -12611,7 +12658,7 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
     // this also advances the round counter, resets every hero's AP to 2, and ticks down
     // light sources — the same mechanics "Next Round" used to require a separate tap for.
     const lines = [];
-    heroes.forEach((h) => updateHero(h.id, { ...h, ap: 2 }));
+    heroes.forEach((h) => updateHero(h.id, { ...h, ap: Math.max(0, 2 - (h.apPenalty || 0)), apPenalty: 0 }));
     const wentOut = [];
     const surviving = [];
     (party.lightSources || []).forEach((l) => {
@@ -12747,9 +12794,11 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
     const newMorale = Math.max(party.morale, Math.min(party.morale + 2, moraleCap));
     lines.push({ text: `Party Morale +2, up to its maximum of ${moraleCap} (now ${newMorale}).` });
 
+    const masterCook = heroes.some((h) => (h.talents || []).includes("Master Cook"));
+    if (masterCook) lines.push({ text: "Master Cook: each hero regains +2 HP from the ration (does not stack)." });
     heroes.forEach((h) => {
       const hpRoll = rollDie(6);
-      const newHp = Math.min(h.hp.max, h.hp.cur + hpRoll);
+      const newHp = Math.min(h.hp.max, h.hp.cur + hpRoll + (masterCook ? 2 : 0));
       const hasBedroll = (h.backpack || []).some((it) => it.name === "Bed Roll");
       let newEnergyCur = h.energy.cur;
       let energyLine;
@@ -12811,7 +12860,7 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
   };
 
   const resetRound = () => {
-    heroes.forEach((h) => updateHero(h.id, { ...h, ap: 2 }));
+    heroes.forEach((h) => updateHero(h.id, { ...h, ap: 2, apPenalty: 0 }));
     setParty((prev) => ({ ...prev, round: 1 }));
     setTurnResult(null);
     addLog("Round counter reset to 1 — AP reset for all heroes.");
@@ -13268,9 +13317,12 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
   };
 
   const setStartingMorale = () => {
-    const pm = heroes.reduce((s, h) => s + Math.floor((Number(h.stats.RES) || 0) / 10), 0);
+    const base = heroes.reduce((s, h) => s + Math.floor((Number(h.stats.RES) || 0) / 10), 0);
+    // Natural Leader: +2 Starting and maximum PM (does not stack), capped at 20 (rulebook 2.571).
+    const leader = heroes.some((h) => (h.talents || []).includes("Natural Leader"));
+    const pm = leader ? Math.min(20, base + 2) : base;
     setParty({ ...party, morale: pm, startingMorale: pm });
-    addLog(`Starting Party Morale set to ${pm} (sum of floor(RES/10) across ${heroes.length} hero${heroes.length === 1 ? "" : "es"}).`);
+    addLog(`Starting Party Morale set to ${pm} (sum of floor(RES/10) across ${heroes.length} hero${heroes.length === 1 ? "" : "es"}${leader ? ", +2 Natural Leader" : ""}).`);
   };
 
   const awardXP = () => {
@@ -13676,6 +13728,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
   const [castSpellPick, setCastSpellPick] = useState("");
   const [castResult, setCastResult] = useState(null);
   const [focusAP, setFocusAP] = useState(0);
+  const [intenseFocus, setIntenseFocus] = useState(false);
   const [wounded, setWounded] = useState(false);
   const [increasedPower, setIncreasedPower] = useState(0);
   const [hasLOS, setHasLOS] = useState(true);
@@ -13743,12 +13796,16 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
   };
   const castSpell = () => {
     if (!castHero || !chosenSpell) return;
-    const r = resolveSpellCast(castHero, chosenSpell, { focusAP, wounded, increasedPower, hasLOS, enemyAdjacent, inSettlement, canDispel, enemyRS });
+    const intenseOn = intenseFocus && (castHero.perks || []).includes("Intense Focus");
+    if (intenseOn && focusAP > 1) { setCastResult({ ok: false, lines: ["Intense Focus counts as one Focus level — at most 1 ordinary Focus AP can be added (2 levels maximum)."] }); return; }
+    if (intenseOn && castHero.energy.cur < 1) { setCastResult({ ok: false, lines: [`${castHero.name} has no Energy left for Intense Focus.`] }); return; }
+    const r = resolveSpellCast(castHero, chosenSpell, { focusAP, intenseFocus: intenseOn, wounded, increasedPower, hasLOS, enemyAdjacent, inSettlement, canDispel, enemyRS });
     if (r.blocked) { setCastResult({ ok: false, lines: [r.msg] }); return; }
     const cur = Math.max(0, castHero.mana.cur + r.manaDelta); // Perfect Cast may briefly exceed max — don't clamp the top.
-    updateHero({ ...castHero, mana: { ...castHero.mana, cur } });
+    updateHero({ ...castHero, mana: { ...castHero.mana, cur }, ...(intenseOn ? { energy: { ...castHero.energy, cur: castHero.energy.cur - 1 } } : {}) });
 
     const lines = [];
+    if (intenseOn) lines.push("Intense Focus: +20 AA, Miscast range +5 (1 AP and 1 Energy spent).");
     if (r.type === "Touch") {
       lines.push(`Touch roll: ${r.touchRoll} vs ${r.touchTarget} (CS+20) — ${r.touched ? "touched!" : "missed."}`);
       if (r.touched) lines.push(`Arcane Arts roll: ${r.roll} vs ${r.aaTarget} — ${r.success ? "success! " + chosenSpell.name + " takes effect." : "failed."}`);
@@ -14410,8 +14467,14 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast }) {
                   {chosenSpellType === "Touch" && (
                     <p className="text-[10px] italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>Touch Spells can't be dispelled.</p>
                   )}
+                  {(castHero?.perks || []).includes("Intense Focus") && (
+                    <label className="flex items-center gap-1.5 text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+                      <input type="checkbox" checked={intenseFocus} onChange={(e) => setIntenseFocus(e.target.checked)} />
+                      Intense Focus (1 AP + 1 Energy: +20 AA, Miscast +5; counts as a Focus level)
+                    </label>
+                  )}
                   <p className="text-[10px]" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.inkSoft }}>
-                    Miscast Threshold: {miscastThreshold({ wounded, focusAP, increasedPower: powerAllowedFor ? increasedPower : 0 })} · AA: {(Number(castHero?.skills.arcaneArts) || 0) + focusAP * 10}
+                    Miscast Threshold: {miscastThreshold({ wounded, focusAP: focusAP + (intenseFocus && (castHero?.perks || []).includes("Intense Focus") ? 1 : 0), increasedPower: powerAllowedFor ? increasedPower : 0 })} · AA: {Math.min(80, (Number(castHero?.skills.arcaneArts) || 0) + focusAP * ((castHero?.talents || []).includes("Focused") ? 15 : 10) + (intenseFocus && (castHero?.perks || []).includes("Intense Focus") ? 20 : 0))} (cap 80)
                   </p>
                 </div>
               )}
@@ -14838,6 +14901,63 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   const activeFurnitureHero = heroes.find((h) => h.id === furnitureHeroId) || heroes[0];
   const [searchFeedback, setSearchFeedback] = useState(null);
   const activeSearchHero = heroes.find((h) => h.id === searchHeroId) || heroes[0];
+
+  // Apply a Bandage (p185): healer uses a Quick Slot bandage on an adjacent hero (1 AP) or
+  // themselves (2 AP); Heal Test; bandage used up either way; patient loses 1 AP next turn.
+  // Healer Talent +1 HP, Healer Perk +3 HP (1 Energy).
+  const [bandHealerId, setBandHealerId] = useState("");
+  const [bandPatientId, setBandPatientId] = useState("");
+  const [bandItemId, setBandItemId] = useState("");
+  const [bandPerk, setBandPerk] = useState(false);
+  const [bandEnemyAdj, setBandEnemyAdj] = useState(false);
+  const [bandResult, setBandResult] = useState(null);
+  const bandHealer = heroes.find((h) => h.id === bandHealerId) || heroes[0];
+  const bandPatient = heroes.find((h) => h.id === bandPatientId) || heroes[0];
+  const BANDAGE_TYPES = {
+    "Bandage (old rags)": { die: 4, bonus: 0 },
+    "Bandage (linen)": { die: 8, bonus: 0 },
+    "Bandage (herbal wrap)": { die: 10, bonus: 15 },
+  };
+  const bandages = bandHealer ? (bandHealer.backpack || []).filter((it) => it.slot === "quickslot" && BANDAGE_TYPES[it.name]) : [];
+  const bandItem = bandages.find((it) => it.id === bandItemId) || bandages[0];
+  const applyBandage = () => {
+    if (!bandHealer || !bandPatient || !bandItem) return;
+    const self = bandHealer.id === bandPatient.id;
+    const apCost = self ? 2 : 1;
+    if (bandEnemyAdj) { setBandResult({ ok: false, lines: ["A bandage can only be applied when no enemy is adjacent to either hero."] }); return; }
+    if ((bandHealer.hp.cur || 0) <= 0) { setBandResult({ ok: false, lines: [`${bandHealer.name} is bleeding out and can't apply a bandage.`] }); return; }
+    if (self && (bandPatient.hp.cur || 0) <= 0) { setBandResult({ ok: false, lines: ["A bleeding-out hero cannot treat themselves."] }); return; }
+    const ap = bandHealer.ap ?? 2;
+    if (ap < apCost) { setBandResult({ ok: false, lines: [`${bandHealer.name} needs ${apCost} AP (has ${ap}). Check the Turn tab.`] }); return; }
+    const usePerk = bandPerk && (bandHealer.perks || []).includes("Healer");
+    if (usePerk && bandHealer.energy.cur < 1) { setBandResult({ ok: false, lines: [`${bandHealer.name} has no Energy left for the Healer Perk.`] }); return; }
+    const type = BANDAGE_TYPES[bandItem.name];
+    const skill = (Number(bandHealer.skills.heal) || 0) + type.bonus;
+    const roll = rollPercent();
+    const success = roll <= skill && roll !== 100;
+    const lines = [`Heal Test: rolled ${roll} vs ${skill}${type.bonus ? " (incl. +15 herbal wrap)" : ""} — ${success ? "success" : "failed"}. The bandage is used up either way.`];
+    // Bundle of 3: count uses down, remove the item when empty.
+    const usesLeft = (bandItem.uses ?? 3) - 1;
+    const newPack = (bandHealer.backpack || []).flatMap((it) => (it.id !== bandItem.id ? [it] : usesLeft > 0 ? [{ ...it, uses: usesLeft }] : []));
+    let healer = { ...bandHealer, ap: ap - apCost, backpack: newPack, ...(usePerk ? { energy: { ...bandHealer.energy, cur: bandHealer.energy.cur - 1 } } : {}) };
+    let patient = self ? healer : bandPatient;
+    if (success) {
+      const base = rollDie(type.die);
+      const talent = (bandHealer.talents || []).includes("Healer") ? 1 : 0;
+      const perk = usePerk ? 3 : 0;
+      const total = base + talent + perk;
+      const wasDown = patient.hp.cur <= 0;
+      const newHp = Math.min(patient.hp.max, patient.hp.cur + total);
+      patient = { ...patient, hp: { ...patient.hp, cur: newHp }, ...(wasDown && newHp > 0 ? { bleedingOutRolled: false } : {}) };
+      lines.push(`Heals 1d${type.die} = ${base}${talent ? " +1 (Healer Talent)" : ""}${perk ? " +3 (Healer Perk, 1 Energy)" : ""} = ${total} HP → ${patient.name} ${newHp}/${patient.hp.max}${wasDown && newHp > 0 ? " (back on their feet)" : ""}.`);
+    }
+    if (!self) patient = { ...patient, apPenalty: (patient.apPenalty || 0) + 1 };
+    lines.push(`${bandHealer.name} spends ${apCost} AP${usePerk ? " and 1 Energy" : ""}.${self ? "" : ` ${bandPatient.name} starts their next activation with 1 fewer AP.`} Bandages left in this bundle: ${Math.max(0, usesLeft)}.`);
+    if (self) updateHero(healer.id, patient);
+    else { updateHero(healer.id, healer); updateHero(patient.id, patient); }
+    setBandResult({ ok: success, lines });
+    addLog(`${bandHealer.name} applies a bandage to ${bandPatient.name}: ${lines.join(" ")}`);
+  };
 
   const searchTile = () => {
     if (!activeSearchHero) return;
@@ -15476,6 +15596,49 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
       </Panel>
 
       <Panel>
+        <SectionTitle icon={Heart}>Apply a Bandage</SectionTitle>
+        <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
+          1 AP on an adjacent hero, 2 AP on yourself. The bandage must be in a Quick Slot and no enemy may be adjacent to either hero. Make a Heal Test; the bandage is used up either way. The patient starts their next activation with 1 fewer AP (a bleeding-out hero can still be treated).
+        </p>
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <select value={bandHealer?.id || ""} onChange={(e) => { setBandHealerId(e.target.value); setBandItemId(""); setBandResult(null); }} className="text-sm rounded px-2 py-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+            {heroes.map((h) => <option key={h.id} value={h.id}>Healer: {h.name} ({h.ap ?? 2} AP)</option>)}
+          </select>
+          <select value={bandPatient?.id || ""} onChange={(e) => { setBandPatientId(e.target.value); setBandResult(null); }} className="text-sm rounded px-2 py-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+            {heroes.map((h) => <option key={h.id} value={h.id}>Patient: {h.name} ({h.hp.cur}/{h.hp.max} HP)</option>)}
+          </select>
+        </div>
+        {bandages.length === 0 ? (
+          <p className="text-xs mb-2" style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif" }}>
+            {bandHealer?.name || "This hero"} has no bandage in a Quick Slot. Add one from the Backpack (Add from table → Misc) and tap its Q badge.
+          </p>
+        ) : (
+          <select value={bandItem?.id || ""} onChange={(e) => setBandItemId(e.target.value)} className="w-full text-sm rounded px-2 py-1.5 mb-2" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+            {bandages.map((it) => <option key={it.id} value={it.id}>{it.name} — {it.uses ?? 3} left</option>)}
+          </select>
+        )}
+        <label className="flex items-center gap-1.5 text-xs mb-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+          <input type="checkbox" checked={bandEnemyAdj} onChange={(e) => setBandEnemyAdj(e.target.checked)} /> An enemy is adjacent to either hero
+        </label>
+        {(bandHealer?.perks || []).includes("Healer") && (
+          <label className="flex items-center gap-1.5 text-xs mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+            <input type="checkbox" checked={bandPerk} onChange={(e) => setBandPerk(e.target.checked)} /> Use the Healer Perk (+3 HP, 1 Energy)
+          </label>
+        )}
+        {(bandHealer?.talents || []).includes("Healer") && (
+          <p className="text-[10px] mb-2" style={{ color: palette.inkSoft }}>Healer Talent: +1 HP is added automatically.</p>
+        )}
+        <button onClick={applyBandage} disabled={!bandItem} className="w-full text-xs px-2 py-2 rounded font-semibold" style={{ background: palette.forestDark, color: palette.parchment, opacity: bandItem ? 1 : 0.5, fontFamily: "Cinzel, serif" }}>
+          Apply Bandage ({bandHealer && bandPatient && bandHealer.id === bandPatient.id ? 2 : 1} AP)
+        </button>
+        {bandResult && (
+          <div className="mt-2 text-xs rounded px-2 py-1.5" style={{ background: bandResult.ok ? "#2F4F3A18" : "#8B1E1E14", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+            {bandResult.lines.map((l, i) => <p key={i}>{l}</p>)}
+          </div>
+        )}
+      </Panel>
+
+      <Panel>
         <SectionTitle icon={ClipboardList}>Search Furniture</SectionTitle>
         <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
           1 AP out of combat, 2 AP if there are enemies in LOS. No search roll needed, just roll 1d10 on the Furniture Table (Appendix V). Can only be done once per piece of furniture, and only while no enemy is adjacent to it.
@@ -16050,16 +16213,24 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
     if (fed) lines.push("The party ate today — normal overnight rest.");
     else lines.push(`No food today — Hunger Track is now day ${days}.`);
     const newDeltas = { ...(party.hungerConDeltas || {}) };
+    const masterCookCamp = fed && heroes.some((h) => (h.talents || []).includes("Master Cook"));
+    const pathfinderCamp = fed && heroes.some((h) => (h.talents || []).includes("Pathfinder"));
+    if (masterCookCamp) lines.push("Master Cook: +2 HP for each hero from the ration.");
+    if (pathfinderCamp) lines.push("Pathfinder: +1 HP for each hero (overnight travel rest).");
     heroes.forEach((h) => {
       const notes = [];
+      // Resilient to Hunger: no hunger effects until the 3rd day; that day then counts as day 1.
+      const resilient = (h.talents || []).includes("Resilient to Hunger");
+      const hd = resilient ? Math.max(0, days - 2) : days;
+      if (resilient && days > 0 && hd === 0) notes.push("Resilient to Hunger — unaffected");
       let hp = h.hp.cur;
       let energy = h.energy.cur;
       const hpRoll = rollDie(6);
-      if (days === 0) { const g = Math.min(h.hp.max - hp, hpRoll); hp += g; notes.push(`+${g} HP`); }
-      else if (days === 1) { const g = Math.min(h.hp.max - hp, Math.floor(hpRoll / 2)); hp += g; notes.push(`+${g} HP (half, hungry)`); }
+      if (hd === 0) { const bonus = (masterCookCamp ? 2 : 0) + (pathfinderCamp ? 1 : 0); const g = Math.min(h.hp.max - hp, hpRoll + bonus); hp += g; notes.push(`+${g} HP${bonus ? ` (incl. +${bonus} talent)` : ""}`); }
+      else if (hd === 1) { const g = Math.min(h.hp.max - hp, Math.floor(hpRoll / 2)); hp += g; notes.push(`+${g} HP (half, hungry)`); }
       else notes.push("no HP recovery (hungry)");
-      if (days >= 6) { hp = Math.max(0, hp - 1); notes.push("-1 HP (starving)"); }
-      if (days === 0) {
+      if (hd >= 6) { hp = Math.max(0, hp - 1); notes.push("-1 HP (starving)"); }
+      if (hd === 0) {
         const hasBedroll = (h.backpack || []).some((it) => it.name === "Bed Roll");
         if (hasBedroll) { notes.push(`Energy ${energy} → ${h.energy.max} (Bed Roll)`); energy = h.energy.max; }
         else {
@@ -16070,12 +16241,12 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
           notes.push(missing > 0 ? `+${regained}/${missing} Energy` : "Energy full");
         }
       } else {
-        const loss = days >= 3 ? 2 : days === 2 ? 1 : 0;
+        const loss = hd >= 3 ? 2 : hd === 2 ? 1 : 0;
         energy = Math.max(0, energy - loss);
         notes.push(loss > 0 ? `no Energy regained, -${loss} Energy` : "no Energy regained");
       }
       let stats = h.stats;
-      if (days >= 4 && !newDeltas[h.id]) {
+      if (hd >= 4 && !newDeltas[h.id]) {
         const delta = Math.floor((Number(h.stats.CON) || 0) / 2);
         newDeltas[h.id] = delta;
         stats = { ...h.stats, CON: h.stats.CON - delta };

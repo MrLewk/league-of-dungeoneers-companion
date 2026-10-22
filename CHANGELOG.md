@@ -3,6 +3,22 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.62.0] — 2026-10-22
+
+### Added
+- New Apply a Bandage tool on the Actions tab: pick the healer, patient and a bandage from the healer's Quick Slot; it rolls the Heal Test (herbal wrap +15), heals 1d4/1d8/1d10, adds the Healer Talent (+1) and optionally the Healer Perk (+3, 1 Energy), spends 1 AP (2 for self-treatment), counts down the bundle of 3 bandages, revives a bleeding-out patient and gives the patient 1 fewer AP at the start of their next turn
+- New Talents Healer (Priest bandages +1 HP), Mule (carry up to STR +35 — shown on the Hero card) and Resilient to Hunger, plus the new Perk Intense Focus (replaces Quick Focus; existing heroes with Quick Focus are converted automatically)
+- Spell casting: Intense Focus checkbox for heroes with the Perk (1 AP + 1 Energy: +20 AA, Miscast +5, counts as one of the two Focus levels); the Focused Talent now gives +15 AA per Focus AP; final Arcane Arts is capped at 80 as the rulebook states
+- Resilient to Hunger automated in Make Camp: that hero suffers no hunger effects until the third day without food, which then counts as their first
+- Master Cook (+2 HP per hero when a ration is eaten on a Short Rest or Make Camp), Pathfinder (+1 HP per hero on an overnight travel rest) and Natural Leader (+2 Starting Party Morale, max 20, when you press Set Starting Morale) now apply automatically
+- Compendium: Perks and Talents tabs now open with the 2.571 rules for how they work (1 Energy and no AP, one Perk per action, reactive Perks, no duplicate Talents)
+
+### Changed
+- Every Perk and Talent description reworded to the rulebook 2.571 text (88 Talents and 40 Perks updated) — including Surgeon, Stunning Strike, Shield Bash (needs a shield with DEF 5+), Frenzy, Call to Action, Rally, Keep Calm and Carry On!, Cutpurse, Lethal Shot (+1), Dual Wield, Fast Reload, Parry Master, Disciplined, Messiah, Charming and more
+- Ranger starting Talents now match 2.571: Observant, Resilient to Hunger and a choice of Marksman or Hunter; starting weapon is a Longbow, Shortbow or Sling (arrows are skipped for the sling)
+- Rogue now chooses between a Small and a Medium Backpack at creation (it was always given a Medium)
+- Relic slot hint updated: two Relic Slots (three with Reliquary), and non-Priests need Pious
+
 ## [1.61.0] — 2026-10-22
 
 ### Added

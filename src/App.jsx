@@ -3820,6 +3820,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.63.1",
+    date: "2026-10-22",
+    sections: {
+      "Fixed": [
+        "Link-preview share image now shows the correct web address",
+      ],
+    },
+  },
+  {
     version: "1.63.0",
     date: "2026-10-22",
     sections: {

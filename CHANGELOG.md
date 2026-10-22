@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.63.1] — 2026-10-22
+
+### Fixed
+- Link-preview share image now shows the correct web address
+
 ## [1.63.0] — 2026-10-22
 
 ### Added

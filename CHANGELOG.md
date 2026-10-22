@@ -3,6 +3,14 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.60.0] — 2026-10-22
+
+### Added
+- Optional Assigned-Stat Method (rulebook 2.571 p27): tick "Assigned-stat method" under Roll Starting Stats to roll five d10s and assign each die to a stat yourself (tap a die, then a stat). A short note explains how it differs from the standard method; HP and the two rerolls work as before
+
+### Fixed
+- Noble Background: the extra 250c now goes into the hero's own pouch (400c total) — it was wrongly being added to the shared Party Pot, so the hero's coins stayed at 150. The Noble's RES penalty is now monitored automatically and follows the 2.571 text: −20 RES while the hero's coins are under 150c, removed as soon as they're back to 150c+
+
 ## [1.59.0] — 2026-10-22
 
 ### Added

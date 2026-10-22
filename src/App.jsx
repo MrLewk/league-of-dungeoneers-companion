@@ -229,8 +229,9 @@ const BACKGROUNDS_DATA = [
   },
   {
     id: "the-noble", roll: 12, name: "The Noble",
-    text: "Effect: Starts with 400c instead of the normal 150c starting coin (this app's default). However, if the party ever drops below 150c, RES is reduced by -10 until back to 150c or more. The below-150c check isn't monitored live — you'll need to watch for it and apply/remove the -10 RES yourself.",
+    text: "Effect: Starts with 400c instead of the normal 150c starting coin. However, if this hero's own coins ever drop below 150c, their RES is reduced by -20 until they have 150c or more again (rulebook 2.571 p42). The app watches the hero's pouch and applies/removes the -20 RES automatically.",
     startingCoinsBonus: 250,
+    coinPenalty: { below: 150, effect: { stat: "RES", amount: -20 } },
   },
   {
     id: "sworn-enemy", roll: 13, name: "Sworn Enemy",
@@ -3793,6 +3794,18 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.60.0",
+    date: "2026-10-22",
+    sections: {
+      "Fixed": [
+        "Noble Background: the extra 250c now goes into the hero's own pouch (400c total) — it was wrongly being added to the shared Party Pot, so the hero's coins stayed at 150. The Noble's RES penalty is now monitored automatically and follows the 2.571 text: −20 RES while the hero's coins are under 150c, removed as soon as they're back to 150c+",
+      ],
+      "Added": [
+        "Optional Assigned-Stat Method (rulebook 2.571 p27): tick \"Assigned-stat method\" under Roll Starting Stats to roll five d10s and assign each die to a stat yourself (tap a die, then a stat). A short note explains how it differs from the standard method; HP and the two rerolls work as before",
+      ],
+    },
+  },
+  {
     version: "1.59.0",
     date: "2026-10-22",
     sections: {
@@ -6384,13 +6397,13 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
 
   const speciesData = SPECIES_DATA.find((s) => s.name === hero.species);
 
-  const rollStartingStats = () => {
+  const rollStartingStats = (assignedDice) => {
     if (!speciesData) return;
     const hpRoll = speciesData.hp.base + Array.from({ length: speciesData.hp.count }, () => rollDie(speciesData.hp.size)).reduce((a, b) => a + b, 0);
     const newStats = {};
     const creationRolls = { used: [] };
     Object.entries(speciesData.stats).forEach(([k, base]) => {
-      const die = rollDie(10);
+      const die = assignedDice ? assignedDice[k] : rollDie(10);
       creationRolls[k] = die;
       newStats[k] = base + die;
     });
@@ -6444,6 +6457,40 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
 
   // Rulebook 2.571 p27: up to two rerolls at creation, each on a different original roll
   // (one of the five stat dice or HP); the higher result of the pair is kept.
+  // Noble (and any background with a coinPenalty): watch the hero's own pouch and apply /
+  // remove the stat penalty automatically as coins cross the threshold.
+  useEffect(() => {
+    const cp = getBackgroundData(hero)?.coinPenalty;
+    if (!cp) return;
+    const low = (Number(hero.coins) || 0) < cp.below;
+    if (low && !hero.coinPenaltyActive) {
+      update({ ...hero, ...applyEffectDelta(hero, cp.effect, 1), coinPenaltyActive: true });
+      pushToast && pushToast(`${hero.name} is below ${cp.below}c — ${cp.effect.stat} ${cp.effect.amount}.`);
+      addLog && addLog(`${hero.name} drops below ${cp.below}c: ${cp.effect.stat} ${cp.effect.amount} until back to ${cp.below}c.`);
+    } else if (!low && hero.coinPenaltyActive) {
+      update({ ...hero, ...applyEffectDelta(hero, cp.effect, -1), coinPenaltyActive: false });
+      addLog && addLog(`${hero.name} is back to ${cp.below}c: ${cp.effect.stat} penalty removed.`);
+    }
+  }, [hero.coins, hero.background, hero.coinPenaltyActive]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Optional Assigned-Stat Method (p27): roll five d10s, then assign each to a stat.
+  const [assignPool, setAssignPool] = useState(null); // { dice: number[], map: {stat: dieIndex}, sel: number|null }
+  const rollAssignPool = () => setAssignPool({ dice: Array.from({ length: 5 }, () => rollDie(10)), map: {}, sel: null });
+  const assignDieTo = (stat) => {
+    if (!assignPool) return;
+    const { dice, map, sel } = assignPool;
+    if (map[stat] !== undefined) { const m = { ...map }; delete m[stat]; setAssignPool({ ...assignPool, map: m }); return; }
+    if (sel === null) return;
+    const m = { ...map, [stat]: sel };
+    if (Object.keys(m).length === 5) {
+      const byStat = {};
+      Object.entries(m).forEach(([k, i]) => { byStat[k] = dice[i]; });
+      setAssignPool(null);
+      rollStartingStats(byStat);
+      return;
+    }
+    setAssignPool({ ...assignPool, map: m, sel: null });
+  };
   const creationRerollsUsed = hero.creationRolls?.used?.length || 0;
   const rerollCreation = (key) => {
     const cr = hero.creationRolls;
@@ -6482,6 +6529,17 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     const newData = BACKGROUNDS_DATA.find((b) => b.id === newId) || null;
     let patch = { background: newId, backgroundCounter: 0, backgroundClaimed: false };
     if (oldData?.startEffect) patch = { ...patch, ...applyEffectDelta(hero, oldData.startEffect, -1) };
+    // Noble: undo an active "below 150c" RES penalty when leaving the background.
+    if (hero.coinPenaltyActive && oldData?.coinPenalty) {
+      patch = { ...patch, ...applyEffectDelta({ ...hero, ...patch }, oldData.coinPenalty.effect, -1), coinPenaltyActive: false };
+    }
+    // Starting-coin bonuses go to the hero's own pouch (each hero starts with their own 150c).
+    {
+      let c = Number(hero.coins) || 0;
+      if (oldData?.startingCoinsBonus) c = Math.max(0, c - oldData.startingCoinsBonus);
+      if (newData?.startingCoinsBonus) c += newData.startingCoinsBonus;
+      patch.coins = c;
+    }
     const heroAfterReversal = { ...hero, ...patch };
     if (newData?.startEffect) patch = { ...patch, ...applyEffectDelta(heroAfterReversal, newData.startEffect, 1) };
     const oldSanityMax = sanityMaxFor({ ...hero, background: oldData?.id });
@@ -6493,13 +6551,10 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     update({ ...hero, ...patch });
     if (setParty) {
       setParty((prev) => {
-        let coins = prev.coins;
         let morale = prev.morale;
         if (oldData?.partyMoraleEffect) morale -= oldData.partyMoraleEffect;
-        if (oldData?.startingCoinsBonus) coins = Math.max(0, coins - oldData.startingCoinsBonus);
         if (newData?.partyMoraleEffect) morale += newData.partyMoraleEffect;
-        if (newData?.startingCoinsBonus) coins += newData.startingCoinsBonus;
-        return { ...prev, coins, morale };
+        return { ...prev, morale };
       });
     }
     addLog && addLog(`${hero.name}'s background set to ${newData ? newData.name : "none"}.`);
@@ -7177,12 +7232,48 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
           )}
           {speciesData && (
             <button
-              onClick={rollStartingStats}
+              onClick={() => (hero.assignedMethod ? rollAssignPool() : rollStartingStats())}
               className="text-xs mt-1.5 px-2 py-1 rounded font-semibold flex items-center gap-1"
               style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Crimson Pro, serif" }}
             >
-              <Dice5 size={12} /> Roll Starting Stats & HP ({speciesData.name})
+              <Dice5 size={12} /> {hero.assignedMethod ? `Roll Five d10s to Assign (${speciesData.name})` : `Roll Starting Stats & HP (${speciesData.name})`}
             </button>
+          )}
+          {speciesData && (
+            <div className="mt-1.5">
+              <label className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: palette.ink }}>
+                <input type="checkbox" checked={!!hero.assignedMethod} onChange={(e) => { setAssignPool(null); set({ assignedMethod: e.target.checked }); }} />
+                Assigned-stat method (optional rule)
+              </label>
+              <p className="text-[10px] italic mt-0.5" style={{ color: palette.inkSoft }}>
+                {hero.assignedMethod
+                  ? "Roll five d10s, then choose which stat gets which die (species base added to each). HP is rolled separately and the two rerolls still apply. You control the outcome, so heroes tend to be slightly stronger."
+                  : "Standard method: each stat gets its own d10 in order (STR, CON, DEX, WIS, RES) — the roll decides. Tick this to roll five d10s and assign them yourself instead (p27)."}
+              </p>
+            </div>
+          )}
+          {speciesData && assignPool && (
+            <div className="mt-1.5 p-2 rounded" style={{ border: `1px solid ${palette.line}` }}>
+              <div className="text-[10px] mb-1" style={{ color: palette.inkSoft }}>1) Tap a die, 2) tap the stat to give it to (tap an assigned stat to undo).</div>
+              <div className="flex flex-wrap gap-1 mb-1.5">
+                {assignPool.dice.map((d, i) => {
+                  const taken = Object.values(assignPool.map).includes(i);
+                  return (
+                    <button key={i} disabled={taken} onClick={() => setAssignPool({ ...assignPool, sel: i })} className="text-sm px-3 py-1.5 rounded font-bold" style={{ border: `2px solid ${assignPool.sel === i ? palette.forestDark : palette.line}`, opacity: taken ? 0.3 : 1, fontFamily: "JetBrains Mono, monospace" }}>{d}</button>
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {["STR", "CON", "DEX", "WIS", "RES"].map((k) => {
+                  const idx = assignPool.map[k];
+                  return (
+                    <button key={k} onClick={() => assignDieTo(k)} className="text-[11px] px-2 py-1.5 rounded font-semibold" style={{ border: `1px solid ${palette.line}`, background: idx !== undefined ? palette.line : "transparent", fontFamily: "JetBrains Mono, monospace" }}>
+                      {k} {speciesData.stats[k]}{idx !== undefined ? ` + ${assignPool.dice[idx]}` : " + ?"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           )}
           {speciesData && hero.creationRolls && (
             <div className="mt-1.5">

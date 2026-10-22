@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.57.1] — 2026-10-22
+
+### Changed
+- Header version badge now reads just "Rulebook v2.571" (the QRS is superseded by the new rulebook)
+
 ## [1.57.0] — 2026-10-22
 
 ### Added

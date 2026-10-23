@@ -597,7 +597,7 @@ const defaultParty = () => ({
   grievingMother: "none", // "none" | "triggered" | "succeeded" | "failed"
   pendingGhostlyEvent: null, // forces the next Ghostly Events roll straight to a specific entry (e.g. 8, after failing the Grieving Mother)
   traps: [], // Dark Guild traps currently placed on the map: [{id, kind: bear|tripwire|caltrops, label, by}]
-  magicWorkshop: { enchantUsed: false, scrollAttempts: 0, identTried: [] }, // reset each dungeon cycle — "only one object OR two scroll attempts between quests"
+  magicWorkshop: { enchantUsed: false, scrollAttempts: 0, scrollByHero: {}, identTried: [] }, // reset each dungeon cycle; scrollByHero = { heroId: { tries, made } } (one scroll per wizard, one retry after a failure)
   guilds: {
     training: {}, // `${heroId}:${skillKey}` -> true, one Skill Training session per skill between dungeons, reset each cycle
     bountyHunt: { rolled: [], claimed: [] }, // Fighters' Guild — 5 rolled kinds this cycle, and which have been claimed
@@ -1053,15 +1053,15 @@ function rollRandomQuest() {
 
 const SIDE_QUESTS = ["The Missing Brother", "Slay the Beast", "The Mapmaker", "Go Fetch!", "Manhunt", "Mushrooms"];
 
-// Pray at Temple (p144-145) — 50c, 1d6 roll, 1-3 succeeds. Effects last "until you leave
+// Pray at Temple (rulebook 2.571 p133) — 25c, 1d6 roll, 1-3 succeeds (1-5 for a Warrior Priest in the Inner Sanctum). Effects last "until you leave
 // the next dungeon" (temporary) except Charus's, which is worded as a standing bonus
 // that just can't be topped up by resting.
 const TEMPLE_BOONS = {
-  Charus: { kind: "energy", amount: 1, label: "+1 Energy Point (not regained by resting)" },
+  Charus: { kind: "energy", amount: 1, label: "+1 current and maximum Energy (not regained once spent)" },
   Iphy: { kind: "stat", stat: "RES", amount: 5, label: "+5 Resolve" },
-  Metheia: { kind: "hp", amount: 1, label: "+1 HP (until next dungeon exit)" },
+  Metheia: { kind: "hp", amount: 1, label: "+1 current and maximum HP" },
   Ohlnir: { kind: "choice", options: ["CS", "RS"], amount: 5, label: "+5 CS or RS (your choice)" },
-  Rhidnir: { kind: "luck", amount: 1, label: "+1 Luck" },
+  Rhidnir: { kind: "luck", amount: 1, label: "+1 Luck (a roll of 6 costs 1 Luck instead)" },
   Ramos: { kind: "stat", stat: "STR", amount: 5, label: "+5 STR" },
 };
 
@@ -1169,7 +1169,7 @@ const FORTUNE_TELLER_TABLE = [
 // a natural 10 can't be modified.
 const GAMBLING_TABLE = [
   { max: 1, mult: 2, extra: 0, label: "Grand slam! Win 2x your bet." },
-  { max: 3, mult: 1.5, extra: 0, label: "Win! 1.5x your bet (rounded down)." },
+  { max: 3, mult: 1.5, extra: 0, label: "Win! 1.5x your bet (rounded up)." },
   { max: 9, mult: 0, extra: 0, label: "Lose all bets." },
   { max: 10, mult: 0, extra: 100, label: "Accused of cheating — lose your bet, an extra 100c, and take a beating." },
 ];
@@ -1313,17 +1313,17 @@ const SETTLEMENT_ACTIVITIES = [
   { name: "Buy or Sell Weapons", where: "Blacksmith", ap: 1, locations: ["Blacksmith"] },
   { name: "Charge a Magic Item", where: "Wizards' Guild", ap: 1, locations: ["Guilds"] },
   { name: "Collect Quest Reward", where: "Start Settlement of Quest", ap: 0, locations: ["Any"] },
-  { name: "Create a Scroll", where: "Inn", ap: 1, note: "per scroll, max 2", locations: ["Inn"] },
-  { name: "Cure Disease", where: "Sick Wards or Temple of Metheia", ap: 1, locations: ["Sick Ward", "Temples"] },
-  { name: "Cure Poison", where: "Sick Wards", ap: 1, locations: ["Sick Ward"] },
+  { name: "Create a Scroll", where: "Any settlement", ap: 1, note: "per scroll; one scroll per wizard between quests, one retry the same day after a failure", locations: ["Any"] },
+  { name: "Cure Disease", where: "Sick Wards or Temple of Metheia", ap: 1, note: "100c per hero and condition, takes 1 day, always succeeds", locations: ["Sick Ward", "Temples"] },
+  { name: "Cure Poison", where: "Sick Wards", ap: 1, note: "100c per hero and condition, takes 1 day, always succeeds", locations: ["Sick Ward"] },
   { name: "Enchant Objects", where: "Inn", ap: 1, note: "max once", locations: ["Inn"] },
   { name: "Gamble", where: "Inn", ap: 0, note: "requires stay at inn", locations: ["Inn"], resolverName: "Gambling" },
   { name: "Guild Business", where: "Guilds", ap: 1, locations: ["Guilds"] },
   { name: "Horse Racing", where: "Horse tracks", ap: 1, locations: ["Horse Racing Track"], resolverName: "Horse Racing" },
-  { name: "Identify a Magic Item", where: "Scryer or Wizards' Guild", ap: 1, locations: ["Scryer", "Guilds"] },
-  { name: "Identify a Potion", where: "Alchemist Guild, The Magic Brewery, General Store", ap: 1, locations: ["Guilds", "Magic Brewery", "General Store"] },
+  { name: "Identify a Magic Item", where: "Scryer or Wizards' Guild", ap: 1, note: "150c per item; professional identification always succeeds", locations: ["Scryer", "Guilds"] },
+  { name: "Identify a Potion", where: "Alchemist Guild, The Magic Brewery, General Store", ap: 1, note: "25c per potion; professional identification always succeeds", locations: ["Guilds", "Magic Brewery", "General Store"] },
   { name: "Level Up", where: "Any Settlement", ap: 0, locations: ["Any"] },
-  { name: "Pray", where: "Temple", ap: 1, locations: ["Temples"], resolverName: "Pray" },
+  { name: "Pray", where: "Temple or Inner Sanctum", ap: 1, note: "25c; boon on 1-3 (1-5 for a Warrior Priest in the Inner Sanctum)", locations: ["Temples", "Inner Sanctum"], resolverName: "Pray" },
   { name: "Read your Fortune", where: "Fortune Teller", ap: 1, locations: ["Fortune Teller"], resolverName: "Fortune Teller" },
   { name: "Repair Equipment", where: "Blacksmith", ap: 1, locations: ["Blacksmith"] },
   { name: "Rest and Recuperation", where: "Inn", ap: 0, note: "requires stay at inn", locations: ["Inn"] },
@@ -1950,9 +1950,9 @@ const GENERAL_EQUIPMENT = [
 
 const CC_ATTACK_MODS = [
   { label: "Enemy lying down (also loses its to-hit)", value: 30 },
-  { label: "Power attack (no dodge/parry next turn, enemy +10 CS vs you)", value: 20 },
+  { label: "Power attack (2 AP, +20 CS; roll Damage twice and keep the best; no Dodge or Parry until your next activation)", value: 20 },
   { label: "Attacking from behind", value: 20 },
-  { label: "Charge (started ≥2 squares away)", value: 10 },
+  { label: "Charge Attack (2 AP: ≥2 empty squares in a straight or diagonal line; a hit shoves the target)", value: 10 },
   { label: "Height advantage", value: 10 },
   { label: "Enemy weapon has the Fast Rule", value: -5 },
   { label: "Enemy weapon has slow rule", value: 5 },
@@ -4234,6 +4234,23 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.75.0",
+    date: "2026-10-23",
+    sections: {
+      Added: [
+        "Wizards' Guild: Pay 150c for professional identification of a magic item, which always succeeds. The activity list also notes the 150c / 25c identification fees and the 100c Cure Disease / Cure Poison fee",
+        "Help & FAQ: the \"Something is broken\" answer now links to the GitHub Issues page",
+      ],
+      Fixed: [
+        "Scrolls: a Wizard now casts from a scroll with Arcane Arts; every other hero still uses WIS",
+        "Create a Scroll now works in any settlement for 1 AP per scroll. Each wizard may make one scroll between quests, with one retry the same day after a failure (it used to be Inn only, two attempts for the whole party). Enchant Objects still needs an Inn",
+        "Temple prayer costs 25c (it was 50c). A Warrior Priest can pray at an Inner Sanctum shrine and receive the boon on 1-5. Charus and Metheia boons raise current and maximum Energy / HP, a Rhidnir roll of 6 costs 1 Luck, and a hero keeps only one temple boon at a time",
+        "Gambling wins of 1.5x now round up, and the Settlement Feast's +2 Party Morale stops at the maximum of 20",
+        "Power Attack and Charge calculator labels now match the rulebook (Power Attack: roll Damage twice and keep the best, no Dodge or Parry until your next activation; Charge needs 2 empty squares in a line and a hit shoves). These two steps are reminders, not automated",
+      ],
+    },
+  },
   {
     version: "1.74.0",
     date: "2026-10-23",
@@ -9751,6 +9768,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
   const [openBuySection, setOpenBuySection] = useState(null); // Buy Gear accordion (starts closed) — one section open at a time
   const toggleBuySection = (key) => setOpenBuySection(openBuySection === key ? null : key);
   const [resolverActivity, setResolverActivity] = useState("Pray");
+  const [resolverInner, setResolverInner] = useState(false); // Warrior Priest praying in the Inner Sanctum (boon on 1-5)
   const resolvePanelRef = useRef(null);
   const peltCount = heroes.reduce((n, h) => n + (h.backpack || []).filter((it) => it.name === "Pelt").length, 0);
   const sellPelts = () => {
@@ -9895,8 +9913,8 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
     } else if (event.resolve === "feast") {
       const roll = rollDie(12);
       if (roll <= 8) {
-        setParty((prev) => ({ ...prev, morale: prev.morale + 2 }));
-        const line = `Beds available (rolled ${roll}) → Party Morale +2.`;
+        setParty((prev) => ({ ...prev, morale: SIMP.morale ? prev.morale : Math.min(20, prev.morale + 2) }));
+        const line = `Beds available (rolled ${roll}) → Party Morale +2 (maximum 20).`;
         setEventResolution([line]);
         addLog(`Settlement Feast: ${line}`);
       } else {
@@ -10248,13 +10266,22 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
     let succeeded = false;
     if (resolverActivity === "Pray") {
       if (!resolverTemple) { setResolverResult({ ok: false, lines: ["Pick a temple first."] }); return; }
-      if (party.coins < 50) { setResolverResult({ ok: false, lines: ["Can't afford the 50c offering."] }); return; }
-      setParty((prev) => ({ ...prev, coins: prev.coins - 50 }));
+      if (party.coins < 25) { setResolverResult({ ok: false, lines: ["Can't afford the 25c offering."] }); return; }
+      setParty((prev) => ({ ...prev, coins: prev.coins - 25 }));
+      const inner = resolverInner && resolvedHero.profession === "Warrior Priest" && !!settlement?.services?.includes("Inner Sanctum");
+      const limit = inner ? 5 : 3;
       const roll = rollDie(6);
-      if (roll > 3) {
-        setResolverResult({ ok: true, lines: [`Rolled ${roll} — ${resolverTemple} doesn't answer this time. (Paid 50c.)`] });
+      if (roll > limit) {
+        let extra = "";
+        let h2 = resolvedHero;
+        if (resolverTemple === "Rhidnir" && roll === 6) {
+          h2 = { ...resolvedHero, ...addTempEffect(resolvedHero, "Rhidnir: -1 Luck (rolled a 6)", { luck: -1 }) };
+          updateHero(h2);
+          extra = " Rhidnir punishes the 6: −1 Luck until you leave the next dungeon.";
+        }
+        setResolverResult({ ok: true, lines: [`Rolled ${roll} — ${resolverTemple} doesn't answer this time.${extra} (Paid 25c.)`] });
         succeeded = true;
-        addLog(`${resolvedHero.name} prays at the Temple of ${resolverTemple}: no answer (rolled ${roll}).`);
+        addLog(`${resolvedHero.name} prays at the ${inner ? "Inner Sanctum shrine" : "Temple"} of ${resolverTemple}: no answer (rolled ${roll}).${extra}`);
         logResolverAP();
         return;
       }
@@ -10274,10 +10301,13 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
         effect = { skill: skillKey, amount: boon.amount };
         line = `+5 ${resolverOhlnirChoice}`;
       }
-      updateHero({ ...resolvedHero, ...addTempEffect(resolvedHero, `${resolverTemple}: ${line}`, effect) });
-      setResolverResult({ ok: true, lines: [`Rolled ${roll} — ${resolverTemple} answers! ${line} applied — see Temporary Effects on ${resolvedHero.name}'s card to clear it after the next dungeon. (Paid 50c.)`] });
+      // A hero can benefit from only one temple boon at a time: swap out any earlier one.
+      let base = resolvedHero;
+      (resolvedHero.tempEffects || []).filter((t) => /^(Charus|Iphy|Metheia|Ohlnir|Rhidnir|Ramos): /.test(t.label)).forEach((t) => { base = { ...base, ...removeTempEffect(base, t.id) }; });
+      updateHero({ ...base, ...addTempEffect(base, `${resolverTemple}: ${line}`, effect) });
+      setResolverResult({ ok: true, lines: [`Rolled ${roll} — ${resolverTemple} answers! ${line} applied. It lasts until ${resolvedHero.name} leaves the next dungeon (see Temporary Effects on the hero card). A hero keeps only one temple boon at a time. (Paid 25c.)`] });
       succeeded = true;
-      addLog(`${resolvedHero.name} prays at the Temple of ${resolverTemple}: success (${roll}). ${line}.`);
+      addLog(`${resolvedHero.name} prays at the ${inner ? "Inner Sanctum shrine" : "Temple"} of ${resolverTemple}: success (${roll}). ${line}.`);
     } else if (resolverActivity === "Fortune Teller") {
       if (party.coins < 50) { setResolverResult({ ok: false, lines: ["Can't afford the 50c fee."] }); return; }
       setParty((prev) => ({ ...prev, coins: prev.coins - 50 }));
@@ -10310,7 +10340,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
       const luckBonus = resolvedHero.luck.cur;
       const modified = raw === 10 ? 10 : Math.max(1, raw - luckBonus);
       const row = GAMBLING_TABLE.find((r) => modified <= r.max);
-      const winnings = Math.floor(bet * row.mult);
+      const winnings = Math.ceil(bet * row.mult);
       const net = winnings - bet - row.extra;
       setParty((prev) => ({ ...prev, coins: prev.coins + net }));
       const line = `Bet ${bet}c. Rolled ${raw}${luckBonus > 0 && raw !== 10 ? ` (-${luckBonus} Luck → ${modified})` : ""} — ${row.label} Net ${net >= 0 ? "+" : ""}${net}c.`;
@@ -10518,7 +10548,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
         alchemistLabUsed: false,
         gardenUsed: false,
       },
-      magicWorkshop: { enchantUsed: false, scrollAttempts: 0, identTried: [] },
+      magicWorkshop: { enchantUsed: false, scrollAttempts: 0, scrollByHero: {}, identTried: [] },
       guilds: { training: {}, bountyHunt: { rolled: [], claimed: [] }, crusade: null, taxidermistAttempts: {} },
       questCycle: (prev.questCycle || 0) + 1,
     }));
@@ -10767,13 +10797,16 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
     const hero = heroes.find((h) => h.id === scrollHero);
     if (!hero) { setScrollResult({ ok: false, line: "Pick a hero first." }); return; }
     if (!(hero.spells || []).includes("Magic Scribbles")) { setScrollResult({ ok: false, line: `${hero.name} doesn't know Magic Scribbles.` }); return; }
-    if ((party.magicWorkshop.scrollAttempts || 0) >= 2) { setScrollResult({ ok: false, line: "Already made 2 scroll attempts between this visit and the next dungeon." }); return; }
+    const scrollState = (party.magicWorkshop.scrollByHero || {})[hero.id] || { tries: 0, made: false };
+    if (scrollState.made) { setScrollResult({ ok: false, line: `${hero.name} has already made a scroll since the last dungeon.` }); return; }
+    if (scrollState.tries >= 2) { setScrollResult({ ok: false, line: `${hero.name} has used both attempts (one try plus one retry after a failure).` }); return; }
     if (!scrollSpell) { setScrollResult({ ok: false, line: "Pick which spell to inscribe." }); return; }
     const aa = Number(hero.skills.arcaneArts) || 0;
     const target = aa - 20;
     const roll = rollPercent();
     const success = roll <= target;
-    setParty((prev) => ({ ...prev, magicWorkshop: { ...prev.magicWorkshop, scrollAttempts: (prev.magicWorkshop.scrollAttempts || 0) + 1 } }));
+    setParty((prev) => ({ ...prev, magicWorkshop: { ...prev.magicWorkshop, scrollByHero: { ...(prev.magicWorkshop.scrollByHero || {}), [hero.id]: { tries: scrollState.tries + 1, made: success } } } }));
+    if (scrollState.tries === 0) logSettlementAP(hero.id, "Create a Scroll", 1);
     if (success) {
       updateHero({ ...hero, backpack: [...hero.backpack, { id: uid(), name: `Scroll of ${scrollSpell}`, value: "", enc: 1, dur: "1" }] });
       const line = `Rolled ${roll} vs target ${target} — Success! A Scroll of ${scrollSpell} is added to ${hero.name}'s backpack.`;
@@ -10935,13 +10968,14 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
         )}
       </Panel>
 
-      {settlement && settlement.services.includes("Inn") && (
+      {settlement && (
         <Panel className="mb-4">
           <SectionTitle icon={Sparkles}>Magic Workshop</SectionTitle>
           <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-            Enchant Objects and Create a Scroll — done at the Inn, can't be done while travelling. Only one object enchanted OR two scroll attempts allowed between quests.
+            Create a Scroll works in any settlement (1 AP per scroll). Enchant Objects needs an Inn. Between quests a wizard may enchant one object or create one scroll; a failed scroll allows one more attempt the same day.
           </p>
 
+          {settlement.services.includes("Inn") && (<>
           <p className="text-xs font-semibold mb-2" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Enchant Objects</p>
           {party.magicWorkshop.enchantUsed ? (
             <p className="text-[10px] mb-3" style={{ color: palette.inkSoft }}>Already used this cycle — reset via "Between Quests" above.</p>
@@ -10972,12 +11006,13 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
           )}
 
           <div className="h-px my-3" style={{ background: palette.line }} />
+          </>)}
           <p className="text-xs font-semibold mb-2" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Create a Scroll</p>
-          {(party.magicWorkshop.scrollAttempts || 0) >= 2 ? (
-            <p className="text-[10px]" style={{ color: palette.inkSoft }}>2/2 attempts used this cycle — reset via "Between Quests" above.</p>
+          {false ? (
+            <p className="text-[10px]" style={{ color: palette.inkSoft }}></p>
           ) : (
             <>
-              <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft }}>{party.magicWorkshop.scrollAttempts || 0}/2 attempts used this cycle.</p>
+              <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft }}>One scroll per wizard between quests, with one retry the same day after a failure. Each wizard's attempts are tracked and reset with "Between Quests".</p>
               <select value={scrollHero} onChange={(e) => { setScrollHero(e.target.value); setScrollSpell(""); setScrollResult(null); }} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
                 <option value="">Choose a hero who knows Magic Scribbles…</option>
                 {heroes.filter((h) => (h.spells || []).includes("Magic Scribbles")).map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
@@ -11381,6 +11416,12 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
           </select>
         </div>
 
+        {resolverActivity === "Pray" && resolvedHero?.profession === "Warrior Priest" && !!settlement?.services?.includes("Inner Sanctum") && (
+          <label className="flex items-center gap-2 text-xs mb-1.5" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
+            <input type="checkbox" checked={resolverInner} onChange={(e) => setResolverInner(e.target.checked)} />
+            Pray at an Inner Sanctum shrine (Warrior Priest: boon on 1–5)
+          </label>
+        )}
         {resolverActivity === "Pray" && (
           <div className="flex gap-1.5 mb-1.5">
             <select
@@ -12016,6 +12057,20 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
     setIdentifyResult({ ok: success, line, canRoll: success && !!kind && !(item.piece.magic || []).length });
     addLog(`${hero.name} attempts to identify ${item.piece.name}: ${line}`);
   };
+  // Professional identification (rulebook 2.571 p133): 150c per magic item from the Party Pot, always succeeds, 1 AP.
+  const confirmProfessionalIdentify = () => {
+    const hero = heroes.find((h) => h.id === identifyHero);
+    if (!hero) { setIdentifyResult({ ok: false, line: "Pick a hero first." }); return; }
+    const item = heroAllItems(hero).find((i) => i.key === identifyTarget);
+    if (!item) { setIdentifyResult({ ok: false, line: "Pick an item to identify." }); return; }
+    if (!canAffordFrom(150, "party", party, heroes)) { setIdentifyResult({ ok: false, line: "The Party Pot doesn't have the 150c fee." }); return; }
+    spendFrom(150, "party", party, setParty, heroes, updateHero);
+    logSettlementAP(hero.id, "Identify a Magic Item", 1);
+    const kind = itemKindOf(item.key, item.piece);
+    const line = `Paid 150c from the Party Pot — professional identification always succeeds. ${item.piece.name} is identified.`;
+    setIdentifyResult({ ok: true, line, canRoll: !!kind && !(item.piece.magic || []).length });
+    addLog(`${hero.name}: ${line}`);
+  };
   // Once identified, a magic weapon / armour / shield / ring / necklace gets its property from the 1d10 table.
   const rollIdentifiedProperty = () => {
     const hero = heroes.find((h) => h.id === identifyHero);
@@ -12433,6 +12488,9 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
                     <button onClick={confirmIdentify} disabled={!identifyHero || !identifyTarget} className="w-full text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: identifyHero && identifyTarget ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: identifyHero && identifyTarget ? 1 : 0.5 }}>
                       Attempt to Identify
                     </button>
+                    <button onClick={confirmProfessionalIdentify} disabled={!identifyHero || !identifyTarget} className="w-full text-[11px] px-2 py-1.5 rounded font-semibold mt-1.5" style={{ background: identifyHero && identifyTarget ? palette.forestDark : "#00000020", color: palette.parchment, opacity: identifyHero && identifyTarget ? 1 : 0.6 }}>
+                      Pay 150c for professional identification (always succeeds)
+                    </button>
                     <GuildResultBox result={identifyResult} />
                     {identifyResult?.canRoll && (
                       <button onClick={rollIdentifiedProperty} className="w-full text-[11px] px-2 py-1.5 rounded font-semibold mt-1.5" style={{ background: palette.forestDark, color: palette.parchment }}>
@@ -12759,7 +12817,9 @@ function resolveScrollCast(hero, spell, opts) {
   }
 
   const threshold = miscastThreshold({ wounded, focusAP: 0, increasedPower: 0 });
-  const wis = Number(hero.stats.WIS) || 0;
+  // Rulebook 2.571 p92: a Wizard casts from a scroll with Arcane Arts, any other hero uses WIS.
+  const statName = hero.profession === "Wizard" ? "Arcane Arts" : "WIS";
+  const wis = statName === "WIS" ? (Number(hero.stats.WIS) || 0) : (Number(hero.skills.arcaneArts) || 0);
   const checkTarget = wis - effectiveCV;
 
   if (type === "Touch") {
@@ -12772,7 +12832,7 @@ function resolveScrollCast(hero, spell, opts) {
     const success = roll <= checkTarget;
     let miscast = false, miscastRoll = null;
     if (!success && roll >= threshold) { miscast = true; miscastRoll = rollDie(10); }
-    return { type, effectiveCV, touchTarget, touchRoll, touched: true, wis, checkTarget, roll, success, effectExecuted: success, threshold, miscast, miscastRoll, scrollDestroyed: success || miscast };
+    return { type, effectiveCV, touchTarget, touchRoll, touched: true, wis, statName, checkTarget, roll, success, effectExecuted: success, threshold, miscast, miscastRoll, scrollDestroyed: success || miscast };
   }
 
   const roll = rollPercent();
@@ -12791,7 +12851,7 @@ function resolveScrollCast(hero, spell, opts) {
   if (!success && roll >= threshold) { miscast = true; miscastRoll = rollDie(10); }
   else if (type === "Incantation" && !success) incantationFailed = true;
 
-  return { type, effectiveCV, threshold, wis, checkTarget, roll, success, effectExecuted, dispelled, dispelRoll, dispelTarget, miscast, miscastRoll, incantationFailed, scrollDestroyed: effectExecuted || dispelled || miscast };
+  return { type, effectiveCV, threshold, wis, statName, checkTarget, roll, success, effectExecuted, dispelled, dispelRoll, dispelTarget, miscast, miscastRoll, incantationFailed, scrollDestroyed: effectExecuted || dispelled || miscast };
 }
 
 function validateRecipeComponents(strength, components) {
@@ -15526,9 +15586,9 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
     const lines = [];
     if (r.type === "Touch") {
       lines.push(`Touch roll: ${r.touchRoll} vs ${r.touchTarget} (CS+20) — ${r.touched ? "touched!" : "missed."}`);
-      if (r.touched) lines.push(`WIS roll: ${r.roll} vs ${r.checkTarget} (WIS ${r.wis} − CV ${r.effectiveCV}) — ${r.success ? "success! " + chosenScrollSpell.name + " takes effect." : "failed."}`);
+      if (r.touched) lines.push(`${r.statName} roll: ${r.roll} vs ${r.checkTarget} (${r.statName} ${r.wis} − CV ${r.effectiveCV}) — ${r.success ? "success! " + chosenScrollSpell.name + " takes effect." : "failed."}`);
     } else {
-      lines.push(`Rolled ${r.roll} vs ${r.checkTarget} (WIS ${r.wis} − CV ${r.effectiveCV}).`);
+      lines.push(`Rolled ${r.roll} vs ${r.checkTarget} (${r.statName} ${r.wis} − CV ${r.effectiveCV}).`);
       if (r.type === "Incantation") {
         if (r.effectExecuted) lines.push(`Success! ${chosenScrollSpell.name} takes effect.`);
         else if (r.incantationFailed) lines.push(`Incantation failed.`);
@@ -16325,7 +16385,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
         <Panel className="mb-4">
           <SectionTitle icon={ScrollText}>Read a Magic Scroll</SectionTitle>
           <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
-            Any hero can read a scroll — the check uses WIS instead of Arcane Arts, and the spell's Casting Value is reduced by 10 (min 0). No Focus is allowed.
+            Any hero can read a scroll. A Wizard uses Arcane Arts and everyone else uses WIS, and the spell's Casting Value is reduced by 10 (min 0). No Focus or Increased Power is allowed.
           </p>
           {heroes.length === 0 ? (
             <p className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>Add a hero first.</p>
@@ -18490,7 +18550,7 @@ const HELP_DATA = [
     ["How do I back up or move a campaign?", "Campaigns tab > Backup & Restore. Export a campaign to a file, and use Import Campaign from File to bring it back here or onto another device. Export regularly."],
     ["The app looks out of date", "It updates itself. When an update toast appears, tap it to reload. If something still looks old, close the app fully and reopen it."],
     ["A number looks wrong", "Most numbers are automatic. Check the hero card's effects list for what is applying. If it is a rules question, the Compendium and Reference tabs hold the rulebook text, and the rulebook always wins."],
-    ["Something is broken", "Please report it on the project's GitHub Issues page with what you tapped and what you expected."],
+    ["Something is broken", "Please report it on the GitHub Issues page (https://github.com/MrLewk/league-of-dungeoneers-companion/issues) with what you tapped and what you expected."],
   ]},
 ];
 
@@ -18525,7 +18585,7 @@ function HelpGuide() {
                     <span>{a}</span>
                     <span style={{ color: palette.inkSoft }}>{isOpen ? "−" : "+"}</span>
                   </button>
-                  {isOpen && <p className="px-3 pb-3 text-xs whitespace-pre-line" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif", lineHeight: 1.5 }}>{b}</p>}
+                  {isOpen && <p className="px-3 pb-3 text-xs whitespace-pre-line" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif", lineHeight: 1.5, overflowWrap: "anywhere" }}>{b.split(/(https?:\/\/\S+?)(?=[).,]?(?:\s|$))/).map((part, i) => /^https?:\/\//.test(part) ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" style={{ color: palette.crimson, textDecoration: "underline" }}>{part}</a> : part)}</p>}
                 </div>
               );
             })}

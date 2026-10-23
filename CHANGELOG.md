@@ -3,6 +3,19 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.75.0] — 2026-10-23
+
+### Added
+- Wizards' Guild: Pay 150c for professional identification of a magic item, which always succeeds. The activity list also notes the 150c / 25c identification fees and the 100c Cure Disease / Cure Poison fee
+- Help & FAQ: the "Something is broken" answer now links to the GitHub Issues page
+
+### Fixed
+- Scrolls: a Wizard now casts from a scroll with Arcane Arts; every other hero still uses WIS
+- Create a Scroll now works in any settlement for 1 AP per scroll. Each wizard may make one scroll between quests, with one retry the same day after a failure (it used to be Inn only, two attempts for the whole party). Enchant Objects still needs an Inn
+- Temple prayer costs 25c (it was 50c). A Warrior Priest can pray at an Inner Sanctum shrine and receive the boon on 1-5. Charus and Metheia boons raise current and maximum Energy / HP, a Rhidnir roll of 6 costs 1 Luck, and a hero keeps only one temple boon at a time
+- Gambling wins of 1.5x now round up, and the Settlement Feast's +2 Party Morale stops at the maximum of 20
+- Power Attack and Charge calculator labels now match the rulebook (Power Attack: roll Damage twice and keep the best, no Dodge or Parry until your next activation; Charge needs 2 empty squares in a line and a hit shoves). These two steps are reminders, not automated
+
 ## [1.74.0] — 2026-10-23
 
 ### Added

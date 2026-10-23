@@ -3,6 +3,12 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.69.0] — 2026-10-23
+
+### Added
+- Simplified Game (rulebook p21): new section in the Party tab's Optional Rules lets a campaign remove Encumbrance, Party Morale, Durability, Sanity, or Scenario Die & Threat (all default to the full rules)
+- Removing a system hides its panels and stops its effects: no overload penalty, Half Morale or PM losses, no gear wear or repairs (sale prices ignore damage), no Sanity or Mental Conditions, no Scenario die, Threat roll, Wandering Monsters from Threat or burning torches/lanterns
+
 ## [1.68.0] — 2026-10-23
 
 ### Added

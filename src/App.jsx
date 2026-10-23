@@ -508,10 +508,22 @@ function backpackEncBonus(hero) {
   return BACKPACK_UPGRADES[hero.backpackUpgrade || ""]?.enc || 0;
 }
 
+// Simplified Game (rulebook 2.571 p21): subsystems the table has chosen to remove. Refreshed from party.simplified on every
+// App render so helpers and components can simply check SIMP.<system> (true = that system is removed).
+const SIMP = { encumbrance: false, morale: false, durability: false, sanity: false, scenario: false };
+const SIMPLIFIED_SYSTEMS = [
+  ["encumbrance", "Encumbrance", "no carrying limit, no −10 overload penalty, no ENC totals"],
+  ["morale", "Party Morale", "no PM tracker, Half Morale, PM losses or light-less PM penalties"],
+  ["durability", "Durability", "no DUR on gear, no wear from hits, no repairs; sale prices ignore damage"],
+  ["sanity", "Sanity", "no Sanity bar, Sanity losses, Mental Conditions, Treat Mental Conditions or Tend to those Memories"],
+  ["scenario", "Scenario Die & Threat", "no Threat Level, Scenario die, Wandering Monsters from Threat, or burning torches/lanterns"],
+];
+
 // Encumbrance penalty per the rulebook: total ENC (weapon + armour + backpack) over
 // STR gives -10 to all skills and stats. A backpack upgrade raises the STR-based
 // threshold by its own ENC bonus.
 function encumbranceOver(hero) {
+  if (SIMP.encumbrance) return false;
   const totalEnc =
     (Number(hero.weapon.enc) || 0) +
     Object.values(hero.armour).reduce((s, p) => s + (Number(p.enc) || 0) + (p.stacked ? Number(p.stacked.enc) || 0 : 0), 0) +
@@ -542,6 +554,7 @@ const defaultParty = () => ({
   settlementName: "",
   dungeonState: "settlement", // "settlement" | "travel" | "dungeon" — drives the Travel tab status badge and the auto-clear of tempEffects on dungeon exit
   dungeonRestCount: 0, // completed (uninterrupted) Short Rests taken since entering the current dungeon — drives the Ambush risk escalation; resets to 0 on Exit Dungeon, never per level
+  simplified: { encumbrance: false, morale: false, durability: false, sanity: false, scenario: false }, // Simplified Game (p21): true = system removed
   optionalRules: { lootMode: "hardcore", dungeonEvents: false, simplifiedAlchemy: false }, // optional/campaign rules (rulebook p21, p110, p177-178)
   bottleOfExperienceMade: false, // Simplified Alchemy: one Bottle of Experience between two dungeon quests
   maxThreat: 0, // quest's Maximum Threat (0 = none set) — at/over it a Wandering Monster is placed and Threat drops by 5
@@ -609,6 +622,7 @@ function normalizeParty(p) {
   merged.magicWorkshop = { ...defaultParty().magicWorkshop, ...(p?.magicWorkshop || {}) };
   merged.initiativeSetup = { ...defaultParty().initiativeSetup, ...(p?.initiativeSetup || {}) };
   merged.optionalRules = { ...defaultParty().optionalRules, ...(p?.optionalRules || {}) };
+  merged.simplified = { ...defaultParty().simplified, ...(p?.simplified || {}) };
   merged.advancedRules = { ...defaultParty().advancedRules, ...(p?.advancedRules || {}) };
   merged.darkness = { ...defaultParty().darkness, ...(p?.darkness || {}) };
   // Older saves tracked light as a turn countdown; convert to the Threat-roll burn model (rulebook 2.571 p67).
@@ -1241,6 +1255,7 @@ const SETTLEMENT_ACTIVITIES = [
 // 4=30%, 5+ lost (and the repair-per-point cost) =20%.
 const SELL_REPAIR_MULTIPLIERS = [0.7, 0.6, 0.5, 0.4, 0.3, 0.2];
 function sellValue(price, lostDurability) {
+  if (SIMP.durability) lostDurability = 0;
   const mult = SELL_REPAIR_MULTIPLIERS[Math.min(Math.max(lostDurability, 0), 5)];
   return Math.round(price * mult);
 }
@@ -4135,6 +4150,16 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.69.0",
+    date: "2026-10-23",
+    sections: {
+      Added: [
+        "Simplified Game (rulebook p21): new section in the Party tab's Optional Rules lets a campaign remove Encumbrance, Party Morale, Durability, Sanity, or Scenario Die & Threat (all default to the full rules)",
+        "Removing a system hides its panels and stops its effects: no overload penalty, Half Morale or PM losses, no gear wear or repairs (sale prices ignore damage), no Sanity or Mental Conditions, no Scenario die, Threat roll, Wandering Monsters from Threat or burning torches/lanterns"
+      ],
+    },
+  },
+  {
     version: "1.68.0",
     date: "2026-10-23",
     sections: {
@@ -6269,10 +6294,10 @@ function StorageBox({ items, onChange, cap }) {
                 ENC
                 <input value={item.enc} onChange={(e) => updateItem(item.id, { enc: e.target.value })} className="w-10 rounded px-1 py-0.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
               </label>
-              <label className="flex items-center gap-1 text-[10px]" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+              {!SIMP.durability && (<label className="flex items-center gap-1 text-[10px]" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
                 Dur
                 <input value={item.dur} onChange={(e) => updateItem(item.id, { dur: e.target.value })} className="w-12 rounded px-1 py-0.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-              </label>
+              </label>)}
             </div>
           </div>
         ))}
@@ -6661,16 +6686,16 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
       const w = WEAPONS.find((x) => x.name === weaponName);
       if (w) {
         const loss = rollDie(4); // p46: every starting item loses 1d4 DUR, to a minimum of 1 remaining
-        patch.weapon = { name: w.name, dmg: w.dmg, enc: w.enc, dur: { cur: Math.max(1, 6 - loss), max: 6 } };
-        lines.push(`${w.name} (−${Math.min(loss, 5)} DUR)`);
+        patch.weapon = { name: w.name, dmg: w.dmg, enc: w.enc, dur: { cur: SIMP.durability ? 6 : Math.max(1, 6 - loss), max: 6 } };
+        lines.push(SIMP.durability ? w.name : `${w.name} (−${Math.min(loss, 5)} DUR)`);
       }
     }
     if (startingCfg.armour) {
       const a = ARMOUR_AND_SHIELDS.find((x) => x.name === startingCfg.armour);
       if (a) {
         const loss = rollDie(4);
-        patch.armour = { ...hero.armour, [a.covers[0]]: { name: a.name, def: a.def, enc: a.enc, dur: { cur: Math.max(1, 6 - loss), max: 6 } } };
-        lines.push(`${a.name} (−${Math.min(loss, 5)} DUR)`);
+        patch.armour = { ...hero.armour, [a.covers[0]]: { name: a.name, def: a.def, enc: a.enc, dur: { cur: SIMP.durability ? 6 : Math.max(1, 6 - loss), max: 6 } } };
+        lines.push(SIMP.durability ? a.name : `${a.name} (−${Math.min(loss, 5)} DUR)`);
       }
     }
     const newBackpackItems = (startingCfg.backpackItems || []).filter((it) => !(it.bowOnly && weaponName === "Sling")).map((it) => ({ id: uid(), name: it.name, value: it.value ?? "", enc: it.enc ?? "", dur: "" }));
@@ -7533,7 +7558,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     Object.values(hero.armour).reduce((sum, piece) => sum + (Number(piece.enc) || 0) + (piece.stacked ? Number(piece.stacked.enc) || 0 : 0), 0) +
     hero.backpack.reduce((sum, item) => sum + (Number(item.enc) || 0), 0);
   const carryCapacity = (Number(hero.stats.STR) || 0) + backpackEncBonus(hero);
-  const isEncumbered = totalEnc > carryCapacity;
+  const isEncumbered = !SIMP.encumbrance && totalEnc > carryCapacity;
   const weaponRef = WEAPONS.find((w) => w.name === hero.weapon.name);
   const strReq = weaponRef ? WEAPON_CLASS_STR_REQ[weaponRef.class] : null;
   // twoH is always the lower/easier bar (wielding one-handed needs more STR, where possible
@@ -8104,8 +8129,8 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
 
           <StatBar label="Energy" icon={Zap} cur={hero.energy.cur} max={hero.energy.max} color={palette.gold}
             onChange={(v) => set({ energy: { ...hero.energy, cur: v } })} onMaxChange={(v) => set({ energy: { ...hero.energy, max: v } })} />
-          <StatBar label="Sanity" icon={Brain} cur={hero.sanity.cur} max={hero.sanity.max} color={palette.forest}
-            onChange={(v) => set({ sanity: { ...hero.sanity, cur: v } })} onMaxChange={(v) => set({ sanity: { ...hero.sanity, max: v } })} />
+          {!SIMP.sanity && (<StatBar label="Sanity" icon={Brain} cur={hero.sanity.cur} max={hero.sanity.max} color={palette.forest}
+            onChange={(v) => set({ sanity: { ...hero.sanity, cur: v } })} onMaxChange={(v) => set({ sanity: { ...hero.sanity, max: v } })} />)}
           <StatBar label="Mana" icon={Sparkles} cur={hero.mana.cur} max={hero.mana.max} color="#5B6FA8"
             onChange={(v) => set({ mana: { ...hero.mana, cur: v } })} onMaxChange={(v) => set({ mana: { ...hero.mana, max: v } })} />
           <StatBar label="Luck" icon={Dice5} cur={hero.luck.cur} max={hero.luck.max} color={palette.gold}
@@ -8204,7 +8229,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
           })()}
 
           {/* Mental Conditions — diagnosed once Sanity hits 0, persist until cured */}
-          {hero.mentalConditions && hero.mentalConditions.length > 0 && (
+          {!SIMP.sanity && hero.mentalConditions && hero.mentalConditions.length > 0 && (
             <div className="rounded p-2 mb-3" style={{ background: "#3B2F5E11", border: `1px solid #6B4FA0` }}>
               <span style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: "#6B4FA0" }} className="uppercase font-bold">
                 Mental Conditions (max Sanity {hero.sanity.max} — cure to raise it)
@@ -8247,7 +8272,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               </div>
             </div>
           )}
-          {hero.sanity.cur <= 0 && !pendingCondition && (
+          {!SIMP.sanity && hero.sanity.cur <= 0 && !pendingCondition && (
             <div className="mb-3">
               <label className="flex items-center gap-2 text-xs mb-1.5" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
                 <input type="checkbox" checked={spidersPresent} onChange={(e) => setSpidersPresent(e.target.checked)} />
@@ -8281,7 +8306,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
           )}
 
           {/* Sanity quick event */}
-          <div className="flex gap-2 items-center mt-2 mb-3">
+          {!SIMP.sanity && (<div className="flex gap-2 items-center mt-2 mb-3">
             <select
               value={sanityEvent}
               onChange={(e) => setSanityEvent(e.target.value)}
@@ -8295,7 +8320,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
             <button onClick={applySanity} className="text-xs px-2 py-1 rounded font-semibold" style={{ background: palette.forestDark, color: palette.parchment }}>
               Apply
             </button>
-          </div>
+          </div>)}
 
           {/* Conditions */}
           <HeroHeading>Conditions</HeroHeading>
@@ -8743,14 +8768,14 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                 <input type="number" value={hero.weapon.enc} onChange={(e) => setWeapon({ enc: Number(e.target.value) || 0 })}
                   className="w-9 rounded px-1 py-0.5" style={{ border: `1px solid ${palette.line}` }} />
               </label>
-              <label className="flex items-center gap-1 text-xs" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+              {!SIMP.durability && (<label className="flex items-center gap-1 text-xs" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
                 DUR
                 <input type="number" value={hero.weapon.dur.cur} onChange={(e) => setWeapon({ dur: { ...hero.weapon.dur, cur: Number(e.target.value) || 0 } })}
                   className="w-9 rounded px-1 py-0.5" style={{ border: `1px solid ${palette.line}` }} />
                 /
                 <input type="number" value={hero.weapon.dur.max} onChange={(e) => setWeapon({ dur: { ...hero.weapon.dur, max: Number(e.target.value) || 0 } })}
                   className="w-9 rounded px-1 py-0.5" style={{ border: `1px solid ${palette.line}` }} />
-              </label>
+              </label>)}
               {hero.weapon.name && (
                 <button
                   onClick={toggleWeaponMithril}
@@ -8852,14 +8877,14 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                   <input type="number" value={hero.offhandWeapon.enc} onChange={(e) => setOffhandWeapon({ enc: Number(e.target.value) || 0 })}
                     className="w-9 rounded px-1 py-0.5" style={{ border: `1px solid ${palette.line}` }} />
                 </label>
-                <label className="flex items-center gap-1 text-xs" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+                {!SIMP.durability && (<label className="flex items-center gap-1 text-xs" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
                   DUR
                   <input type="number" value={hero.offhandWeapon.dur.cur} onChange={(e) => setOffhandWeapon({ dur: { ...hero.offhandWeapon.dur, cur: Number(e.target.value) || 0 } })}
                     className="w-9 rounded px-1 py-0.5" style={{ border: `1px solid ${palette.line}` }} />
                   /
                   <input type="number" value={hero.offhandWeapon.dur.max} onChange={(e) => setOffhandWeapon({ dur: { ...hero.offhandWeapon.dur, max: Number(e.target.value) || 0 } })}
                     className="w-9 rounded px-1 py-0.5" style={{ border: `1px solid ${palette.line}` }} />
-                </label>
+                </label>)}
               </div>
               {offhandWeaponRef && (
                 <div className="text-[10px] mt-1 rounded px-2 py-1" style={{ background: "#00000008", color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
@@ -8952,14 +8977,14 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                         <input type="number" value={piece.enc} onChange={(e) => setArmourPiece(loc, { enc: Number(e.target.value) || 0 })}
                           className="w-9 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}` }} />
                       </label>
-                      <label className="flex items-center gap-1" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
+                      {!SIMP.durability && (<label className="flex items-center gap-1" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
                         DUR
                         <input type="number" value={piece.dur.cur} onChange={(e) => setArmourPiece(loc, { dur: { ...piece.dur, cur: Number(e.target.value) || 0 } })}
                           className="w-8 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}` }} />
                         /
                         <input type="number" value={piece.dur.max} onChange={(e) => setArmourPiece(loc, { dur: { ...piece.dur, max: Number(e.target.value) || 0 } })}
                           className="w-8 min-w-0 rounded px-1" style={{ border: `1px solid ${palette.line}` }} />
-                      </label>
+                      </label>)}
                       {piece.name && (
                         <button
                           onClick={() => toggleArmourMithril(loc)}
@@ -9066,7 +9091,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
           </div>
 
           {/* Encumbrance */}
-          <div className="rounded p-2 mb-3" style={{ background: isEncumbered ? "#7A1F2B22" : "#00000008" }}>
+          {!SIMP.encumbrance && (<div className="rounded p-2 mb-3" style={{ background: isEncumbered ? "#7A1F2B22" : "#00000008" }}>
             <div className="flex items-center justify-between">
               <span style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase">Encumbrance</span>
               <span className="text-sm font-bold" style={{ fontFamily: "JetBrains Mono, monospace", color: isEncumbered ? palette.crimson : palette.ink }}>
@@ -9083,7 +9108,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                 Overloaded — all skills and stats are at −10 (shown as "eff" above) until ENC drops to {carryCapacity} or below.
               </p>
             )}
-          </div>
+          </div>)}
 
           {/* Backpack */}
           <HeroHeading>Backpack</HeroHeading>
@@ -9660,7 +9685,8 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
   // Every settlement has an Inn (each just lists its own price) even though it's not in
   // the "Available Services" bullet list, so Inn-based activities are always on offer.
   const availableActivities = SETTLEMENT_ACTIVITIES.filter(
-    (a) => !settlement || a.locations.some((loc) => loc === "Any" || loc === "Inn" || settlement.services.includes(loc))
+    (a) => !(SIMP.sanity && (a.name === "Tend to those Memories" || a.name === "Treat Mental Conditions")) && !(SIMP.durability && a.name === "Repair Equipment") &&
+      (!settlement || a.locations.some((loc) => loc === "Any" || loc === "Inn" || settlement.services.includes(loc)))
   );
   const selectedActivity = availableActivities.find((a) => a.name === activityChoice) || availableActivities[0];
 
@@ -11192,7 +11218,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
             className="text-xs rounded px-2 py-1.5"
             style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
           >
-            {["Pray", "Fortune Teller", "Gambling", "Horse Racing", "Arena Fighting", "Tending to Those Memories", "Treat Mental Conditions", "Banking"].map((a) => (
+            {["Pray", "Fortune Teller", "Gambling", "Horse Racing", "Arena Fighting", "Tending to Those Memories", "Treat Mental Conditions", "Banking"].filter((a) => !(SIMP.sanity && (a === "Tending to Those Memories" || a === "Treat Mental Conditions"))).map((a) => (
               <option key={a} value={a}>{a}</option>
             ))}
           </select>
@@ -11368,14 +11394,14 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
                   Price
                   <input type="number" value={sellPrice} onChange={(e) => setSellPrice(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
                 </label>
-                <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                {!SIMP.durability && (<label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
                   Lost Dur.
                   <input type="number" value={sellLostDur} onChange={(e) => setSellLostDur(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-                </label>
-                <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                </label>)}
+                {!SIMP.durability && (<label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
                   Max Dur.
                   <input type="number" value={sellMaxDur} onChange={(e) => setSellMaxDur(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-                </label>
+                </label>)}
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
@@ -11394,7 +11420,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
           )}
         </div>
 
-        <div className="rounded p-2" style={{ background: "#00000008" }}>
+        {!SIMP.durability && (<div className="rounded p-2" style={{ background: "#00000008" }}>
           <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1.5">Repair an Item</div>
           <p className="text-[10px] mb-1.5 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
             Weapons and worn armour only — backpack items don't track current/max durability separately, so there's nothing structured to restore there yet.
@@ -11436,7 +11462,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
               {repairResult.line}
             </p>
           )}
-        </div>
+        </div>)}
       </Panel>
 
       {peltCount > 0 && (
@@ -13550,8 +13576,8 @@ function FearTerrorPanel({ heroes, updateHero, party, setParty, addLog, pushToas
       const newSan = Math.max(0, cur.sanity.cur - sLoss);
       cur = { ...cur, sanity: { ...cur.sanity, cur: newSan }, lastSanityCause: t.k === "terror" ? "Failed a terror test" : "Failed a fear test" };
       updateHero(h.id, cur);
-      pmLoss += sLoss;
-      lines.push({ name: h.name, ok: false, text: `${t.k === "terror" ? "Terror" : "Fear"} Test: rolled ${r} vs ${t.target} (${how})${rerollNote} — FAILED: ${penalty}; −${sLoss} Sanity (${newSan}/${cur.sanity.max})${newSan <= 0 ? " — Sanity is 0, roll Psychology on the hero card" : ""}.` });
+      if (!SIMP.morale) pmLoss += sLoss;
+      lines.push({ name: h.name, ok: false, text: `${t.k === "terror" ? "Terror" : "Fear"} Test: rolled ${r} vs ${t.target} (${how})${rerollNote} — FAILED: ${penalty}${SIMP.sanity ? "." : `; −${sLoss} Sanity (${newSan}/${cur.sanity.max})${newSan <= 0 ? " — Sanity is 0, roll Psychology on the hero card" : ""}.`}` });
     });
     if (pmLoss > 0) setParty((prev) => ({ ...prev, morale: Math.max(0, prev.morale - pmLoss) }));
     const summary = `${kind === "terror" ? "Terror" : "Fear"} Test${source.trim() ? ` vs ${source.trim()}` : ""}: ${lines.filter((l) => !l.ok).length} failed, ${lines.filter((l) => l.ok).length} passed.${pmLoss ? ` Party Morale −${pmLoss}.` : ""}`;
@@ -13771,8 +13797,15 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
     let surviving = party.lightSources || [];
     const nextRoundNum = party.round + 1;
 
-    const scenarioRoll = rollDie(10);
     lines.push(`Round ${nextRoundNum} begins — AP reset for all heroes.`);
+    if (SIMP.scenario) {
+      // Simplified Game: no Scenario die, Threat roll, Wandering Monsters or burning lights.
+      setParty((prev) => ({ ...prev, round: nextRoundNum }));
+      setTurnResult({ lines });
+      addLog(`Start of turn: ${lines.join(" ")}`);
+      return;
+    }
+    const scenarioRoll = rollDie(10);
     lines.push(`Scenario die: ${scenarioRoll}`);
     if (scenarioRoll < 9) {
       lines.push("No Threat roll this turn.");
@@ -13896,8 +13929,8 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
     // then Threat is reduced by 5 — both happen even if a Wandering Monster interrupts the rest.
     let restThreat = party.threat;
     let restLightSources = party.lightSources || [];
-    const scen = rollDie(10);
-    lines.push({ text: `Scenario die: ${scen}${scen >= 9 ? " — Threat Test!" : " — no Threat roll."}` });
+    const scen = SIMP.scenario ? 0 : rollDie(10);
+    if (!SIMP.scenario) lines.push({ text: `Scenario die: ${scen}${scen >= 9 ? " — Threat Test!" : " — no Threat roll."}` });
     if (scen >= 9) {
       const tr = rollDie(20);
       if (tr !== 20 && tr < party.threat) {
@@ -13923,10 +13956,12 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
       restThreat = clamp(restThreat + 2 * jumpyRest.length, party.threatFloor, 999);
       lines.push({ text: `${jumpyRest.map((h) => h.name).join(", ")} (Jumpy) scream${jumpyRest.length === 1 ? "s" : ""} at the 10 — Threat +${2 * jumpyRest.length}.` });
     }
-    restThreat = clamp(restThreat - 5, party.threatFloor, 999);
-    lines.push({ text: `Rest: Threat −5 (now ${restThreat}).` });
-    const torchesOut = restLightSources.filter((l) => l.kind === "torch");
-    const restLights = restLightSources.filter((l) => l.kind !== "torch");
+    if (!SIMP.scenario) {
+      restThreat = clamp(restThreat - 5, party.threatFloor, 999);
+      lines.push({ text: `Rest: Threat −5 (now ${restThreat}).` });
+    }
+    const torchesOut = SIMP.scenario ? [] : restLightSources.filter((l) => l.kind === "torch");
+    const restLights = SIMP.scenario ? restLightSources : restLightSources.filter((l) => l.kind !== "torch");
     if (torchesOut.length) lines.push({ text: `Torches go out during the rest (${torchesOut.map((l) => l.name).join(", ")}); lanterns are flipped.` });
 
     if (wmSpotted) {
@@ -13941,8 +13976,8 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
     }
 
     const moraleCap = (Number(party.startingMorale) || 0) > 0 ? Math.min(20, party.startingMorale - (party.moraleMaxPenalty || 0)) : 20;
-    const newMorale = Math.max(party.morale, Math.min(party.morale + 2, moraleCap));
-    lines.push({ text: `Party Morale +2, up to its maximum of ${moraleCap} (now ${newMorale}).` });
+    const newMorale = SIMP.morale ? party.morale : Math.max(party.morale, Math.min(party.morale + 2, moraleCap));
+    if (!SIMP.morale) lines.push({ text: `Party Morale +2, up to its maximum of ${moraleCap} (now ${newMorale}).` });
 
     const masterCook = heroes.some((h) => (h.talents || []).includes("Master Cook"));
     if (masterCook) lines.push({ text: "Master Cook: each hero regains +2 HP from the ration (does not stack)." });
@@ -14678,7 +14713,7 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
 
   return (
     <div>
-      <Panel className="mb-4">
+      {!SIMP.scenario && (<Panel className="mb-4">
         <SectionTitle icon={Flame}>Threat Level</SectionTitle>
         <div className="flex items-center gap-3 mb-3">
           <div
@@ -14733,7 +14768,7 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
         <p className="text-xs mt-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
           At or above Max Threat the app tells you to place a Wandering Monster and drops Threat by 5 automatically. Use "Start of Turn" on the Turn tab to roll the Scenario die and Threat automatically each turn, or the buttons above for one-off Threat changes.
         </p>
-      </Panel>
+      </Panel>)}
 
       <EncounterTracker party={party} setParty={setParty} heroes={heroes} addLog={addLog} />
 
@@ -14746,12 +14781,24 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
             <span><b>{label}</b> — {desc}</span>
           </label>
         ))}
+        <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${palette.line}` }}>
+          <p className="text-xs font-bold mb-0.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Simplified Game</p>
+          <p className="text-[11px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            Tick a system to remove it (rulebook p21). Its panels disappear and its effects stop; Talents, Perks and gear that only refer to it are ignored. This changes campaign balance and may affect some rewards.
+          </p>
+          {SIMPLIFIED_SYSTEMS.map(([k, label, desc]) => (
+            <label key={k} className="flex items-start gap-2 text-xs mb-1.5" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
+              <input type="checkbox" checked={!!party.simplified?.[k]} onChange={(e) => { setParty({ ...party, simplified: { ...party.simplified, [k]: e.target.checked } }); addLog(`Simplified Game: ${label} ${e.target.checked ? "removed" : "restored"}.`); }} />
+              <span><b>Remove {label}</b> — {desc}</span>
+            </label>
+          ))}
+        </div>
         <p className="text-xs mt-1" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
           Corpse looting mode (Hardcore / Streamlined) is chosen on the Actions tab. Choose it before play; Simplified Alchemy shouldn't be mixed with the standard system mid-campaign.
         </p>
       </Panel>
 
-      <Panel className="mb-4">
+      {!SIMP.morale && (<Panel className="mb-4">
         <SectionTitle icon={Users}>Party Morale (PM)</SectionTitle>
         <div className="flex items-center gap-3 mb-3">
           <div
@@ -14794,7 +14841,7 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
             Apply
           </button>
         </div>
-      </Panel>
+      </Panel>)}
 
       <Panel className="mb-4">
         <SectionTitle icon={Sparkles}>Award Experience</SectionTitle>
@@ -15141,7 +15188,9 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
       remaining = Math.max(0, remaining - outerLayer.def);
       steps.push(`${outerLayer.name} (outer) absorbs ${Math.min(before, outerLayer.def)} DEF — ${before} → ${remaining} remaining.`);
       if (remaining > 0) {
-        if (isLegendaryGear(outerLayer.name)) {
+        if (SIMP.durability) {
+          steps.push("Durability is removed (Simplified Game) — no DUR loss.");
+        } else if (isLegendaryGear(outerLayer.name)) {
           steps.push(`${outerLayer.name} is a Legendary Item — it can't be damaged, so no DUR loss.`);
         } else {
           const nd = Math.max(0, outerLayer.dur.cur - 1);
@@ -15158,7 +15207,9 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
       remaining = Math.max(0, remaining - innerLayer.def);
       steps.push(`${innerLayer.name} (inner, ½ DEF) absorbs ${Math.min(before, innerLayer.def)} DEF — ${before} → ${remaining} remaining.`);
       if (remaining > 0) {
-        if (isLegendaryGear(innerLayer.name)) {
+        if (SIMP.durability) {
+          steps.push("Durability is removed (Simplified Game) — no DUR loss.");
+        } else if (isLegendaryGear(innerLayer.name)) {
           steps.push(`${innerLayer.name} is a Legendary Item — it can't be damaged, so no DUR loss.`);
         } else {
           const nd = Math.max(0, innerLayer.dur.cur - 1);
@@ -18120,11 +18171,11 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
     const base = Math.min(20, Number(party.startingMorale) || 0);
     const newPenalty = fed ? 0 : Math.min(6, days);
     let newMorale = party.morale;
-    if (base > 0) {
+    if (base > 0 && !SIMP.morale) {
       const maxNow = Math.max(0, base - newPenalty);
       newMorale = maxNow;
       lines.push(fed ? `Party Morale restored to its maximum (${maxNow}).` : `Party Morale maximum is now ${maxNow} (-${newPenalty} for hunger); morale set to ${maxNow}.`);
-    } else if (!fed) {
+    } else if (!fed && !SIMP.morale) {
       lines.push("Set a Starting Party Morale on the Dungeon tab so hunger can lower its maximum automatically.");
     }
     setParty((prev) => ({ ...prev, hungerDays: days, hungry: days > 0, hungerConDeltas: newDeltas, moraleMaxPenalty: newPenalty, morale: newMorale, fedToday: false }));
@@ -18844,6 +18895,7 @@ export default function App() {
   const [campaigns, setCampaigns] = useState([]); // index summaries
   const [heroes, setHeroes] = useState([defaultHero()]);
   const [party, setParty] = useState(defaultParty());
+  Object.assign(SIMP, defaultParty().simplified, party.simplified || {});
   const [log, setLog] = useState([]);
   const [tab, setTab] = useState("party");
   const navRef = useRef(null);
@@ -18927,7 +18979,7 @@ export default function App() {
   const prevThreatRef = useRef(null);
   useEffect(() => { prevThreatRef.current = null; }, [campaignId]);
   useEffect(() => {
-    if (!campaignId) { prevThreatRef.current = null; return; }
+    if (!campaignId || SIMP.scenario) { prevThreatRef.current = null; return; }
     const prev = prevThreatRef.current;
     prevThreatRef.current = party.threat;
     if (party.maxThreat > 0 && party.threat >= party.maxThreat) {
@@ -18956,7 +19008,7 @@ export default function App() {
       const out = prev.map((h) => {
         let cur = h;
         const wants = {
-          halfMorale: halfMorale ? { label: "Half Morale: −20 RES", effect: { stat: "RES", amount: -20 } } : null,
+          halfMorale: halfMorale && !SIMP.morale ? { label: "Half Morale: −20 RES", effect: { stat: "RES", amount: -20 } } : null,
           fearDark: inDungeon && (h.mentalConditions || []).some((c) => c.dungeonRes) ? { label: "Fear of the Dark: −20 RES (in a dungeon)", effect: { stat: "RES", amount: -20 } } : null,
           darkness: darknessEffect(h, party),
           lightPer: lightPerEffect(h, party),
@@ -18982,7 +19034,7 @@ export default function App() {
   useEffect(() => {
     if (!campaignId) return;
     const d = party.darkness || {};
-    const want = party.advancedRules?.darkness && party.dungeonState === "dungeon" && (d.cond === "dim" || d.cond === "dark") && !hasLitPortable(party) ? (d.cond === "dark" ? 7 : 4) : 0;
+    const want = !SIMP.morale && party.advancedRules?.darkness && party.dungeonState === "dungeon" && (d.cond === "dim" || d.cond === "dark") && !hasLitPortable(party) ? (d.cond === "dark" ? 7 : 4) : 0;
     const applied = d.pmApplied || 0;
     if (want === applied) return;
     setParty((p) => ({ ...p, morale: clamp((Number(p.morale) || 0) - (want - applied), 0, 20), darkness: { ...(p.darkness || {}), pmApplied: want } }));
@@ -19091,7 +19143,8 @@ export default function App() {
   }, [heroes, party, log, loaded, campaignId]);
 
   const addHero = (hero) => setHeroes((prev) => [...prev, hero || defaultHero()]);
-  const updateHero = (id, next) => setHeroes((prev) => prev.map((h) => (h.id === id ? next : h)));
+  // With Sanity removed (Simplified Game) no code path may change a hero's Sanity or Mental Conditions.
+  const updateHero = (id, next) => setHeroes((prev) => prev.map((h) => (h.id === id ? (SIMP.sanity && h.sanity ? { ...next, sanity: h.sanity, mentalConditions: h.mentalConditions || [] } : next) : h)));
   const removeHero = (id) => setHeroes((prev) => prev.filter((h) => h.id !== id));
 
   // ---- Campaign management ----

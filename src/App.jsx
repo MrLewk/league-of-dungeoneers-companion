@@ -541,6 +541,8 @@ const defaultParty = () => ({
   settlementName: "",
   dungeonState: "settlement", // "settlement" | "travel" | "dungeon" — drives the Travel tab status badge and the auto-clear of tempEffects on dungeon exit
   dungeonRestCount: 0, // completed (uninterrupted) Short Rests taken since entering the current dungeon — drives the Ambush risk escalation; resets to 0 on Exit Dungeon, never per level
+  optionalRules: { lootMode: "hardcore", dungeonEvents: false, simplifiedAlchemy: false }, // optional/campaign rules (rulebook p21, p110, p177-178)
+  bottleOfExperienceMade: false, // Simplified Alchemy: one Bottle of Experience between two dungeon quests
   maxThreat: 0, // quest's Maximum Threat (0 = none set) — at/over it a Wandering Monster is placed and Threat drops by 5
   wmTriggerAt: 0, // quest's "Wandering Monster appears at Threat X" level (0 = none)
   wmTriggerFired: false, // quest triggers only once per quest (rulebook p165)
@@ -603,6 +605,7 @@ function normalizeParty(p) {
   merged.storage = { ...defaultParty().storage, ...(p?.storage || {}) };
   merged.magicWorkshop = { ...defaultParty().magicWorkshop, ...(p?.magicWorkshop || {}) };
   merged.initiativeSetup = { ...defaultParty().initiativeSetup, ...(p?.initiativeSetup || {}) };
+  merged.optionalRules = { ...defaultParty().optionalRules, ...(p?.optionalRules || {}) };
   merged.advancedRules = { ...defaultParty().advancedRules, ...(p?.advancedRules || {}) };
   merged.quests = { ...defaultParty().quests, ...(p?.quests || {}) };
   merged.quests.completed = { ...(p?.quests?.completed || {}) };
@@ -3823,6 +3826,22 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.65.0",
+    date: "2026-10-23",
+    sections: {
+      "Fixed": [
+        "Short Rest now matches rulebook 2.571 and QRS 2.5: the Scenario die is rolled (9 or 0 triggers a Threat Test) and Threat drops by 5 — both even when a Wandering Monster interrupts the rest — and torches go out. The Ambush risk uses the new Threat Level. (An earlier version had removed the Threat change to match the older QRS 2.25.)",
+      ],
+      "Added": [
+        "Treasure Party Morale (rulebook p216): furniture searches, corpse loot and the Loot Roller now add +1 Party Morale for Fine treasure and +3 for Wonderful (once per result, cap 20) automatically, and remind Thieves to draw two cards and keep one",
+        "Loot a Corpse on the Actions tab with a Hardcore / Streamlined mode switch: Hardcore spends 1 AP (2 in battle) from the chosen hero, Streamlined needs no AP. Rolls the chosen loot tier and applies Treasure Morale",
+        "Optional Rules panel on the Party tab: Dungeon Events (adds a 1d10 room roll to the Actions tab; the event table itself lives in the Quick Reference Compendium) and Simplified Alchemy",
+        "Simplified Alchemy: 4/6/8 unique components for Weak/Standard/Supreme, Exquisite ignored, no recipes, you choose the potion on a success, and only one Bottle of Experience between dungeon quests",
+        "Tobacco: carrying a Tobacco Kit when you enter a dungeon gives +10 RES for the quest (the kit is used up); after exiting, a RES Test without the bonus decides addiction. Addicted heroes without a kit suffer −10 RES, and two clean quests cure it (a Cured button is on the hero card)",
+      ],
+    },
+  },
   {
     version: "1.64.0",
     date: "2026-10-22",
@@ -7625,6 +7644,13 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {hero.addicted && (
+            <div className="rounded p-2 mb-3 text-xs flex items-center justify-between" style={{ background: "#B8860B18", border: `1px solid ${palette.gold}`, fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+              <span><b>Tobacco addiction.</b> Bring a Tobacco Kit on every quest or suffer −10 RES. Clean quests: {hero.tobaccoClean || 0}/2.</span>
+              <button onClick={() => set({ addicted: false, tobaccoClean: 0 })} className="ml-2 px-2 py-1 rounded font-bold" style={{ background: palette.forestDark, color: palette.parchment }}>Cured</button>
             </div>
           )}
 
@@ -11927,7 +11953,8 @@ function validateRecipeComponents(strength, components) {
   return null;
 }
 
-function AlchemyTab({ heroes, updateHero, addLog }) {
+function AlchemyTab({ heroes, updateHero, addLog, party, setParty }) {
+  const simplified = !!party?.optionalRules?.simplifiedAlchemy;
   const [subTab, setSubTab] = useState("recipes");
   const [activeHeroId, setActiveHeroId] = useState("");
   const activeHero = heroes.find((h) => h.id === activeHeroId) || heroes[0];
@@ -12002,6 +12029,43 @@ function AlchemyTab({ heroes, updateHero, addLog }) {
   const mixRecipe = allRecipesFor(activeHero).find((r) => r.id === mixRecipeId) || allRecipesFor(activeHero)[0];
   const [freeformStrength, setFreeformStrength] = useState("Standard");
   const [freeformComponents, setFreeformComponents] = useState(["", "", "", ""]);
+  // Simplified Alchemy (rulebook p110): 4/6/8 unique components, Exquisite ignored, no recipes, you choose the potion.
+  const SIMPLE_COUNTS = { Weak: 4, Standard: 6, Supreme: 8 };
+  const [simpleStrength, setSimpleStrength] = useState("Weak");
+  const [simpleComps, setSimpleComps] = useState(Array(8).fill(""));
+  const [simplePotion, setSimplePotion] = useState("");
+  const simplePotionList = [...new Set([...WEAK_SUPREME_POTIONS_TABLE.map((p) => p.potion), ...Object.values(STANDARD_POTIONS_SUBTABLES).flat().map((p) => p.potion).filter(Boolean)])].sort();
+  const mixSimplified = () => {
+    if (!activeHero) return;
+    const n = SIMPLE_COUNTS[simpleStrength];
+    const comps = simpleComps.slice(0, n);
+    if (comps.some((c) => !c)) { setMixResult({ ok: false, lines: [`Pick all ${n} components.`] }); return; }
+    if (new Set(comps).size !== comps.length) { setMixResult({ ok: false, lines: ["Every component must be unique."] }); return; }
+    if (!simplePotion) { setMixResult({ ok: false, lines: ["Choose the potion you are trying to make."] }); return; }
+    if (simplePotion === "Bottle of Experience" && party?.bottleOfExperienceMade) { setMixResult({ ok: false, lines: ["Only one Bottle of Experience can be made between two dungeon quests."] }); return; }
+    const bottle = activeHero.backpack.find((it) => it.name === "Empty Bottle");
+    if (!bottle) { setMixResult({ ok: false, lines: [`${activeHero.name} has no Empty Bottle.`] }); return; }
+    for (const name of comps) {
+      const avail = componentAvailability(activeHero, name);
+      if (avail.qty + avail.exquisiteQty <= 0) { setMixResult({ ok: false, lines: [`Missing ${name}.`] }); return; }
+    }
+    const target = Number(activeHero.skills.alchemy) || 0;
+    const roll = rollPercent();
+    const success = roll <= target && roll <= 90;
+    const nextComponents = consumeComponents(activeHero, comps, {});
+    if (success) {
+      updateHero({ ...activeHero, alchemyComponents: nextComponents, backpack: [...activeHero.backpack.filter((it) => it.id !== bottle.id), { id: uid(), name: simplePotion, value: "", enc: 0, dur: "", slot: "backpack" }] });
+      if (simplePotion === "Bottle of Experience" && setParty) setParty((p) => ({ ...p, bottleOfExperienceMade: true }));
+      const line = `Rolled ${roll} vs ${target} — success! ${simplePotion} (${simpleStrength}) mixed.`;
+      setMixResult({ ok: true, lines: [line] });
+      addLog(`${activeHero.name} mixes a potion (Simplified Alchemy): ${line}`);
+    } else {
+      updateHero({ ...activeHero, alchemyComponents: nextComponents });
+      const line = `Rolled ${roll} vs ${target} — failed. Components lost, but the bottle survives.`;
+      setMixResult({ ok: false, lines: [line] });
+      addLog(`${activeHero.name} fails to mix a potion (Simplified Alchemy): ${line}`);
+    }
+  };
 
   const componentAvailability = (hero, name) => {
     const c = hero?.alchemyComponents.find((x) => x.name === name);
@@ -12273,8 +12337,32 @@ function AlchemyTab({ heroes, updateHero, addLog }) {
 
       {subTab === "mix" && (
         <Panel>
-          <SectionTitle icon={Sparkles}>Mix a Potion</SectionTitle>
-          <div className="flex gap-1.5 mb-2">
+          <SectionTitle icon={Sparkles}>Mix a Potion{simplified ? " (Simplified)" : ""}</SectionTitle>
+          {simplified && (
+            <>
+              <p className="text-xs mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+                Simplified Alchemy: every component unique, Exquisite ignored, no recipes. Test against Alchemy; on a success you choose the potion.
+              </p>
+              <select value={simpleStrength} onChange={(e) => setSimpleStrength(e.target.value)} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+                {Object.entries(SIMPLE_COUNTS).map(([k, v]) => <option key={k} value={k}>{k} — {v} components</option>)}
+              </select>
+              {Array.from({ length: SIMPLE_COUNTS[simpleStrength] }).map((_, i) => (
+                <select key={i} value={simpleComps[i]} onChange={(e) => setSimpleComps((prev) => prev.map((c, idx) => (idx === i ? e.target.value : c)))} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+                  <option value="">Component {i + 1}…</option>
+                  <optgroup label="Ingredients">{ALCHEMY_INGREDIENT_NAMES.map((n) => { const a = componentAvailability(activeHero, n); return <option key={n} value={n} disabled={simpleComps.some((c, idx) => c === n && idx !== i)}>{n} ({a.qty + a.exquisiteQty})</option>; })}</optgroup>
+                  <optgroup label="Parts">{ALCHEMY_PART_NAMES.map((n) => { const a = componentAvailability(activeHero, n); return <option key={n} value={n} disabled={simpleComps.some((c, idx) => c === n && idx !== i)}>{n} ({a.qty + a.exquisiteQty})</option>; })}</optgroup>
+                </select>
+              ))}
+              <select value={simplePotion} onChange={(e) => setSimplePotion(e.target.value)} className="w-full text-xs rounded px-2 py-1.5 mb-2" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+                <option value="">Potion to create…</option>
+                {simplePotionList.map((n) => <option key={n} value={n}>{n}</option>)}
+                <option value="Bottle of Experience">Bottle of Experience</option>
+              </select>
+              <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>Roll target: Alchemy <b style={{ color: palette.ink }}>{activeHero?.skills.alchemy ?? 0}</b></p>
+              <button onClick={mixSimplified} className="w-full text-sm px-3 py-2 rounded font-bold" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>Mix It</button>
+            </>
+          )}
+          {!simplified && <div className="flex gap-1.5 mb-2">
             <button
               onClick={() => { setMixMode("recipe"); setMixResult(null); }}
               className="flex-1 text-xs px-2 py-1.5 rounded font-semibold active:scale-95 transition-transform"
@@ -12289,9 +12377,9 @@ function AlchemyTab({ heroes, updateHero, addLog }) {
             >
               No Recipe (Random)
             </button>
-          </div>
+          </div>}
 
-          {mixMode === "recipe" && (
+          {!simplified && mixMode === "recipe" && (
             allRecipesFor(activeHero).length === 0 ? (
               <p className="text-xs italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>No recipes available.</p>
             ) : (
@@ -12335,7 +12423,7 @@ function AlchemyTab({ heroes, updateHero, addLog }) {
             )
           )}
 
-          {mixMode === "freeform" && (
+          {!simplified && mixMode === "freeform" && (
             <>
               <p className="text-xs mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
                 No +10 recipe bonus. A success rolls on the Potions Table for a random result — and gets written down as a new recipe automatically for next time.
@@ -12832,10 +12920,36 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
 
     setAmbushResult(null);
 
+    // Rulebook 2.571 p164/p178 + QRS 2.5: the Scenario die is rolled when taking a Short Rest (9 or 0 = Threat Test),
+    // then Threat is reduced by 5 — both happen even if a Wandering Monster interrupts the rest.
+    let restThreat = party.threat;
+    const scen = rollDie(10);
+    lines.push({ text: `Scenario die: ${scen}${scen >= 9 ? " — Threat Test!" : " — no Threat roll."}` });
+    if (scen >= 9) {
+      const tr = rollDie(20);
+      if (tr === 20) {
+        restThreat = clamp(restThreat - 5, party.threatFloor, 999);
+        lines.push({ text: `Threat roll 20 — natural 20, Threat −5 (now ${restThreat}).` });
+      } else if (tr > restThreat) {
+        restThreat = clamp(restThreat + 1, party.threatFloor, 999);
+        lines.push({ text: `Threat roll ${tr} vs ${party.threat}: above current Threat, Threat +1 (now ${restThreat}).` });
+      } else {
+        const tableRoll = rollDie(20);
+        const entry = findThreatEntry(THREAT_TABLE_NOT_IN_BATTLE, tableRoll);
+        restThreat = clamp(restThreat + entry.decrease, party.threatFloor, 999);
+        lines.push({ text: `Threat roll ${tr} vs ${party.threat}: Not-in-Battle table (${tableRoll}): ${entry.title}. ${entry.text} Threat ${entry.decrease} (now ${restThreat}).`, warn: true });
+      }
+    }
+    restThreat = clamp(restThreat - 5, party.threatFloor, 999);
+    lines.push({ text: `Rest: Threat −5 (now ${restThreat}).` });
+    const torchesOut = (party.lightSources || []).filter((l) => /torch/i.test(l.name));
+    const restLights = (party.lightSources || []).filter((l) => !/torch/i.test(l.name));
+    if (torchesOut.length) lines.push({ text: `Torches go out during the rest (${torchesOut.map((l) => l.name).join(", ")}); lanterns are flipped.` });
+
     if (wmSpotted) {
       lines.push({ text: `Rest interrupted! A Wandering Monster spotted the party during its moves — Party Morale, HP, Energy, and Mana recovery are skipped. Roll initiative — battle starts now.`, warn: true });
       pushToast && pushToast("Rest Interrupted", "A Wandering Monster spotted the party — Morale, HP, Energy, and Mana recovery are skipped. Roll initiative and begin battle.");
-      setParty((prev) => ({ ...prev, food: newFood }));
+      setParty((prev) => ({ ...prev, food: newFood, threat: restThreat, lightSources: restLights }));
       setAmbushRisk(null);
       setRestSummary(lines);
       addLog(`Short Rest (interrupted): ${lines.map((l) => l.text).join(" ")}`);
@@ -12876,10 +12990,10 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
     });
 
     const restNumber = (party.dungeonRestCount || 0) + 1;
-    const riskPct = Math.min(70, 5 + party.threat + 10 * (restNumber - 1));
+    const riskPct = Math.min(70, 5 + restThreat + 10 * (restNumber - 1));
     lines.push({ text: `Rest #${restNumber} this dungeon — Ambush risk ${riskPct}%. Roll for Ambush below.` });
 
-    setParty((prev) => ({ ...prev, food: newFood, morale: newMorale, dungeonRestCount: restNumber }));
+    setParty((prev) => ({ ...prev, food: newFood, morale: newMorale, dungeonRestCount: restNumber, threat: restThreat, lightSources: restLights }));
     setRestSummary(lines);
     setAmbushRisk({ pct: riskPct, restNumber, doorBarred });
     addLog(`Short Rest: ${lines.map((l) => l.text).join(" ")}`);
@@ -13204,7 +13318,7 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
       <Panel className="mb-4">
         <SectionTitle icon={Bed}>Short Rest</SectionTitle>
         <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-          Automates: −1 food, PM +2, +1d6 HP/hero, Energy regen (or full with a Bed Roll), full Mana for casters — all skipped if interrupted — plus the Ambush roll. Arranging heroes, barring the door, and moving Wandering Monsters still happen at the table.
+          Automates: −1 food, the Scenario die/Threat roll, Threat −5 (these two always apply), then PM +2, +1d6 HP/hero, Energy regen (or full with a Bed Roll), full Mana for casters — all skipped if interrupted — plus the Ambush roll. Arranging heroes, barring the door, and moving Wandering Monsters still happen at the table.
         </p>
         {(party.dungeonRestCount || 0) > 0 && (
           <div
@@ -13530,6 +13644,20 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
       </Panel>
 
       <EncounterTracker party={party} setParty={setParty} heroes={heroes} addLog={addLog} />
+
+      <Panel className="mb-4">
+        <SectionTitle icon={ClipboardList}>Optional Rules</SectionTitle>
+        {[["dungeonEvents", "Dungeon Events", "Roll 1d10 on entering an empty room (9–10 = event). Adds a tool to the Actions tab."],
+          ["simplifiedAlchemy", "Simplified Alchemy", "4/6/8 unique components for Weak/Standard/Supreme; no recipes; you choose the potion on success. Switches the Mix a Potion screen."]].map(([k, label, desc]) => (
+          <label key={k} className="flex items-start gap-2 text-xs mb-1.5" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
+            <input type="checkbox" checked={!!party.optionalRules?.[k]} onChange={(e) => setParty({ ...party, optionalRules: { ...party.optionalRules, [k]: e.target.checked } })} className="mt-0.5" />
+            <span><b>{label}</b> — {desc}</span>
+          </label>
+        ))}
+        <p className="text-xs mt-1" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+          Corpse looting mode (Hardcore / Streamlined) is chosen on the Actions tab. Choose it before play; Simplified Alchemy shouldn't be mixed with the standard system mid-campaign.
+        </p>
+      </Panel>
 
       <Panel className="mb-4">
         <SectionTitle icon={Users}>Party Morale (PM)</SectionTitle>
@@ -15078,6 +15206,12 @@ function DiceTray({ party, setParty, heroes, updateHero, addLog, pushToast }) {
     const r = rollDie(10);
     const result = lootLookup(tableKey, r);
     const randomScroll = result === "1 random scroll" ? SPELLS[Math.floor(Math.random() * SPELLS.length)].name : null;
+    const { pm } = treasureMoraleFor(result);
+    if (pm > 0 && setParty) {
+      setParty((prev) => ({ ...prev, morale: Math.min(20, prev.morale + pm) }));
+      addLog && addLog(`${pm === 3 ? "Wonderful" : "Fine"} treasure from the Loot Roller — Party Morale +${pm} (max 20).`);
+      pushToast && pushToast(`Party Morale +${pm}`, `${pm === 3 ? "Wonderful" : "Fine"} treasure found.`);
+    }
     setLootRolls((prev) => [{ tableKey, r, result, randomScroll, added: false, id: uid() }, ...prev].slice(0, 8));
   };
   // Quick Finds: for Treasure Card / furniture results that just say "1 random scroll",
@@ -15262,6 +15396,25 @@ function DiceTray({ party, setParty, heroes, updateHero, addLog, pushToast }) {
 }
 
 
+// Treasure Party Morale (rulebook p216): each search / corpse-loot result gives +1 PM if the best
+// treasure is Fine, +3 if Wonderful (once per result, cap 20). Returns {pm, ambiguous}.
+function treasureMoraleFor(text) {
+  const t = String(text || "");
+  if (/roll 1d6/i.test(t) && /wonderful/i.test(t) && /fine/i.test(t)) return { pm: 0, ambiguous: true };
+  if (/wonderful/i.test(t)) return { pm: 3, ambiguous: false };
+  if (/\bfine\b/i.test(t)) return { pm: 1, ambiguous: false };
+  return { pm: 0, ambiguous: false };
+}
+function lootTableLookup(tableKey, roll) {
+  const table = LOOT_TABLES[tableKey] || [];
+  for (const entry of table) {
+    const parts = entry.roll.split(/[–-]/).map((x) => parseInt(x.trim(), 10));
+    const min = parts[0], max = parts.length > 1 ? parts[1] : parts[0];
+    if (roll >= min && roll <= max) return entry.result;
+  }
+  return "—";
+}
+
 function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   const [doorResult, setDoorResult] = useState(null);
   const [doorHero, setDoorHero] = useState("");
@@ -15359,13 +15512,53 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
     addLog(`${activeSearchHero.name} searches the tile: Perception ${perRoll} vs ${target} — success! Rolled ${tableRoll}${inCorridor ? " (+10 corridor)" : ""} on the table: ${entry.text}`);
   };
 
+  const grantTreasureMorale = (text, who) => {
+    const { pm, ambiguous } = treasureMoraleFor(text);
+    if (ambiguous) return "Check the card: Wonderful treasure gives +3 Party Morale, Fine +1 (use the Party tab).";
+    if (pm <= 0) return "";
+    const before = party.morale;
+    const after = Math.min(20, before + pm);
+    setParty((prev) => ({ ...prev, morale: Math.min(20, prev.morale + pm) }));
+    addLog(`${who}: ${pm === 3 ? "Wonderful" : "Fine"} treasure found — Party Morale +${after - before} → ${after}.`);
+    return `Party Morale +${after - before} (${pm === 3 ? "Wonderful" : "Fine"} treasure).`;
+  };
+  const hasThief = heroes.some((h) => h.profession === "Thief");
+  const lootMode = party.optionalRules?.lootMode || "hardcore";
+  const [corpseTier, setCorpseTier] = useState("T1");
+  const [corpseHeroId, setCorpseHeroId] = useState("");
+  const [corpseInCombat, setCorpseInCombat] = useState(false);
+  const [corpseResult, setCorpseResult] = useState(null);
+  const [corpseFeedback, setCorpseFeedback] = useState(null);
+  const [eventResult, setEventResult] = useState(null);
+  const lootCorpse = () => {
+    let who = "Corpse loot";
+    if (lootMode === "hardcore") {
+      const h = heroes.find((x) => x.id === corpseHeroId) || heroes[0];
+      if (!h) return;
+      if (!trySpendAP(h, corpseInCombat ? 2 : 1, setCorpseFeedback)) return;
+      who = h.name;
+    }
+    const roll = rollDie(10);
+    const result = lootTableLookup(corpseTier, roll);
+    const note = grantTreasureMorale(result, who);
+    setCorpseResult({ roll, result, note });
+    setCorpseFeedback(null);
+    addLog(`${who} loots a ${corpseTier} corpse: rolled ${roll} — ${result}.`);
+  };
+  const rollDungeonEvent = () => {
+    const r = rollDie(10);
+    setEventResult({ r, hit: r >= 9 });
+    addLog(r >= 9 ? `New room: Dungeon Event roll ${r} — event triggered, resolve it from the Quick Reference Compendium.` : `New room: Dungeon Event roll ${r} — nothing happens.`);
+  };
+
   const searchFurniture = () => {
     if (!furnitureType || !activeFurnitureHero) return;
     if (!trySpendAP(activeFurnitureHero, furnitureInCombat ? 2 : 1, setFurnitureFeedback)) return;
     const roll = rollDie(10);
     const entry = furnitureSearchResult(furnitureType, roll);
     const annotated = annotateDiceInText(entry.text);
-    setFurnitureResult({ roll, text: annotated });
+    const moraleNote = grantTreasureMorale(annotated, activeFurnitureHero.name);
+    setFurnitureResult({ roll, text: annotated, moraleNote });
     setFurnitureFeedback(null);
     addLog(`${activeFurnitureHero.name} searches the ${furnitureType} (${furnitureInCombat ? 2 : 1} AP): rolled ${roll} — ${annotated}`);
   };
@@ -16060,9 +16253,68 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
           <div className="rounded p-3" style={{ background: "#00000010" }}>
             <p className="text-xs mb-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>Roll: <b>{furnitureResult.roll}</b></p>
             <p className="text-sm font-bold" style={{ color: palette.forestDark, fontFamily: "Cinzel, serif" }}>{furnitureResult.text}</p>
+            {furnitureResult.moraleNote && <p className="text-xs mt-1 font-semibold" style={{ color: palette.gold, fontFamily: "Crimson Pro, serif" }}>{furnitureResult.moraleNote}</p>}
+            {hasThief && /treasure/i.test(furnitureResult.text) && <p className="text-xs mt-1 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>Thief: draw two cards from each Treasure deck pile and keep one (only one if the card sends you up a tier).</p>}
           </div>
         )}
       </Panel>
+
+      <Panel>
+        <SectionTitle icon={Skull}>Loot a Corpse</SectionTitle>
+        <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+          {lootMode === "hardcore"
+            ? "Hardcore: a hero stands adjacent and spends 1 AP per corpse (2 AP during battle)."
+            : "Streamlined: roll all corpse loot after the battle with no movement or AP, and share it out freely."}
+        </p>
+        <div className="flex gap-1.5 mb-2">
+          {[["hardcore", "Hardcore"], ["streamlined", "Streamlined"]].map(([k, l]) => (
+            <button key={k} onClick={() => setParty((p) => ({ ...p, optionalRules: { ...p.optionalRules, lootMode: k } }))} className="flex-1 text-xs px-2 py-1.5 rounded font-semibold" style={{ background: lootMode === k ? palette.ink : "#00000010", color: lootMode === k ? palette.parchment : palette.ink }}>{l}</button>
+          ))}
+        </div>
+        {lootMode === "hardcore" && (
+          <>
+            <select value={corpseHeroId} onChange={(e) => setCorpseHeroId(e.target.value)} className="w-full text-xs rounded px-2 py-1.5 mb-2" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+              <option value="">Choose a hero…</option>
+              {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+            </select>
+            <label className="flex items-center gap-2 text-xs mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+              <input type="checkbox" checked={corpseInCombat} onChange={(e) => setCorpseInCombat(e.target.checked)} />
+              During battle (2 AP instead of 1)
+            </label>
+          </>
+        )}
+        <select value={corpseTier} onChange={(e) => { setCorpseTier(e.target.value); setCorpseResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-2" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+          {Object.keys(LOOT_TABLES).map((k) => <option key={k} value={k}>Loot table {k}</option>)}
+        </select>
+        <button onClick={lootCorpse} className="w-full text-sm px-3 py-2 rounded font-bold mb-2" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+          Loot corpse{lootMode === "hardcore" ? ` (${corpseInCombat ? 2 : 1} AP)` : ""}
+        </button>
+        {corpseFeedback && <p className="text-xs mb-2 font-semibold" style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif" }}>{corpseFeedback.text}</p>}
+        {corpseResult && (
+          <div className="rounded p-3" style={{ background: "#00000010" }}>
+            <p className="text-xs mb-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>Roll: <b>{corpseResult.roll}</b></p>
+            <p className="text-sm font-bold" style={{ color: palette.forestDark, fontFamily: "Cinzel, serif" }}>{corpseResult.result}</p>
+            {corpseResult.note && <p className="text-xs mt-1 font-semibold" style={{ color: palette.gold, fontFamily: "Crimson Pro, serif" }}>{corpseResult.note}</p>}
+            {hasThief && /treasure/i.test(corpseResult.result) && <p className="text-xs mt-1 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>Thief: draw two cards and keep one.</p>}
+            <p className="text-xs mt-1 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>Scroll, ingredient or part results: use Quick Finds on the Dice tab.</p>
+          </div>
+        )}
+      </Panel>
+
+      {party.optionalRules?.dungeonEvents && (
+        <Panel>
+          <SectionTitle icon={Sparkles}>Dungeon Event (optional)</SectionTitle>
+          <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+            Only in a room (not a corridor or Objective Room) with no Encounter. Roll before the first hero activation that starts fully inside it; one event per room.
+          </p>
+          <button onClick={rollDungeonEvent} className="w-full text-sm px-3 py-2 rounded font-bold" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>Roll 1d10 for this room</button>
+          {eventResult && (
+            <p className="text-xs mt-2 font-semibold" style={{ color: eventResult.hit ? palette.crimson : palette.forestDark, fontFamily: "Crimson Pro, serif" }}>
+              Rolled {eventResult.r}: {eventResult.hit ? "Dungeon Event! Resolve it from the Quick Reference Compendium table, then remove the '?' token." : "no event. Remove the '?' token."}
+            </p>
+          )}
+        </Panel>
+      )}
     </div>
   );
 }
@@ -16509,16 +16761,51 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
   const dungeonState = party.dungeonState || "settlement";
   const setDungeonState = (s) => setParty((prev) => ({ ...prev, dungeonState: s }));
 
+  // Tobacco (rulebook p68): a carried Tobacco Kit gives +10 RES for the quest; afterwards a RES Test
+  // without the bonus on failure causes addiction. An addicted hero without a kit suffers -10 RES and
+  // needs two clean quests to recover. The kit is used up when the quest starts.
+  const enterDungeon = () => {
+    const notes = [];
+    heroes.forEach((h) => {
+      const kit = (h.backpack || []).find((it) => /^tobacco/i.test(it.name));
+      if (kit) {
+        const base = { ...h, backpack: h.backpack.filter((it) => it.id !== kit.id) };
+        updateHero(h.id, { ...base, ...addTempEffect(base, "Tobacco: +10 RES this quest", { stat: "RES", amount: 10 }), tobaccoUsed: true });
+        notes.push(`${h.name} uses a Tobacco Kit (+10 RES).`);
+      } else if (h.addicted) {
+        updateHero(h.id, { ...h, ...addTempEffect(h, "Tobacco withdrawal: −10 RES this quest", { stat: "RES", amount: -10 }), tobaccoUsed: false });
+        notes.push(`${h.name} is addicted and has no Tobacco Kit: −10 RES this quest.`);
+      }
+    });
+    setParty((prev) => ({ ...prev, bottleOfExperienceMade: false }));
+    setDungeonState("dungeon");
+    notes.forEach((n) => addLog(n));
+  };
+
   const confirmExitDungeon = () => {
     let clearedCount = 0;
     let heroesAffected = 0;
     heroes.forEach((h) => {
       const n = (h.tempEffects || []).length;
+      let next = h;
       if (n > 0) {
         heroesAffected += 1;
         clearedCount += n;
-        updateHero(h.id, { ...h, ...clearAllTempEffects(h) });
+        next = { ...h, ...clearAllTempEffects(h) };
       }
+      // Tobacco aftermath: RES Test without the bonus (effects already cleared above).
+      if (h.tobaccoUsed) {
+        const res = Number(next.stats.RES) || 0;
+        const r = rollPercent();
+        const failed = !(r <= res && r <= 90);
+        next = { ...next, tobaccoUsed: false, addicted: failed ? true : next.addicted, tobaccoClean: 0 };
+        addLog(`${h.name}: post-quest Tobacco RES Test ${r} vs ${res} — ${failed ? "FAILED, now addicted (must bring a Tobacco Kit on every quest or suffer −10 RES)" : "passed, not addicted"}.`);
+      } else if (h.addicted) {
+        const clean = (h.tobaccoClean || 0) + 1;
+        next = { ...next, tobaccoClean: clean, addicted: clean < 2 };
+        addLog(`${h.name}: completed a quest without Tobacco (${clean}/2)${clean >= 2 ? " — the addiction is overcome." : "."}`);
+      }
+      if (next !== h) updateHero(h.id, next);
     });
     setDungeonState("travel");
     setParty((prev) => ({ ...prev, dungeonRestCount: 0, wmTriggerFired: false, encounter: { empty: 0, eventBonus: 0, mod: 0 } }));
@@ -16776,7 +17063,7 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
                 Arrive at Settlement
               </button>
               <button
-                onClick={() => setDungeonState("dungeon")}
+                onClick={enterDungeon}
                 className="flex-1 text-xs py-2 rounded font-semibold"
                 style={{ background: palette.crimson, color: palette.parchment, fontFamily: "Cinzel, serif" }}
               >
@@ -17931,7 +18218,7 @@ export default function App() {
           <HeroesTab heroes={heroes} updateHero={updateHero} removeHero={removeHero} addHero={addHero} addLog={addLog} pushToast={pushToast} party={party} setParty={setParty} goToTab={goToTab} />
         )}
         {tab === "combat" && <CombatCalc heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} pushToast={pushToast} setParty={setParty} party={party} />}
-        {tab === "alchemy" && <AlchemyTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} />}
+        {tab === "alchemy" && <AlchemyTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} party={party} setParty={setParty} />}
         {tab === "actions" && <ActionsTray party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} />}
         {tab === "dice" && <DiceTray party={party} setParty={setParty} heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} pushToast={pushToast} />}
         {tab === "quest" && <QuestRollerPanel party={party} setParty={setParty} addLog={addLog} />}

@@ -3,6 +3,18 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.65.0] — 2026-10-23
+
+### Fixed
+- Short Rest: rolls the Scenario die (Threat Test on 9 or 0) and reduces Threat by 5, even if the rest is interrupted; torches go out (matches rulebook 2.571 / QRS 2.5)
+
+### Added
+- Treasure Party Morale: +1 PM for Fine, +3 for Wonderful treasure (once per result, cap 20); Thief double-draw reminder
+- Loot a Corpse tool with Hardcore / Streamlined modes
+- Optional Rules panel (Dungeon Events, Simplified Alchemy)
+- Simplified Alchemy mixing (4/6/8 unique components, choose the potion, one Bottle of Experience per quest gap)
+- Tobacco: +10 RES per quest, post-quest RES Test for addiction, −10 RES withdrawal, two clean quests to cure
+
 ## [1.64.0] — 2026-10-22
 
 ### Added

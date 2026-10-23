@@ -3,6 +3,13 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.67.2] — 2026-10-23
+
+### Changed
+- Hero card: main section headers (Stats, Skills, Weapon, Armour, Backpack, etc.) are bigger, bolder and underlined so they stand out from sub-headers
+- Settlement tab: Buy Gear sections now all start closed
+- Maps moved from the Settlement tab to the Travel tab (reference panel); the Silver City street map also shows under the Settlement picker when Silver City is selected
+
 ## [1.67.1] — 2026-10-23
 
 ### Changed

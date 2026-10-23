@@ -3921,6 +3921,17 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.67.2",
+    date: "2026-10-23",
+    sections: {
+      Changed: [
+        "Hero card: the main section dividers (Conditions, Stats, Skills, Weapon, Offhand Weapon, Armour, Backpack, Comments) are now larger, bolder and underlined in gold so they stand out from the smaller sub-headers (Head, Arms, item names) beneath them",
+        "Settlement tab: the Buy Gear sections now all start closed (General Equipment used to open by default and is very long)",
+        "Maps moved from the Settlement tab to the Travel tab as a reference panel (Known World, Silver City Area and Silver City Detailed). The Silver City street map now also appears on the Settlement tab, under the settlement picker, only when Silver City is selected",
+      ],
+    },
+  },
+  {
     version: "1.67.1",
     date: "2026-10-23",
     sections: {
@@ -6323,6 +6334,21 @@ const startingTalentsFullyDone = (profession, talentsList, perksList) => {
   return fixedDone && choicesDone;
 };
 
+// Main section dividers on the Hero card (Stats, Skills, Weapon, Armour, Backpack…): bigger, bolder and
+// underlined so they stand out from the smaller sub-headers (Head, Arms, item names) beneath them.
+const HERO_HEADING_ROW = { borderBottom: `2px solid ${palette.gold}` };
+const HERO_HEADING_TEXT = { fontFamily: "Cinzel, serif", fontSize: 15, fontWeight: 800, letterSpacing: "0.08em", color: palette.ink };
+function HeroHeadingText({ children }) {
+  return <div style={HERO_HEADING_TEXT} className="uppercase">{children}</div>;
+}
+function HeroHeading({ children }) {
+  return (
+    <div className="mt-3 mb-2 pb-1" style={HERO_HEADING_ROW}>
+      <HeroHeadingText>{children}</HeroHeadingText>
+    </div>
+  );
+}
+
 function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, goToTab, otherHeroes, updateHero }) {
   const [sanityEvent, setSanityEvent] = useState(SANITY_EVENTS[0].label);
   const [pendingCondition, setPendingCondition] = useState(null);
@@ -8025,7 +8051,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
           </div>
 
           {/* Conditions */}
-          <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">Conditions</div>
+          <HeroHeading>Conditions</HeroHeading>
           <div className="flex flex-wrap gap-1 mb-1.5">
             {hero.conditions.map((c) => (
               <span key={c} className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Crimson Pro, serif" }}>
@@ -8052,8 +8078,8 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
           </div>
 
           {/* Basic stats */}
-          <div className="flex items-center justify-between mb-1">
-            <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase">Stats</div>
+          <div className="flex items-center justify-between mb-2 mt-3 pb-1" style={HERO_HEADING_ROW}>
+            <HeroHeadingText>Stats</HeroHeadingText>
             <div
               className="text-xs font-bold px-2 py-0.5 rounded-full"
               style={{
@@ -8361,8 +8387,8 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
           </div>
 
           {/* Skills */}
-          <div className="flex items-center justify-between mb-1">
-            <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase">Skills</div>
+          <div className="flex items-center justify-between mb-2 mt-3 pb-1" style={HERO_HEADING_ROW}>
+            <HeroHeadingText>Skills</HeroHeadingText>
             {hero.profession && (
               <button
                 onClick={recalcSkills}
@@ -8412,8 +8438,8 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
 
           {/* Weapon */}
           <div className="mb-2">
-            <div className="flex items-center justify-between mb-1">
-              <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase">Weapon</div>
+            <div className="flex items-center justify-between mb-2 mt-3 pb-1" style={HERO_HEADING_ROW}>
+              <HeroHeadingText>Weapon</HeroHeadingText>
               {hero.weapon.name && (
                 <button
                   onClick={clearWeapon}
@@ -8519,8 +8545,8 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
           {/* Offhand Weapon — Dual Wield talent gated */}
           {hasDualWield && (
             <div className="mb-2">
-              <div className="flex items-center justify-between mb-1">
-                <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase">Offhand Weapon</div>
+              <div className="flex items-center justify-between mb-2 mt-3 pb-1" style={HERO_HEADING_ROW}>
+                <HeroHeadingText>Offhand Weapon</HeroHeadingText>
                 {hero.offhandWeapon.name && (
                   <button
                     onClick={clearOffhandWeapon}
@@ -8609,7 +8635,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
 
           {/* Armour */}
           <div className="mb-2">
-            <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">Armour</div>
+            <HeroHeading>Armour</HeroHeading>
             <p className="text-[10px] mb-1.5 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
               A piece covering more than one location (shown in its reference line) is worn once — only count its ENC on one slot.
             </p>
@@ -8811,7 +8837,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
           </div>
 
           {/* Backpack */}
-          <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">Backpack</div>
+          <HeroHeading>Backpack</HeroHeading>
           <div className="flex gap-1.5 mb-2">
             {Object.entries(BACKPACK_UPGRADES).map(([key, up]) => (
               <button
@@ -8940,7 +8966,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
             <Plus size={13} /> Add Custom Item
           </button>
 
-          <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1">Comments</div>
+          <HeroHeading>Comments</HeroHeading>
           <textarea
             value={hero.notes}
             onChange={(e) => set({ notes: e.target.value })}
@@ -9243,6 +9269,27 @@ function MapViewer({ map, onClose }) {
   );
 }
 
+// Reference maps panel (Travel tab): thumbnails that open the full-screen, zoomable viewer.
+function MapsPanel({ maps, title = "Maps", className = "mb-4" }) {
+  const [openMap, setOpenMap] = useState(null);
+  return (
+    <>
+      <Panel className={className}>
+        <SectionTitle icon={Map}>{title}</SectionTitle>
+        <div className="grid grid-cols-2 gap-2">
+          {maps.map((m) => (
+            <button key={m.key} onClick={() => setOpenMap(m)} className="rounded-lg overflow-hidden text-left" style={{ border: `1px solid ${palette.line}`, background: "#fff" }}>
+              <img src={m.src} alt={m.title} className="w-full h-24 object-cover" loading="lazy" />
+              <span className="block text-xs px-2 py-1.5 font-semibold" style={{ fontFamily: "Cinzel, serif", color: palette.crimson }}>{m.title}</span>
+            </button>
+          ))}
+        </div>
+      </Panel>
+      {openMap && <MapViewer map={openMap} onClose={() => setOpenMap(null)} />}
+    </>
+  );
+}
+
 function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds }) {
   const [eventResult, setEventResult] = useState(null);
   const [eventResolution, setEventResolution] = useState(null);
@@ -9264,7 +9311,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
   const [repairPoints, setRepairPoints] = useState(1);
   const [repairPaySource, setRepairPaySource] = useState("party");
   const [repairResult, setRepairResult] = useState(null);
-  const [openBuySection, setOpenBuySection] = useState("equipment"); // Buy Gear accordion — one section open at a time
+  const [openBuySection, setOpenBuySection] = useState(null); // Buy Gear accordion (starts closed) — one section open at a time
   const toggleBuySection = (key) => setOpenBuySection(openBuySection === key ? null : key);
   const [resolverActivity, setResolverActivity] = useState("Pray");
   const resolvePanelRef = useRef(null);
@@ -10322,6 +10369,15 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
             )}
           </>
         )}
+        {party.settlementName === "Silver City" && (() => {
+          const m = MAPS.find((x) => x.key === "silver-city-detailed");
+          return m ? (
+            <button onClick={() => setOpenMap(m)} className="w-full rounded-lg overflow-hidden text-left mb-2" style={{ border: `1px solid ${palette.line}`, background: "#fff" }}>
+              <img src={m.src} alt={m.title} className="w-full h-28 object-cover" loading="lazy" />
+              <span className="block text-xs px-2 py-1.5 font-semibold" style={{ fontFamily: "Cinzel, serif", color: palette.crimson }}>{m.title} — tap to open</span>
+            </button>
+          ) : null;
+        })()}
 
         <div className="flex flex-col sm:flex-row gap-2 mb-2">
           <button
@@ -10763,25 +10819,6 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
           )}
         </Panel>
       )}
-
-      <Panel className="mb-4">
-        <SectionTitle icon={Map}>Maps</SectionTitle>
-        <div className="grid grid-cols-2 gap-2">
-          {MAPS.map((m) => (
-            <button
-              key={m.key}
-              onClick={() => setOpenMap(m)}
-              className="rounded-lg overflow-hidden text-left"
-              style={{ border: `1px solid ${palette.line}`, background: "#fff" }}
-            >
-              <img src={m.src} alt={m.title} className="w-full h-24 object-cover" />
-              <span className="block text-xs px-2 py-1.5 font-semibold" style={{ fontFamily: "Cinzel, serif", color: palette.crimson }}>
-                {m.title}
-              </span>
-            </button>
-          ))}
-        </div>
-      </Panel>
 
       {openMap && <MapViewer map={openMap} onClose={() => setOpenMap(null)} />}
 
@@ -18025,6 +18062,8 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
           Ending movement in a settlement or the City Hex requires paying to stay at the inn overnight — see the Settlements tab. If only staying the night, just the inn fee is owed.
         </p>
       </Panel>
+
+      <MapsPanel maps={MAPS} title="Maps (reference)" className="" />
     </div>
   );
 }

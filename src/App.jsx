@@ -3827,6 +3827,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.65.1",
+    date: "2026-10-23",
+    sections: {
+      Changed: [
+        "Header version badge now reads \"Rulebook v2.571 · QRS v2.5\"",
+      ],
+    },
+  },
+  {
     version: "1.65.0",
     date: "2026-10-23",
     sections: {
@@ -18042,9 +18051,9 @@ export default function App() {
             <span
               className="inline-block mt-1 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full"
               style={{ background: "rgba(212,175,110,0.15)", color: palette.goldSoft, border: `1px solid ${palette.goldSoft}`, fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.03em" }}
-              title="This app is built against Rulebook v2.571"
+              title="This app is built against Rulebook v2.571 and QRS v2.5"
             >
-              Rulebook v2.571
+              Rulebook v2.571 · QRS v2.5
             </span>
           </div>
           <span
@@ -18149,9 +18158,9 @@ export default function App() {
           <span
             className="inline-block mt-1.5 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full"
             style={{ background: "rgba(212,175,110,0.15)", color: palette.goldSoft, border: `1px solid ${palette.goldSoft}`, fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.03em" }}
-            title="This app is built against Rulebook v2.571"
+            title="This app is built against Rulebook v2.571 and QRS v2.5"
           >
-            Rulebook v2.571
+            Rulebook v2.571 · QRS v2.5
           </span>
         </div>
 

@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.65.1] — 2026-10-23
+
+### Changed
+- Header version badge now shows the QRS version too: "Rulebook v2.571 · QRS v2.5"
+
 ## [1.65.0] — 2026-10-23
 
 ### Fixed

@@ -3,6 +3,24 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.68.0] — 2026-10-23
+
+### Added
+- Magic item properties: after a successful Identify at the Wizards' Guild, a button rolls the item's 1d10 property on the Weapon, Armour/Shield or Jewellery table. Item bonuses (DMG, DEF, ENC, DUR) apply to the item and stat/skill bonuses apply to the hero automatically
+- Cursed results (10) roll a beneficial power and then a Curse (rerolling any curse that duplicates the power); curses apply automatically
+- Each Wizard can try to Identify an item once per quest; the limit resets between quests
+- Rings and necklaces in the backpack can be worn (one necklace, one ring, two with Ringbearer) and only worn jewellery gives its bonus; shown as chips on weapons, armour and jewellery
+- Magic gear bonuses appear as one automatic effect on the hero; Fire and Poisonous weapons are handled in the damage roller; magic weapon Fear/Terror bonus and ring rerolls are applied in the Fear/Terror panel; ring +2 Starting Party Morale applies when setting Starting PM; +1 Hero Initiative tokens and the Door Mirror's +2 are toggles in the Initiative panel
+- Dark Guild Special Equipment: Bear Trap, Caltrops Trap, Door Mirror, Knuckle-duster, Superior Lock Picks, Superior Sling Stones, Superior Trap Disarming Kit and Tripwire with Darts Trap
+- Traps panel (Turn tab): Rogues and Thieves set traps (AP, Quick Slot and no-Battle checks), the app rolls damage when they trigger (Bear Trap 1d12, Tripwire 1d8, Caltrops 1d4); a Disarm roller uses Pick Locks, cogs modifier and the standard or Superior kit
+- Knuckle-duster, Superior Lock Picks and Superior Sling Stones bonuses apply automatically; unarmed attacks (1d4) now work in the damage roller
+- Reference tab: magic item property and curse tables
+
+### Changed
+- Powerstone table updated to the 2.571 wording, including #11 Fast Reload and #16 +1 Hero Initiative token; effects apply automatically while worn
+- Enchant Item now rerolls until the Powerstone suits the object, can enchant rings and necklaces and shields, and the Powerstone is used up on success (kept on failure)
+- Dissipate removes the item's magic bonuses and Wizards' Guild recharge restores them
+
 ## [1.67.2] — 2026-10-23
 
 ### Changed

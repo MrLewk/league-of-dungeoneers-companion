@@ -575,7 +575,8 @@ const defaultParty = () => ({
   storage: { mule: [], wagon: [], saddlebags: [] }, // ENC-capped item lists per transport type
   grievingMother: "none", // "none" | "triggered" | "succeeded" | "failed"
   pendingGhostlyEvent: null, // forces the next Ghostly Events roll straight to a specific entry (e.g. 8, after failing the Grieving Mother)
-  magicWorkshop: { enchantUsed: false, scrollAttempts: 0 }, // reset each dungeon cycle — "only one object OR two scroll attempts between quests"
+  traps: [], // Dark Guild traps currently placed on the map: [{id, kind: bear|tripwire|caltrops, label, by}]
+  magicWorkshop: { enchantUsed: false, scrollAttempts: 0, identTried: [] }, // reset each dungeon cycle — "only one object OR two scroll attempts between quests"
   guilds: {
     training: {}, // `${heroId}:${skillKey}` -> true, one Skill Training session per skill between dungeons, reset each cycle
     bountyHunt: { rolled: [], claimed: [] }, // Fighters' Guild — 5 rolled kinds this cycle, and which have been claimed
@@ -591,7 +592,7 @@ const defaultParty = () => ({
   // rulebook it's meant to persist across multiple turns of the same battle (drawn tokens
   // for still-living models return to the bag and get reused each round), not reset every
   // turn. Living here means it also survives switching tabs mid-combat.
-  initiativeSetup: { enemyCount: 1, namedMonsterCount: 0, largeMonsterCount: 0, perfectHearing: false, enemyPerfectHearing: false, swiftLeader: false, sneaky: false, doorBashed: false, ambushed: false },
+  initiativeSetup: { enemyCount: 1, namedMonsterCount: 0, largeMonsterCount: 0, perfectHearing: false, enemyPerfectHearing: false, swiftLeader: false, doorMirror: false, magicTokens: false, sneaky: false, doorBashed: false, ambushed: false },
   advancedRules: { overwatch: false, limitedBleeding: false, quickSlotDamage: false, darkness: false, quiver: false }, // optional rules (rulebook p184/193/194)
   initiativeBag: null, // array of "hero"/"enemy" tokens still in the bag, or null before first build
   initiativeDrawOrder: [], // tokens drawn so far, in order
@@ -1623,11 +1624,16 @@ function addAlchemyComponent(hero, name, type, qty, exquisite) {
 function heroEquippedItems(hero) {
   const items = [];
   if (hero.weapon?.name) items.push({ key: "weapon", label: `${hero.weapon.name} (weapon)`, piece: hero.weapon });
-  ["head", "arms", "torso", "legs"].forEach((slot) => {
+  ["head", "arms", "torso", "legs", "shield"].forEach((slot) => {
     if (hero.armour?.[slot]?.name) items.push({ key: `armour:${slot}`, label: `${hero.armour[slot].name} (${slot})`, piece: hero.armour[slot] });
   });
   return items;
 }
+// Items the Enchant Item spell can target: full-durability unenchanted gear, or jewellery.
+const enchantCandidates = (hero) => [
+  ...heroEquippedItems(hero).filter((i) => i.piece.dur && i.piece.dur.cur === i.piece.dur.max && !i.piece.enchanted),
+  ...heroJewellery(hero).filter((it) => !it.enchanted).map((it) => ({ key: `backpack:${it.id}`, label: `${it.name} (jewellery)`, piece: it })),
+];
 function applyItemPatch(hero, key, patch) {
   if (key === "weapon") return { ...hero, weapon: { ...hero.weapon, ...patch } };
   if (key.startsWith("armour:")) {
@@ -1914,29 +1920,237 @@ const THREAT_TABLE_IN_COMBAT = [
   { roll: 10, title: "Onwards!", text: "All enemies gain +10 CS until end of battle.", decrease: -6 },
 ];
 
-// Powerstones — rolled when the Enchant Item spell succeeds (p69).
+// Powerstones — rolled when the Enchant Item spell succeeds (rulebook 2.571 p219).
+// `mods` are item/gear effects the app applies or summarises; `hero` is a stat/skill effect applied while worn.
 const POWERSTONES = [
-  { roll: 1, name: "+2 Damage", appliesTo: "weapon", effect: "Improves any weapon's damage by 2." },
-  { roll: 2, name: "+3 Damage", appliesTo: "weapon", effect: "Improves any weapon's damage by 3." },
-  { roll: 3, name: "Poisonous", appliesTo: "weapon", effect: "Permanent poisonous ability — a monster wounded by this weapon loses 1 HP every turn until end of battle." },
-  { roll: 4, name: "Fire Damage", appliesTo: "weapon", effect: "The weapon causes Fire Damage (see the Combat chapter's Fire Damage rules)." },
-  { roll: 5, name: "+10 To Hit", appliesTo: "weapon", effect: "Perfectly balanced — increases chances to hit." },
-  { roll: 6, name: "+5 Strength", appliesTo: "ring/amulet", effect: "Enhances the bearer's STR by 5." },
-  { roll: 7, name: "+5 Constitution", appliesTo: "ring/amulet", effect: "Enhances the bearer's CON by 5." },
-  { roll: 8, name: "+5 Wisdom", appliesTo: "ring/amulet", effect: "Enhances the bearer's WIS by 5." },
-  { roll: 9, name: "+5 Resolve", appliesTo: "ring/amulet", effect: "Enhances the bearer's RES by 5." },
-  { roll: 10, name: "+5 Dexterity", appliesTo: "ring/amulet", effect: "Enhances the bearer's DEX by 5." },
-  { roll: 11, name: "Fast Reload", appliesTo: "weapon", effect: "Reduces reload time by 1 Action — the hero may fire twice in the first action (only once in the second)." },
-  { roll: 12, name: "+2 DEF", appliesTo: "armour/shield", effect: "Enhances a piece of armour or a shield's DEF by 2." },
-  { roll: 13, name: "+1 Energy Point per quest", appliesTo: "ring/amulet", effect: "The hero starts each quest with 1 more Energy Point than normal." },
-  { roll: 14, name: "+1 Luck Point", appliesTo: "ring/amulet", effect: "The bearer has 1 more Luck Point than usual." },
-  { roll: 15, name: "+10 chance to detect traps", appliesTo: "ring/amulet", effect: "Bonus applied whenever the hero checks for trap detection." },
-  { roll: 16, name: "+5 chance to surprise enemies when opening doors", appliesTo: "ring/amulet", effect: "Subtract 5 from enemies' DEX for that check." },
-  { roll: 17, name: "Re-roll failed Fear/Terror Test", appliesTo: "ring/amulet", effect: "The hero may re-roll a failed Fear or Terror Test." },
-  { roll: 18, name: "+2 Hit Points", appliesTo: "ring/amulet", effect: "Raises the hero's starting wounds (HP) before a quest by 2." },
-  { roll: 19, name: "+2 Party Morale", appliesTo: "ring/amulet", effect: "If a hero carries this object, Party Morale starts 2 points higher." },
-  { roll: 20, name: "+2 Sanity Points", appliesTo: "ring/amulet", effect: "The bearer has 2 more Sanity Points than normal." },
+  { roll: 1, name: "+2 Damage", appliesTo: "weapon", effect: "+2 Damage; weapon.", mods: { dmg: 2 } },
+  { roll: 2, name: "+3 Damage", appliesTo: "weapon", effect: "+3 Damage; weapon.", mods: { dmg: 3 } },
+  { roll: 3, name: "Poisonous", appliesTo: "weapon", effect: "A wounded enemy loses 1 HP at the start of each of its activations until the battle ends.", mods: { poison: true } },
+  { roll: 4, name: "Fire Damage", appliesTo: "weapon", effect: "The weapon causes Fire Damage.", mods: { fire: true } },
+  { roll: 5, name: "+10 To Hit", appliesTo: "weapon", effect: "+10 To Hit (CS, or RS for a ranged weapon).", mods: { cs: 10 } },
+  { roll: 6, name: "+5 STR", appliesTo: "ring/amulet", effect: "+5 STR while worn.", hero: { stat: "STR", amount: 5 } },
+  { roll: 7, name: "+5 CON", appliesTo: "ring/amulet", effect: "+5 CON while worn.", hero: { stat: "CON", amount: 5 } },
+  { roll: 8, name: "+5 WIS", appliesTo: "ring/amulet", effect: "+5 WIS while worn.", hero: { stat: "WIS", amount: 5 } },
+  { roll: 9, name: "+5 RES", appliesTo: "ring/amulet", effect: "+5 RES while worn.", hero: { stat: "RES", amount: 5 } },
+  { roll: 10, name: "+5 DEX", appliesTo: "ring/amulet", effect: "+5 DEX while worn.", hero: { stat: "DEX", amount: 5 } },
+  { roll: 11, name: "Fast Reload", appliesTo: "ranged weapon", effect: "Reduce the reload requirement by 1 AP, minimum 0.", mods: { fastReload: true } },
+  { roll: 12, name: "+2 DEF", appliesTo: "armour/shield", effect: "+2 DEF; armour or shield.", mods: { def: 2 } },
+  { roll: 13, name: "+1 Energy", appliesTo: "ring/amulet", effect: "+1 Energy while worn.", hero: { energy: 1 } },
+  { roll: 14, name: "+1 Luck", appliesTo: "ring/amulet", effect: "+1 Luck while worn.", hero: { luck: 1 } },
+  { roll: 15, name: "+10 trap detection", appliesTo: "ring/amulet", effect: "+10 to Tests made to detect traps.", mods: { trap: 10 } },
+  { roll: 16, name: "+1 Hero Initiative token", appliesTo: "ring/amulet", effect: "+1 Hero Initiative token during the first combat turn.", mods: { tokens: 1 } },
+  { roll: 17, name: "Reroll a failed Fear/Terror Test", appliesTo: "ring/amulet", effect: "The wearer may reroll one failed Fear or Terror Test.", mods: { fearReroll: 1 } },
+  { roll: 18, name: "+2 max & current HP", appliesTo: "ring/amulet", effect: "+2 maximum and current HP while worn.", hero: { hp: 2 } },
+  { roll: 19, name: "+2 Starting Party Morale", appliesTo: "ring/amulet", effect: "+2 Starting Party Morale while worn by a party member, subject to the absolute maximum of 20.", mods: { startPM: 2 } },
+  { roll: 20, name: "+2 max Sanity", appliesTo: "ring/amulet", effect: "+2 maximum Sanity while worn.", hero: { sanity: 2 } },
 ];
+
+// ---------- Magic item properties (rulebook 2.571 p219): roll AFTER the item has been identified ----------
+const MAGIC_SKILL_KEYS = ["cs", "rs", "dodge", "pickLocks", "barter", "heal", "alchemy", "perception", "foraging"];
+const MAGIC_WEAPON_TABLE = [
+  { roll: 1, name: "Fire Damage", mods: { fire: true }, note: "Weapon damage becomes Fire Damage." },
+  { roll: 2, name: "+2 Damage", mods: { dmg: 2 } },
+  { roll: 3, name: "+1 Damage", mods: { dmg: 1 } },
+  { roll: 4, name: "+10 CS / RS", mods: { cs: 10 }, note: "+10 CS (or RS for a ranged weapon) while wielded." },
+  { roll: 5, name: "+5 CS / RS", mods: { cs: 5 }, note: "+5 CS (or RS for a ranged weapon) while wielded." },
+  { roll: 6, name: "Light: ENC −5, Class −1", mods: { encDelta: -5, classDelta: -1 }, note: "Reduce ENC by 5 and weapon Class by 1 (minimum 1)." },
+  { roll: 7, name: "+2 Max DUR (10)", mods: { maxDur: 10 }, note: "+2 Maximum DUR, to a total of 10." },
+  { roll: 8, name: "+10 Fear/Terror Tests", mods: { fear: 10 }, note: "+10 on Fear and Terror Tests while wielded." },
+  { roll: 9, name: "+5 Parry / Dodge", mods: { parry: 5 }, heroRanged: { skill: "dodge", amount: 5 }, note: "+5 Weapon Parry for close-combat weapons; +5 Dodge while wielding a ranged weapon." },
+  { roll: 10, cursed: true },
+];
+const MAGIC_ARMOUR_TABLE = [
+  { roll: 1, name: "+2 DEF", mods: { def: 2 } },
+  { roll: 2, name: "+1 DEF", mods: { def: 1 } },
+  { roll: 3, name: "Halved ENC", mods: { encHalf: true }, note: "Halve ENC, rounding up." },
+  { roll: 4, name: "+1 Max DUR (9)", mods: { maxDur: 9 }, note: "+1 Maximum DUR, to a total of 9." },
+  { roll: 5, name: "Fire-resistant", mods: { fireproof: true }, note: "The item ignores the effects of Fire Damage on the 2nd turn." },
+  { roll: 6, name: "+10 CON vs Poison", mods: { poisonCon: 10 }, note: "+10 CON on Poison Tests." },
+  { roll: 7, name: "+5 CON", hero: { stat: "CON", amount: 5 }, note: "+5 CON while worn." },
+  { roll: 8, name: "+5 STR", hero: { stat: "STR", amount: 5 }, note: "+5 STR while worn." },
+  { roll: 9, name: "+5 Dodge", hero: { skill: "dodge", amount: 5 }, note: "+5 Dodge while worn." },
+  { roll: 10, cursed: true },
+];
+const MAGIC_JEWEL_TABLE = [
+  { roll: 1, name: "+1 max & current HP", hero: { hp: 1 } },
+  { roll: 2, name: "+5 CON", hero: { stat: "CON", amount: 5 } },
+  { roll: 3, name: "+5 STR", hero: { stat: "STR", amount: 5 } },
+  { roll: 4, name: "+5 RES", hero: { stat: "RES", amount: 5 } },
+  { roll: 5, name: "+5 DEX", hero: { stat: "DEX", amount: 5 } },
+  { roll: 6, name: "+1 Energy", hero: { energy: 1 } },
+  { roll: 7, name: "+1 Luck", hero: { luck: 1 } },
+  { roll: 8, name: "+5 random Skill", randomSkill: 5 },
+  { roll: 9, name: "+1 Hero Initiative token", mods: { tokens: 1 }, note: "+1 Hero Initiative token while worn, subject to the Initiative rules." },
+  { roll: 10, cursed: true },
+];
+const MAGIC_CURSE_TABLE = [
+  { roll: 1, name: "Curse: −2 max HP", hero: { hp: -2 } },
+  { roll: 2, name: "Curse: −5 WIS", hero: { stat: "WIS", amount: -5 } },
+  { roll: 3, name: "Curse: −5 CON", hero: { stat: "CON", amount: -5 } },
+  { roll: 4, name: "Curse: −5 STR", hero: { stat: "STR", amount: -5 } },
+  { roll: 5, name: "Curse: −5 DEX", hero: { stat: "DEX", amount: -5 } },
+  { roll: 6, name: "Curse: −3 max HP", hero: { hp: -3 } },
+  { roll: 7, name: "Curse: −10 RES", hero: { stat: "RES", amount: -10 } },
+  { roll: 8, name: "Curse: −5 random Skill", randomSkill: -5 },
+  { roll: 9, name: "Curse: −1 Luck", hero: { luck: -1 } },
+  { roll: 10, name: "Curse: −1 Energy", hero: { energy: -1 } },
+];
+
+const weaponRefFor = (name) => WEAPONS.find((x) => x.name === String(name || "").replace(/^Mithril\s+/i, ""));
+const weaponIsRanged = (name) => { const r = weaponRefFor(name); return !!r && (r.class === 6 || !!r.reload); };
+const isJewelleryItem = (it) => /\b(ring|necklace|amulet)\b/i.test(it?.name || "") && !/relic/i.test(it?.name || "");
+const jewelleryKind = (it) => (/necklace|amulet/i.test(it?.name || "") ? "neck" : "ring");
+const heroJewellery = (hero) => (hero.backpack || []).filter(isJewelleryItem);
+
+function effSig(e) {
+  if (!e) return "";
+  if (e.stat) return `stat:${e.stat}`;
+  if (e.skill) return `skill:${e.skill}`;
+  return ["hp", "mana", "sanity", "luck", "energy", "movement"].find((k) => e[k]) || "";
+}
+function effText(e) {
+  if (!e) return "";
+  const n = (v) => `${v > 0 ? "+" : "−"}${Math.abs(v)}`;
+  if (e.stat) return `${n(e.amount)} ${e.stat}`;
+  if (e.skill) return `${n(e.amount)} ${(SKILL_LABELS[e.skill] || e.skill).replace(/ \(.*\)/, "")}`;
+  const k = ["hp", "mana", "sanity", "luck", "energy", "movement"].find((x) => e[x]);
+  if (!k) return "";
+  return `${n(e[k])} ${k === "hp" ? "max HP" : k === "sanity" ? "max Sanity" : k.charAt(0).toUpperCase() + k.slice(1)}`;
+}
+function magicEntry(src, kind, row, hero) {
+  const e = { src, kind, roll: row.roll, name: row.name, mods: { ...(row.mods || {}) }, hero: row.hero || null, heroRanged: row.heroRanged || null, note: row.note || "" };
+  if (row.randomSkill) {
+    const pool = [...MAGIC_SKILL_KEYS];
+    if (Number(hero?.skills?.arcaneArts)) pool.push("arcaneArts");
+    if (Number(hero?.skills?.battlePrayers)) pool.push("battlePrayers");
+    const k = pool[Math.floor(Math.random() * pool.length)];
+    e.hero = { skill: k, amount: row.randomSkill };
+    e.name = `${row.randomSkill < 0 ? "Curse: " : ""}${effText(e.hero)}`;
+  }
+  return e;
+}
+// Rolls 1d10 on the right table. A 10 is Cursed: roll again for the beneficial power, then on the Curse table
+// (rerolling a curse that duplicates or directly cancels the beneficial property).
+function rollMagicProperty(kind, hero) {
+  const table = kind === "weapon" ? MAGIC_WEAPON_TABLE : kind === "armour" ? MAGIC_ARMOUR_TABLE : MAGIC_JEWEL_TABLE;
+  const first = rollDie(10);
+  let row = table.find((r) => r.roll === first);
+  const cursed = !!row.cursed;
+  while (row.cursed) { const again = rollDie(10); row = table.find((r) => r.roll === again); }
+  const entries = [magicEntry("table", kind, row, hero)];
+  if (cursed) {
+    for (let i = 0; i < 30; i++) {
+      const cr = rollDie(10);
+      const ce = magicEntry("curse", kind, MAGIC_CURSE_TABLE.find((r) => r.roll === cr), hero);
+      if (!(ce.hero && entries[0].hero && effSig(ce.hero) === effSig(entries[0].hero))) { entries.push(ce); break; }
+    }
+  }
+  return { roll: first, entries, cursed };
+}
+function stoneSuits(stone, kind, ranged) {
+  if (kind === "weapon") return stone.appliesTo === "weapon" || (stone.appliesTo === "ranged weapon" && ranged);
+  if (kind === "armour") return stone.appliesTo === "armour/shield";
+  return stone.appliesTo === "ring/amulet";
+}
+const itemKindOf = (key, piece) => (key === "weapon" ? "weapon" : key.startsWith("armour:") ? "armour" : isJewelleryItem(piece) ? "jewel" : null);
+const addDmgStr = (dmg, n) => (n ? `${dmg || "0"}${n > 0 ? "+" : "-"}${Math.abs(n)}` : dmg);
+// Builds the item patch that attaches magic entries. Item-bound mods (DMG/DEF/ENC/DUR) are applied to the item itself,
+// with the original values remembered so Dissipate can undo them cleanly.
+function magicApplyPatch(piece, entries) {
+  const all = [...(piece.magic || []), ...entries];
+  const o = piece.magicOrig || { dmg: piece.dmg, def: piece.def, enc: piece.enc };
+  const patch = { magic: all, magicOrig: o, enchanted: true, wasEverEnchanted: true };
+  let dmg = o.dmg, def = o.def, enc = o.enc, maxDur = 8;
+  const encNum = /^\d+$/.test(String(o.enc ?? "")) ? Number(o.enc) : null;
+  let encOut = encNum;
+  all.forEach((m) => {
+    const k = m.mods || {};
+    if (k.dmg) dmg = addDmgStr(dmg, k.dmg);
+    if (k.def) def = (Number(def) || 0) + k.def;
+    if (encOut !== null && k.encHalf) encOut = Math.ceil(encOut / 2);
+    if (encOut !== null && k.encDelta) encOut = Math.max(1, encOut + k.encDelta);
+    if (k.maxDur) maxDur = Math.max(maxDur, k.maxDur);
+  });
+  if (o.dmg !== undefined && "dmg" in piece) patch.dmg = dmg;
+  if (o.def !== undefined && "def" in piece) patch.def = def;
+  if (encOut !== null && encOut !== encNum) patch.enc = encOut;
+  if (piece.dur && typeof piece.dur === "object") {
+    const full = piece.dur.cur >= piece.dur.max;
+    patch.dur = { cur: full ? maxDur : Math.min(piece.dur.cur, maxDur), max: maxDur };
+  }
+  return patch;
+}
+function magicRemovePatch(piece) {
+  const o = piece.magicOrig;
+  const patch = { magic: [], magicOrig: undefined, magicDormant: piece.magic || [], enchanted: false };
+  if (o) {
+    if (o.dmg !== undefined && "dmg" in piece) patch.dmg = o.dmg;
+    if (o.def !== undefined && "def" in piece) patch.def = o.def;
+    if (o.enc !== undefined) patch.enc = o.enc;
+  }
+  if (piece.dur && typeof piece.dur === "object") patch.dur = { cur: Math.min(piece.dur.cur, 6), max: 6 };
+  return patch;
+}
+function magicRechargePatch(piece) {
+  return { ...magicApplyPatch({ ...piece, magic: [], magicOrig: undefined }, piece.magicDormant || []), magicDormant: undefined };
+}
+// Everything a hero currently has "in play": wielded weapon, worn armour/shield and worn jewellery.
+function magicSourceList(hero) {
+  const out = [];
+  if (hero.weapon?.name && hero.weapon.magic?.length) out.push({ piece: hero.weapon, weapon: true });
+  ["head", "arms", "torso", "legs", "shield"].forEach((slot) => {
+    const p = hero.armour?.[slot];
+    if (p?.name && p.magic?.length) out.push({ piece: p });
+  });
+  (hero.backpack || []).forEach((it) => { if (it.worn && it.magic?.length) out.push({ piece: it }); });
+  return out;
+}
+function magicTotals(hero) {
+  const t = { tokens: 0, startPM: 0, trap: 0, fear: 0, fearReroll: 0, parry: 0, poisonCon: 0, fire: false, poison: false, fastReload: false, fireproof: false };
+  magicSourceList(hero).forEach(({ piece, weapon }) => (piece.magic || []).forEach((m) => {
+    const k = m.mods || {};
+    ["tokens", "startPM", "trap", "fearReroll", "poisonCon"].forEach((key) => { if (k[key]) t[key] += k[key]; });
+    if (k.fireproof) t.fireproof = true;
+    if (weapon) {
+      if (k.fear) t.fear += k.fear;
+      if (k.parry) t.parry += k.parry;
+      if (k.fire) t.fire = true;
+      if (k.poison) t.poison = true;
+      if (k.fastReload) t.fastReload = true;
+    }
+  }));
+  return t;
+}
+const heroHasItem = (hero, pattern) => (hero.backpack || []).find((it) => pattern.test(it.name || ""));
+// Stat/skill effects from magic gear (kept in sync as an automatic tempEffect), plus Superior Sling Stones (+5 RS with a Sling).
+function gearEffect(hero) {
+  const descs = [];
+  const ranged = weaponIsRanged(hero.weapon?.name);
+  magicSourceList(hero).forEach(({ piece, weapon }) => (piece.magic || []).forEach((m) => {
+    if (m.hero) descs.push(m.hero);
+    if (weapon && m.mods?.cs) descs.push({ skill: ranged ? "rs" : "cs", amount: m.mods.cs });
+    if (weapon && ranged && m.heroRanged) descs.push(m.heroRanged);
+  }));
+  if (/sling/i.test(hero.weapon?.name || "") && heroHasItem(hero, /^Superior Sling Stones/i)) descs.push({ skill: "rs", amount: 5 });
+  if (!descs.length) return null;
+  return { label: `Magic & gear: ${descs.map(effText).join(", ")}`, effect: { multi: descs } };
+}
+function MagicChips({ piece }) {
+  const list = piece?.magic || [];
+  const dormant = !list.length && (piece?.magicDormant || []).length > 0;
+  if (!list.length && !dormant) return null;
+  return (
+    <div className="flex flex-wrap gap-1 mt-1">
+      {list.map((m, i) => (
+        <span key={i} className="text-[10px] px-1.5 py-0.5 rounded font-semibold" title={m.note || ""}
+          style={{ background: m.src === "curse" ? "#7A1F2B22" : "#A97A2A22", color: m.src === "curse" ? palette.crimson : palette.ink, border: `1px solid ${m.src === "curse" ? palette.crimson : palette.gold}66`, fontFamily: "Crimson Pro, serif" }}>
+          {m.src === "curse" ? "☠ " : "✨ "}{m.name}
+        </span>
+      ))}
+      {dormant && <span className="text-[10px] px-1.5 py-0.5 rounded italic" style={{ background: "#00000010", color: palette.inkSoft }}>Magic dissipated — recharge at the Wizards' Guild</span>}
+    </div>
+  );
+}
 
 const DAMAGE_TYPES = [
   { type: "Fire", effect: "Ignores NA & Armour. After resolving, roll 1d6: 1–3 extinguished, 4–6 continues next turn at half damage (round down, min 1), then extinguished." },
@@ -3920,6 +4134,28 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.68.0",
+    date: "2026-10-23",
+    sections: {
+      Added: [
+        "Magic item properties: after a successful Identify at the Wizards' Guild, a button rolls the item's 1d10 property on the Weapon, Armour/Shield or Jewellery table. Item bonuses (DMG, DEF, ENC, DUR) apply to the item and stat/skill bonuses apply to the hero automatically",
+        "Cursed results (10) roll a beneficial power and then a Curse (rerolling any curse that duplicates the power); curses apply automatically",
+        "Each Wizard can try to Identify an item once per quest; the limit resets between quests",
+        "Rings and necklaces in the backpack can be worn (one necklace, one ring, two with Ringbearer) and only worn jewellery gives its bonus; shown as chips on weapons, armour and jewellery",
+        "Magic gear bonuses appear as one automatic effect on the hero; Fire and Poisonous weapons are handled in the damage roller; magic weapon Fear/Terror bonus and ring rerolls are applied in the Fear/Terror panel; ring +2 Starting Party Morale applies when setting Starting PM; +1 Hero Initiative tokens and the Door Mirror's +2 are toggles in the Initiative panel",
+        "Dark Guild Special Equipment: Bear Trap, Caltrops Trap, Door Mirror, Knuckle-duster, Superior Lock Picks, Superior Sling Stones, Superior Trap Disarming Kit and Tripwire with Darts Trap",
+        "Traps panel (Turn tab): Rogues and Thieves set traps (AP, Quick Slot and no-Battle checks), the app rolls damage when they trigger (Bear Trap 1d12, Tripwire 1d8, Caltrops 1d4); a Disarm roller uses Pick Locks, cogs modifier and the standard or Superior kit",
+        "Knuckle-duster, Superior Lock Picks and Superior Sling Stones bonuses apply automatically; unarmed attacks (1d4) now work in the damage roller",
+        "Reference tab: magic item property and curse tables"
+      ],
+      Changed: [
+        "Powerstone table updated to the 2.571 wording, including #11 Fast Reload and #16 +1 Hero Initiative token; effects apply automatically while worn",
+        "Enchant Item now rerolls until the Powerstone suits the object, can enchant rings and necklaces and shields, and the Powerstone is used up on success (kept on failure)",
+        "Dissipate removes the item's magic bonuses and Wizards' Guild recharge restores them"
+      ],
+    },
+  },
   {
     version: "1.67.2",
     date: "2026-10-23",
@@ -6584,11 +6820,22 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     }
   };
   const dissipateWeaponMagic = () => {
-    setWeapon({ enchanted: false, dur: { cur: Math.min(hero.weapon.dur.cur, 6), max: 6 } });
+    setWeapon(magicRemovePatch(hero.weapon));
   };
   const dissipateArmourMagic = (loc) => {
-    const piece = hero.armour[loc];
-    setArmourPiece(loc, { enchanted: false, dur: { cur: Math.min(piece.dur.cur, 6), max: 6 } });
+    setArmourPiece(loc, magicRemovePatch(hero.armour[loc]));
+  };
+  // Worn jewellery: one necklace and one ring (two with the Ringbearer Talent) may be active at once.
+  const [wornFeedback, setWornFeedback] = useState("");
+  const toggleWorn = (item) => {
+    if (!item.worn) {
+      const kind = jewelleryKind(item);
+      const limit = kind === "ring" ? ((hero.talents || []).includes("Ringbearer") ? 2 : 1) : 1;
+      const count = hero.backpack.filter((it) => it.worn && isJewelleryItem(it) && jewelleryKind(it) === kind).length;
+      if (count >= limit) { setWornFeedback(`Only ${limit} ${kind === "ring" ? (limit === 2 ? "rings" : "ring") : "necklace"} can be worn at once${kind === "ring" && limit === 1 ? " (the Ringbearer Talent allows two)" : ""} — take another off first.`); return; }
+    }
+    setWornFeedback("");
+    updateBackpackItem(item.id, { worn: !item.worn });
   };
   const pickArmour = (loc, name) => {
     const a = ARMOUR_AND_SHIELDS.find((x) => x.name === name);
@@ -8525,6 +8772,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                 </button>
               )}
             </div>
+            <MagicChips piece={hero.weapon} />
             {weaponRef && (
               <div className="text-[10px] mt-1 rounded px-2 py-1" style={{ background: "#00000008", color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
                 Class {weaponRef.class}{weaponRef.wtype ? ` · ${({ E: "Edged", P: "Piercing", C: "Crushing" })[weaponRef.wtype]}` : ""}{weaponRef.special ? ` · ${weaponRef.special}` : ""} · {weaponRef.cost}c (avail {weaponRef.avail}){weaponRef.reload ? ` · Reload ${weaponRef.reload}` : ""}
@@ -8733,6 +8981,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                         </button>
                       )}
                     </div>
+                    <MagicChips piece={piece} />
                     {ref && (
                       <div className="text-[10px] mt-0.5 rounded px-1.5 py-0.5" style={{ background: "#00000008", color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
                         Tier {ref.tier || "—"}{ref.special ? ` · ${ref.special}` : ""} · {ref.cost}c (avail {ref.avail}){ref.covers.length > 1 ? ` · Also covers: ${ref.covers.filter((c) => c !== loc).join(", ")}` : ""}
@@ -8926,6 +9175,19 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                     <Trash2 size={13} />
                   </button>
                 </div>
+                {isJewelleryItem(item) && (
+                  <div className="pl-[30px] mb-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button onClick={() => toggleWorn(item)} className="text-[10px] px-2 py-1 rounded font-semibold"
+                        style={{ background: item.worn ? palette.forestDark : "#00000010", color: item.worn ? palette.parchment : palette.inkSoft }}
+                        title="Only worn jewellery gives its bonus (one necklace, one ring — two with Ringbearer)">
+                        {item.worn ? "● Worn" : "○ Wear it"}
+                      </button>
+                      {item.enchanted && <span className="text-[10px] font-semibold" style={{ color: palette.gold }}>✨ Enchanted</span>}
+                    </div>
+                    <MagicChips piece={item} />
+                  </div>
+                )}
                 <div className="flex items-center gap-1.5 pl-[30px]">
                   <label className="flex items-center gap-1 text-[10px]" style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace" }}>
                     Val
@@ -8958,6 +9220,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               </div>
             ))}
           </div>
+          {wornFeedback && <p className="text-[10px] mb-1.5 font-semibold" style={{ color: palette.crimson }}>{wornFeedback}</p>}
           <button
             onClick={addBackpackItem}
             className="w-full flex items-center justify-center gap-1.5 text-xs py-1.5 rounded font-semibold mb-3"
@@ -10080,7 +10343,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
         alchemistLabUsed: false,
         gardenUsed: false,
       },
-      magicWorkshop: { enchantUsed: false, scrollAttempts: 0 },
+      magicWorkshop: { enchantUsed: false, scrollAttempts: 0, identTried: [] },
       guilds: { training: {}, bountyHunt: { rolled: [], claimed: [] }, crusade: null, taxidermistAttempts: {} },
       questCycle: (prev.questCycle || 0) + 1,
     }));
@@ -10289,25 +10552,37 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
     if (!hero) { setEnchantResult({ ok: false, line: "Pick a hero first." }); return; }
     if (!(hero.spells || []).includes("Enchant Item")) { setEnchantResult({ ok: false, line: `${hero.name} doesn't know the Enchant Item spell.` }); return; }
     if (party.magicWorkshop.enchantUsed) { setEnchantResult({ ok: false, line: "Already enchanted an object between this visit and the next dungeon." }); return; }
-    const eligible = heroEquippedItems(hero).filter((i) => i.piece.dur && i.piece.dur.cur === i.piece.dur.max && !i.piece.enchanted);
+    const eligible = enchantCandidates(hero);
     const item = eligible.find((i) => i.key === enchantTarget);
-    if (!item) { setEnchantResult({ ok: false, line: "Pick a full-durability, unenchanted item." }); return; }
+    if (!item) { setEnchantResult({ ok: false, line: "Pick a full-durability, unenchanted item or a ring/necklace." }); return; }
     const aa = Number(hero.skills.arcaneArts) || 0;
     const target = aa - 25;
     const roll = rollPercent();
     const success = roll <= target;
     setParty((prev) => ({ ...prev, magicWorkshop: { ...prev.magicWorkshop, enchantUsed: true } }));
     if (success) {
-      const stoneRoll = rollDie(20);
-      const stone = POWERSTONES.find((p) => p.roll === stoneRoll);
-      updateHero(applyItemPatch(hero, item.key, { enchanted: true, wasEverEnchanted: true, dur: { cur: 8, max: 8 }, powerstone: stone.name }));
-      const line = `Rolled ${roll} vs target ${target} — Success! ${item.piece.name} is now enchanted (Durability 8/8). Powerstone roll ${stoneRoll}: ${stone.name} (${stone.effect})`;
+      // The stone must suit the object (weapon / ranged weapon / armour & shield / ring & amulet) — roll again until it does.
+      const kind = itemKindOf(item.key, item.piece);
+      const ranged = kind === "weapon" && weaponIsRanged(item.piece.name);
+      let stoneRoll, stone;
+      for (let i = 0; i < 200; i++) {
+        stoneRoll = rollDie(20);
+        stone = POWERSTONES.find((p) => p.roll === stoneRoll);
+        if (stoneSuits(stone, kind, ranged)) break;
+      }
+      const entry = magicEntry("powerstone", kind, { roll: stone.roll, name: stone.name, mods: stone.mods, hero: stone.hero, note: stone.effect }, hero);
+      updateHero(applyItemPatch(hero, item.key, { ...magicApplyPatch(item.piece, [entry]), powerstone: stone.name }));
+      const line = `Rolled ${roll} vs target ${target} — Success! ${item.piece.name} is now enchanted${item.piece.dur && typeof item.piece.dur === "object" ? " (Durability 8)" : ""}. Powerstone (suitable stone, roll ${stoneRoll}): ${stone.name} — ${stone.effect} The Powerstone is used up.`;
       setEnchantResult({ ok: true, line });
-      addLog(`${hero.name} enchants ${item.piece.name} with ${stone.name}. ${stone.effect}`);
+      addLog(`${hero.name} enchants ${item.piece.name} with ${stone.name}. ${stone.effect} (Powerstone consumed.)`);
     } else {
-      const blank = item.key === "weapon" ? { name: "", dmg: "", enc: 0, dur: { cur: 0, max: 0 }, mithril: false, enchanted: false } : { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 }, mithril: false, enchanted: false };
-      updateHero(applyItemPatch(hero, item.key, blank));
-      const line = `Rolled ${roll} vs target ${target} — Failed. The object is destroyed (the Powerstone can be reused).`;
+      if (item.key.startsWith("backpack:")) {
+        updateHero({ ...hero, backpack: hero.backpack.filter((it) => `backpack:${it.id}` !== item.key) });
+      } else {
+        const blank = item.key === "weapon" ? { name: "", dmg: "", enc: 0, dur: { cur: 0, max: 0 }, mithril: false, enchanted: false } : { name: "", def: 0, enc: 0, dur: { cur: 0, max: 0 }, mithril: false, enchanted: false };
+        updateHero(applyItemPatch(hero, item.key, blank));
+      }
+      const line = `Rolled ${roll} vs target ${target} — Failed. The object is destroyed (the Powerstone is not lost).`;
       setEnchantResult({ ok: false, line });
       addLog(`${hero.name} attempts to enchant ${item.piece.name} — fails, item destroyed.`);
     }
@@ -10503,14 +10778,14 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
               </select>
               {enchantHero && (() => {
                 const hero = heroes.find((h) => h.id === enchantHero);
-                const eligible = heroEquippedItems(hero).filter((i) => i.piece.dur && i.piece.dur.cur === i.piece.dur.max && !i.piece.enchanted);
+                const eligible = enchantCandidates(hero);
                 return (
                   <>
                     <select value={enchantTarget} onChange={(e) => setEnchantTarget(e.target.value)} className="w-full text-xs rounded px-2 py-1 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
                       <option value="">Choose a full-durability item…</option>
                       {eligible.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
                     </select>
-                    {eligible.length === 0 && <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft }}>No eligible items — must be at full Durability and not already enchanted.</p>}
+                    {eligible.length === 0 && <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft }}>No eligible items — gear must be at full Durability and not already enchanted (a ring or necklace in the backpack works too).</p>}
                     <button onClick={confirmEnchant} disabled={!enchantTarget} className="w-full text-[10px] px-2 py-1.5 rounded font-semibold mb-1.5" style={{ background: enchantTarget ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: enchantTarget ? 1 : 0.5 }}>
                       Attempt Enchantment
                     </button>
@@ -11539,8 +11814,8 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
     const eligible = heroEquippedItems(hero).filter((i) => i.piece.wasEverEnchanted && !i.piece.enchanted && i.piece.dur && i.piece.dur.cur > 0);
     const item = eligible.find((i) => i.key === chargeTarget);
     if (!item) { setChargeResult({ ok: false, line: "Pick a dissipated (but not broken) magic item to recharge." }); return; }
-    updateHero(applyItemPatch(hero, item.key, { enchanted: true, dur: { ...item.piece.dur, max: 8 } }));
-    const line = `${item.piece.name} recharged at the Wizards' Guild — magic restored, Durability max back to 8.`;
+    updateHero(applyItemPatch(hero, item.key, magicRechargePatch(item.piece)));
+    const line = `${item.piece.name} recharged at the Wizards' Guild — magic restored${(item.piece.magicDormant || []).length ? ` (${item.piece.magicDormant.map((m) => m.name).join(", ")})` : ""}, Durability max back to 8.`;
     setChargeResult({ ok: true, line });
     addLog(`${hero.name}: ${line}`);
   };
@@ -11553,12 +11828,32 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
     if (!hero) { setIdentifyResult({ ok: false, line: "Pick a hero first." }); return; }
     const item = heroAllItems(hero).find((i) => i.key === identifyTarget);
     if (!item) { setIdentifyResult({ ok: false, line: "Pick an item to identify." }); return; }
+    // Each Wizard may make one Arcane Arts Test per item per quest (rulebook 2.571 p94).
+    const triedKey = `${hero.id}|${item.key}|${item.piece.name}`;
+    const tried = party.magicWorkshop?.identTried || [];
+    if (tried.includes(triedKey)) { setIdentifyResult({ ok: false, line: `${hero.name} has already tried to identify ${item.piece.name} this quest — another Wizard may try, or wait until the next quest.` }); return; }
+    setParty((prev) => ({ ...prev, magicWorkshop: { ...prev.magicWorkshop, identTried: [...(prev.magicWorkshop?.identTried || []), triedKey] } }));
     const aa = Number(hero.skills.arcaneArts) || 0;
     const roll = rollPercent();
     const success = roll <= aa;
-    const line = success ? `Rolled ${roll} vs Arcane Arts ${aa} — Success! ${item.piece.name} is identified.` : `Rolled ${roll} vs Arcane Arts ${aa} — Failed. Only one attempt per party/object — try again in a different settlement.`;
-    setIdentifyResult({ ok: success, line });
+    const kind = itemKindOf(item.key, item.piece);
+    const line = success ? `Rolled ${roll} vs Arcane Arts ${aa} — Success! ${item.piece.name} is identified.` : `Rolled ${roll} vs Arcane Arts ${aa} — Failed. ${hero.name} can't try this item again this quest.`;
+    setIdentifyResult({ ok: success, line, canRoll: success && !!kind && !(item.piece.magic || []).length });
     addLog(`${hero.name} attempts to identify ${item.piece.name}: ${line}`);
+  };
+  // Once identified, a magic weapon / armour / shield / ring / necklace gets its property from the 1d10 table.
+  const rollIdentifiedProperty = () => {
+    const hero = heroes.find((h) => h.id === identifyHero);
+    const item = hero && heroAllItems(hero).find((i) => i.key === identifyTarget);
+    if (!item) return;
+    const kind = itemKindOf(item.key, item.piece);
+    if (!kind) { setIdentifyResult({ ok: false, line: "Equip the weapon or armour on the Hero tab first, then identify it there (rings and necklaces can stay in the backpack)." }); return; }
+    const res = rollMagicProperty(kind, hero);
+    updateHero(applyItemPatch(hero, item.key, magicApplyPatch(item.piece, res.entries)));
+    const names = res.entries.map((m) => m.name).join(" + ");
+    const line = `${item.piece.name}: rolled ${res.roll} (1d10)${res.cursed ? " — CURSED!" : ""} → ${names}.${res.cursed ? " The curse is revealed on identification; it cannot be removed here." : ""}${kind === "jewel" ? " Wear it from the Hero tab backpack for the bonus." : " Effects are applied automatically."}`;
+    setIdentifyResult({ ok: !res.cursed, line });
+    addLog(`${hero.name}: ${line}`);
   };
 
   const [learnPrayerHero, setLearnPrayerHero] = useState("");
@@ -11746,6 +12041,17 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
     return { name: a.name, cost: a.cost, avail: a.avail, enc: a.enc, dur: a.dur, special: `DEF ${a.def}, covers ${a.covers.join("/")}` };
   });
 
+  const darkGuildItems = [
+    { name: "Bear Trap", cost: 200, avail: 5, enc: 5, dur: 2, special: "Rogue/Thief only. 1 AP to set (no Battle), 1d12 to the first enemy that enters. Set it from the Turn tab." },
+    { name: "Caltrops Trap", cost: 50, avail: 6, enc: 0, dur: 1, special: "Rogue/Thief only. Throw up to 2 squares, 1 AP, 1d4 and the enemy's activation ends." },
+    { name: "Door Mirror", cost: 300, avail: 5, enc: 0, dur: 1, special: "Spend 1 turn before opening a door to see the room: draw the Exploration Card and roll for an Encounter first. +2 hero Initiative tokens if there is an encounter." },
+    { name: "Knuckle-duster", cost: 25, avail: 5, enc: 0, dur: 1, special: "+1 DMG in unarmed combat (applied automatically in Damage when no weapon is equipped)." },
+    { name: "Superior Lock Picks (5)", cost: 75, avail: 5, enc: 0, dur: 1, special: "+5 Pick Locks (applied automatically when picking a door/chest)." },
+    { name: "Superior Sling Stones (10)", cost: 25, avail: 5, enc: 0, special: "+5 RS and +1 DMG with a Sling (applied automatically while a Sling is equipped)." },
+    { name: "Superior Trap Disarming Kit", cost: 250, avail: 4, enc: 4, dur: 6, special: "+15 to any attempt to disarm a trap (used automatically by the Disarm roller on the Turn tab)." },
+    { name: "Tripwire with Darts Trap", cost: 150, avail: 4, enc: 2, dur: 1, special: "Rogue/Thief only. Needs a full activation and a Quick Slot, up to 4 squares in a line, 1d8 to the first enemy that enters." },
+  ];
+
   const guildDefs = [
     { key: "fighters", name: "Fighters' Guild", show: hasGuilds },
     { key: "rangers", name: "Rangers' Guild", show: hasGuilds },
@@ -11931,7 +12237,7 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
 
                   <div className="subsection mb-4">
                     <p className="text-[11px] font-bold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Identify a Magic Item</p>
-                    <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>Also available at a Scryer. Only one attempt per party/object.</p>
+                    <p className="text-[10px] mb-2 italic" style={{ color: palette.inkSoft }}>Also available at a Scryer. Each Wizard may try once per item per quest. A success lets you roll the item's magic property; unidentified weapons and armour work as mundane items.</p>
                     <select value={identifyHero} onChange={(e) => { setIdentifyHero(e.target.value); setIdentifyTarget(""); setIdentifyResult(null); }} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
                       <option value="">Choose a hero…</option>
                       {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
@@ -11953,6 +12259,11 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
                       Attempt to Identify
                     </button>
                     <GuildResultBox result={identifyResult} />
+                    {identifyResult?.canRoll && (
+                      <button onClick={rollIdentifiedProperty} className="w-full text-[11px] px-2 py-1.5 rounded font-semibold mt-1.5" style={{ background: palette.forestDark, color: palette.parchment }}>
+                        ✨ It's magical — roll its property (1d10)
+                      </button>
+                    )}
                   </div>
 
                   <GuildShopList title="Buying Wizard's Staffs" desc="Staffs double as close-combat weapons (same stats as a normal staff, DUR 8) and hold 3 charges unless noted. Recharging costs a flat 250c — do that from the Hero tab once it's in a backpack." items={WIZARDS_GUILD_STAFFS.map((s) => ({ name: s.name, cost: s.cost, avail: s.avail, special: s.effect }))} heroes={heroes} party={party} setParty={setParty} updateHero={updateHero} addLog={addLog} sourceLabel="Wizards' Guild" />
@@ -12020,6 +12331,13 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
                     title="Nightstalker Armour"
                     desc="Considered Tier 2 (leather) armour. High Quality gives DUR 8. Dark as the Night gives -5 to be hit (-10 if all 4 pieces are worn) — check the Hero tab's armour picker to equip once it's bought."
                     items={nightstalkerItems}
+                    heroes={heroes} party={party} setParty={setParty} updateHero={updateHero} addLog={addLog}
+                    sourceLabel="Dark Guild"
+                  />
+                  <GuildShopList
+                    title="Special Equipment & Traps"
+                    desc="Traps are for Rogues and Thieves only and cannot be recovered once placed. Their effects are automated: set and trigger them from the Turn tab (Traps panel)."
+                    items={darkGuildItems}
                     heroes={heroes} party={party} setParty={setParty} updateHero={updateHero} addLog={addLog}
                     sourceLabel="Dark Guild"
                   />
@@ -13176,6 +13494,8 @@ function FearTerrorPanel({ heroes, updateHero, party, setParty, addLog, pushToas
     const parts = [{ label: "RES", v: Number(h.stats.RES) || 0 }];
     if (lit) parts.push({ label: "light", v: 5 });
     if (talents.includes("Braveheart")) parts.push({ label: "Braveheart", v: 10 });
+    const mgf = magicTotals(h).fear;
+    if (mgf) parts.push({ label: "magic weapon", v: mgf });
     if (k === "fear" && getBackgroundData(h)?.id === "afraid-of-heights") parts.push({ label: "background", v: 10 });
     const em = Number(extraMod) || 0;
     if (em) parts.push({ label: "other", v: em });
@@ -13189,11 +13509,19 @@ function FearTerrorPanel({ heroes, updateHero, party, setParty, addLog, pushToas
     heroes.filter((h) => !skip[h.id]).forEach((h) => {
       const t = buildTest(h);
       if (t.immune) { lines.push({ name: h.name, text: `${t.notes.join("; ")} — no test needed.`, ok: true }); return; }
-      const r = rollPercent();
-      const ok = r <= t.target && r <= 90;
+      let r = rollPercent();
+      let ok = r <= t.target && r <= 90;
+      let rerollNote = "";
+      // Powerstone ring/amulet: reroll one failed Fear or Terror Test.
+      if (!ok && magicTotals(h).fearReroll > 0) {
+        const r2 = rollPercent();
+        rerollNote = ` (magic reroll: first roll ${r} failed)`;
+        r = r2;
+        ok = r <= t.target && r <= 90;
+      }
       const how = `${t.parts.map((p) => `${p.v}${p.label === "RES" ? "" : ` ${p.label}`}`).join(" + ")} = ${t.target}`;
       if (ok) {
-        lines.push({ name: h.name, text: `${t.k === "terror" ? "Terror" : "Fear"} Test: rolled ${r} vs ${t.target} (${how}) — PASSED, no further effect this battle.`, ok: true });
+        lines.push({ name: h.name, text: `${t.k === "terror" ? "Terror" : "Fear"} Test: rolled ${r} vs ${t.target} (${how})${rerollNote} — PASSED, no further effect this battle.`, ok: true });
         return;
       }
       let cur = h;
@@ -13223,7 +13551,7 @@ function FearTerrorPanel({ heroes, updateHero, party, setParty, addLog, pushToas
       cur = { ...cur, sanity: { ...cur.sanity, cur: newSan }, lastSanityCause: t.k === "terror" ? "Failed a terror test" : "Failed a fear test" };
       updateHero(h.id, cur);
       pmLoss += sLoss;
-      lines.push({ name: h.name, ok: false, text: `${t.k === "terror" ? "Terror" : "Fear"} Test: rolled ${r} vs ${t.target} (${how}) — FAILED: ${penalty}; −${sLoss} Sanity (${newSan}/${cur.sanity.max})${newSan <= 0 ? " — Sanity is 0, roll Psychology on the hero card" : ""}.` });
+      lines.push({ name: h.name, ok: false, text: `${t.k === "terror" ? "Terror" : "Fear"} Test: rolled ${r} vs ${t.target} (${how})${rerollNote} — FAILED: ${penalty}; −${sLoss} Sanity (${newSan}/${cur.sanity.max})${newSan <= 0 ? " — Sanity is 0, roll Psychology on the hero card" : ""}.` });
     });
     if (pmLoss > 0) setParty((prev) => ({ ...prev, morale: Math.max(0, prev.morale - pmLoss) }));
     const summary = `${kind === "terror" ? "Terror" : "Fear"} Test${source.trim() ? ` vs ${source.trim()}` : ""}: ${lines.filter((l) => !l.ok).length} failed, ${lines.filter((l) => l.ok).length} passed.${pmLoss ? ` Party Morale −${pmLoss}.` : ""}`;
@@ -13294,6 +13622,136 @@ function FearTerrorPanel({ heroes, updateHero, party, setParty, addLog, pushToas
           Battle over / source dead — clear Fear &amp; Terror penalties
         </button>
       )}
+    </Panel>
+  );
+}
+
+// Dark Guild traps (rulebook 2.571 pp137-138): Rogues and Thieves set them, the app rolls the damage when they go off.
+const TRAP_DEFS = [
+  { key: "bear", item: "Bear Trap", label: "Bear Trap", die: 12, text: "1 AP, no Battle in progress. Occupies one square." },
+  { key: "tripwire", item: "Tripwire with Darts Trap", label: "Tripwire with Darts", die: 8, text: "A full activation (all AP, minimum 2), carried in a Quick Slot, no Battle in progress. Covers 1–4 squares in a straight line." },
+  { key: "caltrops", item: "Caltrops Trap", label: "Caltrops", die: 4, text: "1 AP, up to 2 squares away, no enemy adjacent to the hero." },
+];
+function TrapsPanel({ heroes, updateHero, party, setParty, addLog, inBattle }) {
+  const trappers = heroes.filter((h) => h.profession === "Rogue" || h.profession === "Thief");
+  const traps = party.traps || [];
+  const [heroId, setHeroId] = useState("");
+  const [squares, setSquares] = useState(4);
+  const [msg, setMsg] = useState(null);
+  const [wandering, setWandering] = useState(false);
+  const [disHero, setDisHero] = useState("");
+  const [cogs, setCogs] = useState(0);
+  const [clever, setClever] = useState(false);
+  const hero = heroes.find((h) => h.id === (heroId || trappers[0]?.id));
+  const owned = (h, def) => (h?.backpack || []).find((it) => it.name === def.item);
+  const place = (def) => {
+    if (!hero) return;
+    const it = owned(hero, def);
+    if (!it) { setMsg({ ok: false, text: `${hero.name} isn't carrying a ${def.label}.` }); return; }
+    if (inBattle && def.key !== "caltrops") { setMsg({ ok: false, text: `${def.label} can only be set while no Battle is taking place.` }); return; }
+    if (def.key === "tripwire" && it.slot !== "quickslot") { setMsg({ ok: false, text: "The Tripwire must be carried in a Quick Slot (move it there on the Hero tab)." }); return; }
+    const ap = hero.ap ?? 2;
+    const cost = def.key === "tripwire" ? ap : 1;
+    if (ap < (def.key === "tripwire" ? 2 : 1)) { setMsg({ ok: false, text: `${hero.name} doesn't have enough AP (${def.key === "tripwire" ? "needs a full activation, 2 AP" : "needs 1 AP"}, has ${ap}).` }); return; }
+    updateHero(hero.id, { ...hero, ap: ap - cost, backpack: hero.backpack.filter((x) => x.id !== it.id) });
+    const label = def.key === "tripwire" ? `Tripwire with Darts (${squares} square${squares === 1 ? "" : "s"})` : def.label;
+    setParty((prev) => ({ ...prev, traps: [...(prev.traps || []), { id: uid(), kind: def.key, label, by: hero.name }] }));
+    setMsg({ ok: true, text: `${hero.name} sets a ${label} (${cost} AP). Place Trap token${def.key === "tripwire" && squares > 1 ? "s" : ""} on the map. Heroes can walk through trapped squares safely.` });
+    addLog(`${hero.name} sets a ${label} (${cost} AP).`);
+  };
+  const trigger = (t) => {
+    const def = TRAP_DEFS.find((d) => d.key === t.kind);
+    const dmg = rollDie(def.die);
+    const extra = t.kind === "bear" ? (wandering ? " A Wandering Monster token triggered it: randomise ONE enemy it represents when revealed; only that enemy takes the damage." : "")
+      : t.kind === "tripwire" ? (wandering ? " A Wandering Monster token triggered it: record the damage and apply it to EACH enemy the token represents when revealed (Armour and NA separately for each)." : " Only the first enemy to enter an affected square is hit; remove all the trap's tokens.")
+      : " The enemy's activation ends immediately.";
+    const text = `${t.label} triggered: 1d${def.die} = ${dmg} damage. Resolve Armour and NA normally.${extra}`;
+    setParty((prev) => ({ ...prev, traps: (prev.traps || []).filter((x) => x.id !== t.id) }));
+    setMsg({ ok: true, text });
+    addLog(text);
+  };
+  const dh = heroes.find((h) => h.id === (disHero || heroes[0]?.id));
+  const kitBonus = dh ? (heroHasItem(dh, /^Superior Trap Disarming Kit/i) ? 15 : heroHasItem(dh, /^Trap Disarming Kit/i) ? 10 : 0) : 0;
+  const disarmTarget = dh ? clamp((Number(dh.skills.pickLocks) || 0) + (Number(cogs) || 0) + kitBonus + (clever ? 25 : 0), 0, 100) : 0;
+  const disarm = () => {
+    if (!dh) return;
+    const ap = dh.ap ?? 2;
+    if (ap < 2) { setMsg({ ok: false, text: `${dh.name} needs 2 AP to disarm a trap (has ${ap}).` }); return; }
+    const roll = rollPercent();
+    const ok = roll <= disarmTarget && roll !== 100;
+    updateHero(dh.id, { ...dh, ap: ap - 2 });
+    const text = ok ? `${dh.name} disarms the trap (rolled ${roll} vs ${disarmTarget}${kitBonus ? `, kit +${kitBonus}` : ""}).` : `${dh.name} fails to disarm it (rolled ${roll} vs ${disarmTarget}) — the trap springs!`;
+    setMsg({ ok, text });
+    addLog(text);
+  };
+  const field = { background: "#fff", border: `1px solid ${palette.line}` };
+  return (
+    <Panel className="mb-4">
+      <SectionTitle icon={ShieldAlert}>Traps</SectionTitle>
+      {trappers.length > 0 ? (
+        <>
+          <p className="text-[10px] mb-1.5 italic" style={{ color: palette.inkSoft }}>Rogues and Thieves can place Dark Guild traps (bought under Guilds). Traps are used up when placed.</p>
+          <select value={hero?.id || ""} onChange={(e) => setHeroId(e.target.value)} className="w-full text-xs rounded px-2 py-1.5 mb-1.5" style={field}>
+            {trappers.map((h) => <option key={h.id} value={h.id}>{h.name} ({h.ap ?? 2} AP)</option>)}
+          </select>
+          <div className="grid gap-1.5 mb-1.5">
+            {TRAP_DEFS.map((def) => {
+              const has = !!owned(hero, def);
+              return (
+                <div key={def.key} className="rounded p-1.5" style={{ background: "#00000008" }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold" style={{ color: palette.ink }}>{def.label} · 1d{def.die}</span>
+                    <button onClick={() => place(def)} disabled={!has} className="text-[10px] px-2 py-1 rounded font-semibold" style={{ background: has ? palette.crimsonDark : "#00000020", color: palette.parchment, opacity: has ? 1 : 0.5 }}>
+                      {has ? "Set trap" : "None carried"}
+                    </button>
+                  </div>
+                  <p className="text-[10px]" style={{ color: palette.inkSoft }}>{def.text}</p>
+                  {def.key === "tripwire" && has && (
+                    <label className="text-[10px] flex items-center gap-1.5 mt-1" style={{ color: palette.inkSoft }}>Squares (1–4)
+                      <input type="number" min={1} max={4} value={squares} onChange={(e) => setSquares(clamp(Number(e.target.value) || 1, 1, 4))} className="w-12 rounded px-1 py-0.5" style={field} />
+                    </label>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <p className="text-[10px] mb-1.5 italic" style={{ color: palette.inkSoft }}>No Rogue or Thief in the party — only they can set Dark Guild traps.</p>
+      )}
+      {traps.length > 0 && (
+        <div className="mb-2">
+          <p className="text-xs font-semibold mb-1" style={{ color: palette.ink, fontFamily: "Cinzel, serif" }}>Traps on the map ({traps.length})</p>
+          <label className="text-[10px] flex items-center gap-1.5 mb-1" style={{ color: palette.inkSoft }}>
+            <input type="checkbox" checked={wandering} onChange={(e) => setWandering(e.target.checked)} /> Triggered by a Wandering Monster token
+          </label>
+          {traps.map((t) => (
+            <div key={t.id} className="flex items-center justify-between gap-2 mb-1 rounded px-1.5 py-1" style={{ background: "#00000008" }}>
+              <span className="text-xs" style={{ color: palette.ink }}>{t.label} <span style={{ color: palette.inkSoft }}>· set by {t.by}</span></span>
+              <span className="flex gap-1">
+                <button onClick={() => trigger(t)} className="text-[10px] px-2 py-1 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>Triggered</button>
+                <button onClick={() => setParty((prev) => ({ ...prev, traps: (prev.traps || []).filter((x) => x.id !== t.id) }))} className="text-[10px] px-2 py-1 rounded font-semibold" style={{ background: "#00000015", color: palette.inkSoft }}>Remove</button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="h-px my-2" style={{ background: palette.line }} />
+      <p className="text-xs font-semibold mb-1" style={{ color: palette.ink, fontFamily: "Cinzel, serif" }}>Disarm a trap (2 AP)</p>
+      <div className="grid grid-cols-2 gap-1.5 mb-1.5">
+        <select value={dh?.id || ""} onChange={(e) => setDisHero(e.target.value)} className="text-xs rounded px-2 py-1.5" style={field}>
+          {heroes.map((h) => <option key={h.id} value={h.id}>{h.name} ({h.ap ?? 2} AP)</option>)}
+        </select>
+        <label className="text-[10px] flex items-center gap-1.5" style={{ color: palette.inkSoft }}>Cogs mod
+          <input type="number" value={cogs} onChange={(e) => setCogs(e.target.value)} className="w-full rounded px-1 py-1" style={field} />
+        </label>
+      </div>
+      {dh && (dh.perks || []).includes("Clever Fingers") && (
+        <label className="text-[10px] flex items-center gap-1.5 mb-1" style={{ color: palette.inkSoft }}><input type="checkbox" checked={clever} onChange={(e) => setClever(e.target.checked)} /> Use Clever Fingers (+25)</label>
+      )}
+      <p className="text-[10px] mb-1.5" style={{ color: palette.inkSoft }}>Target {disarmTarget} = Pick Locks {dh ? dh.skills.pickLocks : 0}{Number(cogs) ? ` ${Number(cogs) > 0 ? "+" : ""}${Number(cogs)} cogs` : ""}{kitBonus ? ` + ${kitBonus} ${kitBonus === 15 ? "Superior kit" : "kit"}` : ""}{clever ? " + 25 Clever Fingers" : ""}</p>
+      <button onClick={disarm} disabled={!dh} className="w-full text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: palette.forestDark, color: palette.parchment }}>Roll to disarm</button>
+      {msg && <p className="text-[11px] mt-2 font-semibold" style={{ color: msg.ok ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif" }}>{msg.text}</p>}
     </Panel>
   );
 }
@@ -13640,11 +14098,13 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
   // rulebook actually wants it to persist across turns of the same fight.
   const initSetup = party.initiativeSetup;
   const setInitSetup = (patch) => setParty((prev) => ({ ...prev, initiativeSetup: { ...prev.initiativeSetup, ...patch } }));
-  const { enemyCount, namedMonsterCount, largeMonsterCount, perfectHearing, enemyPerfectHearing, swiftLeader, sneaky, doorBashed, ambushed } = initSetup;
+  const { enemyCount, namedMonsterCount, largeMonsterCount, perfectHearing, enemyPerfectHearing, swiftLeader, sneaky, doorBashed, ambushed, doorMirror, magicTokens } = initSetup;
+  const magicTokenTotal = heroes.reduce((n, h) => n + magicTotals(h).tokens, 0);
+  const hasDoorMirror = heroes.some((h) => heroHasItem(h, /^Door Mirror/i));
   const bag = party.initiativeBag;
   const drawOrder = party.initiativeDrawOrder;
 
-  const heroTokenCount = heroes.filter((h) => !(party.advancedRules?.overwatch && h.overwatch)).length + (perfectHearing && !enemyPerfectHearing ? 1 : 0) + (swiftLeader ? 1 : 0);
+  const heroTokenCount = heroes.filter((h) => !(party.advancedRules?.overwatch && h.overwatch)).length + (perfectHearing && !enemyPerfectHearing ? 1 : 0) + (swiftLeader ? 1 : 0) + (doorMirror ? 2 : 0) + (magicTokens ? magicTokenTotal : 0);
   const enemyTokenCount =
     Math.max(0, Number(enemyCount) || 0) +
     Math.max(0, Number(namedMonsterCount) || 0) +
@@ -13741,6 +14201,8 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
             [enemyPerfectHearing && perfectHearing ? "Hero Perfect Hearing (cancelled)" : "Perfect Hearing (+1 hero)", "perfectHearing", perfectHearing],
             [enemyPerfectHearing && perfectHearing ? "Enemy Perfect Hearing (cancelled)" : "Enemy Perfect Hearing (+1 enemy)", "enemyPerfectHearing", enemyPerfectHearing],
             ["Swift Leader (+1 hero)", "swiftLeader", swiftLeader],
+            ...(hasDoorMirror ? [["Door Mirror: encounter behind the door (+2 hero)", "doorMirror", doorMirror]] : []),
+            ...(magicTokenTotal > 0 ? [[`Magic items, first combat turn (+${magicTokenTotal} hero)`, "magicTokens", magicTokens]] : []),
             ["Sneaky (+1 enemy)", "sneaky", sneaky],
             ["Door bashed (+2 enemy)", "doorBashed", doorBashed],
             ["Ambushed (+3 enemy)", "ambushed", ambushed],
@@ -13821,6 +14283,8 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
       <EncounterRoller heroes={heroes} addLog={addLog} />
 
       <FearTerrorPanel heroes={heroes} updateHero={updateHero} party={party} setParty={setParty} addLog={addLog} pushToast={pushToast} />
+
+      <TrapsPanel heroes={heroes} updateHero={updateHero} party={party} setParty={setParty} addLog={addLog} inBattle={inBattle} />
 
       <BehaviourWalker />
 
@@ -14182,9 +14646,11 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
     const base = heroes.reduce((s, h) => s + (noPM(h) ? 0 : Math.floor((Number(h.stats.RES) || 0) / 10)), 0);
     // Natural Leader: +2 Starting and maximum PM (does not stack), capped at 20 (rulebook 2.571).
     const leader = heroes.some((h) => (h.talents || []).includes("Natural Leader"));
-    const pm = leader ? Math.min(20, base + 2) : base;
+    // Powerstone ring/amulet: +2 Starting PM while worn by a party member (absolute maximum 20).
+    const magicPM = heroes.reduce((n, h) => n + magicTotals(h).startPM, 0);
+    const pm = leader || magicPM > 0 ? Math.min(20, base + (leader ? 2 : 0) + magicPM) : base;
     setParty({ ...party, morale: pm, startingMorale: pm });
-    addLog(`Starting Party Morale set to ${pm} (sum of floor(RES/10) across ${heroes.length} hero${heroes.length === 1 ? "" : "es"}${heroes.some(noPM) ? ", Despairing/Withdrawn heroes excluded" : ""}${leader ? ", +2 Natural Leader" : ""}).`);
+    addLog(`Starting Party Morale set to ${pm} (sum of floor(RES/10) across ${heroes.length} hero${heroes.length === 1 ? "" : "es"}${heroes.some(noPM) ? ", Despairing/Withdrawn heroes excluded" : ""}${leader ? ", +2 Natural Leader" : ""}${magicPM ? `, +${magicPM} magic item${magicPM > 2 ? "s" : ""}` : ""}).`);
   };
 
   const awardXP = () => {
@@ -14467,14 +14933,19 @@ function HeroDamageRoller({ hero, perfect, addLog }) {
   const [justBones, setJustBones] = useState(false);
   const [immune, setImmune] = useState(false);
   const [out, setOut] = useState(null);
-  const w = hero?.weapon;
-  if (!w?.name) return <p className="text-xs italic mt-2" style={{ color: palette.inkSoft }}>Equip a weapon on the hero card to roll damage here.</p>;
-  const tmpl = WEAPONS.find((x) => x.name === String(w.name).replace(/^Mithril\s+/i, ""));
+  const unarmed = !hero?.weapon?.name;
+  const knuckle = unarmed && heroHasItem(hero || {}, /^Knuckle-?duster/i);
+  const w = unarmed ? { name: knuckle ? "Unarmed (Knuckle-duster)" : "Unarmed", dmg: knuckle ? "1d4+1" : "1d4" } : hero?.weapon;
+  if (!hero) return null;
+  const mg = magicTotals(hero);
+  const stones = !unarmed && /sling/i.test(w.name) && heroHasItem(hero, /^Superior Sling Stones/i);
+  const tmpl = unarmed ? null : WEAPONS.find((x) => x.name === String(w.name).replace(/^Mithril\s+/i, ""));
   const wtype = tmpl?.wtype || "";
   const special = tmpl?.special || "";
   const hasBleed = /Bleed/i.test(special);
   const isStun = /Stun/i.test(special);
-  const p = parseWeaponDmg(w.dmg || tmpl?.dmg);
+  const p0 = parseWeaponDmg(w.dmg || tmpl?.dmg);
+  const p = stones ? { ...p0, flat: p0.flat + 1 } : p0;
   const db = damageBonus(hero.stats.STR);
   const doRoll = () => {
     const rollOnce = () => { let t = 0; for (let i = 0; i < p.count; i++) t += rollDie(p.sides); return t; };
@@ -14484,9 +14955,18 @@ function HeroDamageRoller({ hero, perfect, addLog }) {
     const notes = [];
     if (wtype === "C" && justBones) { weaponDmg += 2; notes.push("Crushing vs Just Bones: +2 DMG"); }
     if (wtype === "P" && justBones) { weaponDmg -= 2; notes.push("Piercing vs Just Bones: −2 DMG"); }
+    if (stones) notes.push("Superior Sling Stones: +1 DMG, +5 RS (applied)");
+    if (knuckle) notes.push("Knuckle-duster: +1 DMG unarmed (applied)");
+    if (unarmed) notes.push("Unarmed attack uses CS");
     const raw = Math.max(0, weaponDmg + db);
-    const reduction = Number(naIn || 0) + Number(armIn || 0);
+    // Fire Damage (magic weapon) ignores Natural Armour and worn Armour.
+    const reduction = mg.fire ? 0 : Number(naIn || 0) + Number(armIn || 0);
     const dealt = Math.max(0, raw - reduction);
+    if (mg.fire) {
+      const f = rollDie(6);
+      notes.push(`Fire Damage: ignores NA & Armour. Burning roll ${f}: ${f <= 3 ? "extinguished" : `continues next turn for ${Math.max(1, Math.floor(dealt / 2))} damage, then extinguished`}`);
+    }
+    if (mg.poison && dealt > 0) notes.push("Poisonous: the wounded enemy loses 1 HP at the start of each of its activations until the battle ends");
     if (wtype === "P" && !justBones && dice % 2 === 1) notes.push("Piercing, odd damage roll: push the target 1 square");
     if (isStun && dice % 2 === 0) notes.push("Stun: even damage roll — target loses an action next turn (doesn't stack)");
     if (wtype === "E") notes.push("Edged: may be coated with Weapon Oil");
@@ -14499,13 +14979,13 @@ function HeroDamageRoller({ hero, perfect, addLog }) {
       else bleed = `No Bleed — needs ≥6 damage and within 2 of the weapon's max (${weaponMax}); dealt ${dealt}.`;
     }
     setOut({ dice, second, weaponDmg, db, raw, reduction, dealt, notes, bleed });
-    addLog && addLog(`${hero.name}: ${w.name} damage ${dealt} (roll ${dice}${second !== null ? ` / ${second}, Bloodlust` : ""} + ${p.flat} + DB ${db} − ${reduction}).${bleed && bleed.startsWith("BLEEDING") ? " Target is bleeding." : ""}`);
+    addLog && addLog(`${hero.name}: ${w.name} damage ${dealt} (roll ${dice}${second !== null ? ` / ${second}, Bloodlust` : ""} + ${p.flat} + DB ${db} − ${reduction}${mg.fire ? ", Fire" : ""}).${bleed && bleed.startsWith("BLEEDING") ? " Target is bleeding." : ""}`);
   };
   const inp = "w-full px-2 py-1 rounded text-sm";
   return (
     <div className="mt-2 rounded p-2.5" style={{ background: "#00000008" }}>
       <p className="text-xs font-semibold mb-1" style={{ color: palette.ink, fontFamily: "Cinzel, serif" }}>
-        {w.name} · {w.dmg || tmpl?.dmg} {wtype && `· ${({ E: "Edged", P: "Piercing", C: "Crushing" })[wtype]}`} · DB {db >= 0 ? "+" : ""}{db}
+        {w.name} · {w.dmg || tmpl?.dmg}{stones ? "+1" : ""} {wtype && `· ${({ E: "Edged", P: "Piercing", C: "Crushing" })[wtype]}`} · DB {db >= 0 ? "+" : ""}{db}
       </p>
       <div className="grid grid-cols-2 gap-2 mb-2">
         <label className="text-xs" style={{ color: palette.inkSoft }}>Enemy Natural Armour
@@ -16256,7 +16736,7 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   const pickTheLock = () => {
     if (!doorResult || !doorResult.locked || !activeDoorHero) return;
     if (!trySpendAP(activeDoorHero, 2)) return;
-    const skill = (Number(activeDoorHero.skills.pickLocks) || 0) + doorResult.pickMod;
+    const skill = (Number(activeDoorHero.skills.pickLocks) || 0) + doorResult.pickMod + (heroHasItem(activeDoorHero, /^Superior Lock ?Picks/i) ? 5 : 0);
     const roll = rollPercent();
     if (roll === 100) {
       setDoorResult((prev) => ({ ...prev, jammed: true }));
@@ -16495,7 +16975,7 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
                     style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}
                     title="2 AP, no Threat increase — breaks the pick on a fail, jams on a fumble (natural 00)"
                   >
-                    Pick the Lock ({activeDoorHero ? (Number(activeDoorHero.skills.pickLocks) || 0) + doorResult.pickMod : "—"})
+                    Pick the Lock ({activeDoorHero ? (Number(activeDoorHero.skills.pickLocks) || 0) + doorResult.pickMod + (heroHasItem(activeDoorHero, /^Superior Lock ?Picks/i) ? 5 : 0) : "—"})
                   </button>
                 )}
 
@@ -17281,13 +17761,28 @@ function Reference() {
       <Panel>
         <SectionTitle icon={Sparkles}>Powerstones (1d20)</SectionTitle>
         <p className="text-xs mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-          Rolled automatically when the Enchant Item spell succeeds — result is stored on the item.
+          Rolled automatically when the Enchant Item spell succeeds (re-rolled until the stone suits the object) — the result is stored on the item and applied automatically. The Powerstone is used up on success.
         </p>
         <div className="text-xs space-y-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
           {POWERSTONES.map((p) => (
             <p key={p.roll}><b>{p.roll}.</b> {p.name} <span style={{ color: palette.inkSoft }}>({p.appliesTo})</span> — {p.effect}</p>
           ))}
         </div>
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={Sparkles}>Magic Item Properties (1d10)</SectionTitle>
+        <p className="text-xs mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+          Rolled after an item is identified (Settlement → Guilds → Wizards' Guild → Identify). A 10 is Cursed: roll a beneficial power, then a Curse.
+        </p>
+        {[["Weapons", MAGIC_WEAPON_TABLE], ["Armour & Shields", MAGIC_ARMOUR_TABLE], ["Jewellery & Other", MAGIC_JEWEL_TABLE], ["Curses", MAGIC_CURSE_TABLE]].map(([title, rows]) => (
+          <div key={title} className="mb-2">
+            <p className="text-xs font-bold" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>{title}</p>
+            <div className="text-xs space-y-0.5" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+              {rows.map((r) => <p key={r.roll}><b>{r.roll}.</b> {r.cursed ? "Cursed — roll the beneficial power again, then on the Curse table." : (r.note || r.name)}</p>)}
+            </div>
+          </div>
+        ))}
       </Panel>
 
       <Panel>
@@ -18465,6 +18960,7 @@ export default function App() {
           fearDark: inDungeon && (h.mentalConditions || []).some((c) => c.dungeonRes) ? { label: "Fear of the Dark: −20 RES (in a dungeon)", effect: { stat: "RES", amount: -20 } } : null,
           darkness: darknessEffect(h, party),
           lightPer: lightPerEffect(h, party),
+          gear: gearEffect(h),
         };
         Object.entries(wants).forEach(([key, want]) => {
           const has = (cur.tempEffects || []).find((e) => e.auto === key);

@@ -3,6 +3,17 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.77.0] — 2026-10-24
+
+### Added
+- Expansions tab (World & Campaign group): switch The False Prophet on to enable its rules. Each expansion lists what is new, what it replaces and what is still done by hand, and switching it off hides everything it added
+- Expanded Diseases (The False Prophet): replaces the core Disease rule with the book's 8 diseases. Hero cards get Risk of disease (CON test with modifier, Resistance to Disease +25 applied), Give disease, contagion (diseased token) buttons, Cured and a Process a rest button
+- Short Rest, Make Camp and an inn night now run disease checks automatically: cure test first, then symptoms, then contagion tests, then recovery. Withering Plague (max HP loss, 1d3 HP), Morgret's Flu (no Energy), Kefrah's Affliction, Merdur's Disease (STR), Nudrul's Infection (WIS and max Mana), Pestilence of Crawe (spreading blisters) and Death's Door (CON -20) are applied and reversed on cure
+- Not yet in the app: Lasting and Permanent Wounds, the Druid, the Knight's Squire, Druid and Knight levelling tables, Class Specialisation. Disease gaps: armour blocking on blistered zones, the Stupid rule and carrying a hero at 0 STR/WIS are manual; Rest for the Day on the Travel tab does not process diseases
+
+### Changed
+- A New Beginning's switch moved from Party > Optional Rules to the Expansions tab (existing saves keep their setting)
+
 ## [1.76.1] — 2026-10-23
 
 ### Fixed

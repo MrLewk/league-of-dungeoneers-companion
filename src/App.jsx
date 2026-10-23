@@ -66,6 +66,9 @@ const defaultHero = () => ({
   creationPointsSpent: { STR: 0, CON: 0, DEX: 0, WIS: 0, RES: 0 },
   freeSkill: "",
   hp: { cur: 10, max: 10 },
+  diseases: [], // Expanded Diseases (The False Prophet): [{ key, pending, hpLost, strLost, wisLost, manaLost, conLost, zones }]
+  diseaseExposure: [], // diseased-token reminders: [{ key, from }] — a CON test at the next rest
+  diseaseImmune: [], // keys of diseases this hero was cured of while someone in the party still has them
   bleedingOutRolled: false, // has the one-time 1d4 permanent loss for this knockout been rolled?
   energy: { cur: 1, max: 1 },
   sanity: { cur: 8, max: 8 },
@@ -551,6 +554,185 @@ function alchemistBeltSlots(hero) {
   return names.includes("Alchemist Belt") ? 6 : 0;
 }
 
+// ---- Expansions: The False Prophet — Expanded Diseases (replaces the core Disease rule while switched on) ----
+const EXP = { on: false, diseases: false }; // refreshed each App render from party.expansions
+const HIT_ZONES = ["Head", "Arms", "Torso", "Legs"];
+const DISEASES = [
+  { key: "withering", name: "Withering Plague", contagious: true, mod: -35, short: "Max HP −1 every rest; only 1d3 HP regained when resting.", text: "Also known as the red pox. Every time the hero rests, max HP drops by 1, and the hero only regains 1d3 HP when resting (anywhere). When cured the max HP is restored; lost HP must still be healed normally." },
+  { key: "morgret", name: "Morgret's Flu", contagious: true, mod: -15, short: "All Energy lost; none regained until cured.", text: "The hero loses all Energy Points and regains none until cured. Once cured, all Energy is regained." },
+  { key: "kefrah", name: "Kefrah's Affliction", contagious: false, mod: -30, short: "WIS test each rest or −1 Sanity.", text: "The hero must pass a WIS test every rest or lose 1 Sanity. Lost Sanity is regained the normal way after the cure." },
+  { key: "merdur", name: "Merdur's Disease", contagious: false, mod: -30, short: "−1d6 STR every rest; at 0 STR carried, no activation token.", text: "The hero loses 1d6 STR every rest. At 0 STR the hero must be carried and no longer gets an activation token. When cured, all lost STR returns." },
+  { key: "nudrul", name: "Nudrul's Infection", contagious: false, mod: -25, short: "'Stupid' rule; −5 WIS (and max Mana) every rest.", text: "The hero has the 'Stupid' special rule (see Bestiary) and loses 5 WIS every rest, which also lowers max Mana. At 0 WIS the hero is carried and gets no activation token. When cured all WIS returns; lost Mana is regained normally." },
+  { key: "crawe", name: "Pestilence of Crawe", contagious: true, mod: -20, short: "Blisters block armour on hit zones; spread on each failed rest test.", text: "Blisters cover a hit zone (roll the Hit Zone table): no armour on that part. Each failed CON test at a rest spreads them to a new random zone. With every zone covered the hero regains no HP while resting. Once cured, armour and resting work normally." },
+  { key: "lungmould", name: "Lungmould", contagious: true, mod: -20, short: "CON test before every attack or Energy use; fail = activation forfeit.", text: "Before every attack or use of an Energy Point the hero must pass a CON test. A failure means coughing: the entire activation is forfeit, and the hero counts as having made a Power Attack until its next activation (enemies attack them as such)." },
+  { key: "death", name: "Death's Door", contagious: true, mod: 0, short: "CON −20; a weakened immune system lets other diseases in.", text: "Greatly impaired immune system: CON is decreased by 20 until cured. Unlike other diseases, a hero with Death's Door can contract further diseases. The cure test has no CON modifier." },
+];
+const DISEASE_BY_D8 = ["withering", "morgret", "kefrah", "merdur", "nudrul", "crawe", "lungmould", "death"]; // 1d8 table, p57
+const diseaseByKey = (k) => DISEASES.find((d) => d.key === k);
+function diseaseTarget(h, d, extra = 0) {
+  let t = (Number(h.stats.CON) || 0) + (d ? d.mod : 0) + extra;
+  if ((h.talents || []).includes("Resistance to Disease")) t += 25;
+  return Math.max(0, t);
+}
+function diseaseTest(h, d, extra = 0) {
+  const roll = rollPercent();
+  const target = diseaseTarget(h, d, extra);
+  return { roll, target, ok: roll <= 5 || (roll <= target && roll < 100) };
+}
+function canContract(h, key) {
+  const list = h.diseases || [];
+  if (list.some((e) => e.key === key)) return false;
+  if ((h.diseaseImmune || []).includes(key)) return false;
+  return list.length === 0 || list.some((e) => e.key === "death");
+}
+// Symptoms that take effect the moment the disease becomes active (returns { hero, entry, lines }).
+function activateDisease(h, entry) {
+  const d = diseaseByKey(entry.key);
+  const e = { ...entry, pending: false };
+  const lines = [];
+  let nh = h;
+  if (entry.key === "morgret") { nh = { ...nh, energy: { ...nh.energy, cur: 0 } }; lines.push(`${h.name}: Morgret's Flu — all Energy lost.`); }
+  if (entry.key === "death") {
+    const lost = Math.min(20, Number(nh.stats.CON) || 0);
+    e.conLost = (e.conLost || 0) + lost;
+    nh = { ...nh, stats: { ...nh.stats, CON: nh.stats.CON - lost } };
+    lines.push(`${h.name}: Death's Door — CON −${lost} until cured.`);
+  }
+  if (entry.key === "crawe") {
+    const free = HIT_ZONES.filter((z) => !(e.zones || []).includes(z));
+    const z = free[rollDie(free.length) - 1];
+    e.zones = [...(e.zones || []), z];
+    lines.push(`${h.name}: Pestilence of Crawe — blisters cover the ${z}; no armour there.`);
+  }
+  if (!lines.length) lines.push(`${h.name}: ${d.name} takes hold.`);
+  return { hero: nh, entry: e, lines };
+}
+// Per-rest symptoms.
+function tickDisease(h, entry) {
+  const e = { ...entry };
+  const lines = [];
+  let nh = h;
+  if (e.key === "withering") {
+    if (nh.hp.max > 1) {
+      nh = { ...nh, hp: { max: nh.hp.max - 1, cur: Math.min(nh.hp.cur, nh.hp.max - 1) } };
+      e.hpLost = (e.hpLost || 0) + 1;
+      lines.push(`${h.name}: Withering Plague — max HP −1 (now ${nh.hp.max}).`);
+    } else lines.push(`${h.name}: Withering Plague — max HP is already 1; the next loss would be fatal. Seek a cure now!`);
+  }
+  if (e.key === "kefrah") {
+    const roll = rollPercent();
+    const wis = Number(nh.stats.WIS) || 0;
+    const ok = roll <= 5 || (roll <= wis && roll < 100);
+    if (ok) lines.push(`${h.name}: Kefrah's Affliction — WIS test ${roll} vs ${wis}: passed.`);
+    else if (SIMP.sanity) lines.push(`${h.name}: Kefrah's Affliction — WIS test ${roll} vs ${wis}: failed (Sanity is removed in this campaign, so nothing is lost).`);
+    else {
+      nh = { ...nh, sanity: { ...nh.sanity, cur: Math.max(0, nh.sanity.cur - 1) } };
+      lines.push(`${h.name}: Kefrah's Affliction — WIS test ${roll} vs ${wis}: failed, −1 Sanity (now ${nh.sanity.cur}/${nh.sanity.max}).`);
+    }
+  }
+  if (e.key === "merdur") {
+    const loss = Math.min(rollDie(6), Number(nh.stats.STR) || 0);
+    nh = { ...nh, stats: { ...nh.stats, STR: nh.stats.STR - loss } };
+    e.strLost = (e.strLost || 0) + loss;
+    lines.push(`${h.name}: Merdur's Disease — STR −${loss} (now ${nh.stats.STR}).${nh.stats.STR <= 0 ? " STR is 0: the hero must be carried and gets no activation token." : ""}`);
+  }
+  if (e.key === "nudrul") {
+    const loss = Math.min(5, Number(nh.stats.WIS) || 0);
+    const manaLoss = nh.mana.max > 0 ? Math.min(nh.mana.max, Math.floor(loss * 1.5)) : 0;
+    nh = { ...nh, stats: { ...nh.stats, WIS: nh.stats.WIS - loss }, mana: manaLoss ? { max: nh.mana.max - manaLoss, cur: Math.min(nh.mana.cur, nh.mana.max - manaLoss) } : nh.mana };
+    e.wisLost = (e.wisLost || 0) + loss;
+    e.manaLost = (e.manaLost || 0) + manaLoss;
+    lines.push(`${h.name}: Nudrul's Infection — WIS −${loss} (now ${nh.stats.WIS})${manaLoss ? `, max Mana −${manaLoss}` : ""}.${nh.stats.WIS <= 0 ? " WIS is 0: the hero must be carried and gets no activation token." : ""}`);
+  }
+  if (e.key === "morgret") nh = { ...nh, energy: { ...nh.energy, cur: 0 } };
+  return { hero: nh, entry: e, lines };
+}
+function cureDisease(h, entry) {
+  const d = diseaseByKey(entry.key);
+  let nh = h;
+  const bits = [];
+  if (entry.hpLost) { nh = { ...nh, hp: { ...nh.hp, max: nh.hp.max + entry.hpLost } }; bits.push(`max HP +${entry.hpLost} restored`); }
+  if (entry.key === "morgret") { nh = { ...nh, energy: { ...nh.energy, cur: nh.energy.max } }; bits.push("all Energy regained"); }
+  if (entry.conLost) { nh = { ...nh, stats: { ...nh.stats, CON: nh.stats.CON + entry.conLost } }; bits.push(`CON +${entry.conLost} restored`); }
+  if (entry.strLost) { nh = { ...nh, stats: { ...nh.stats, STR: nh.stats.STR + entry.strLost } }; bits.push(`STR +${entry.strLost} restored`); }
+  if (entry.wisLost) { nh = { ...nh, stats: { ...nh.stats, WIS: nh.stats.WIS + entry.wisLost } }; bits.push(`WIS +${entry.wisLost} restored`); }
+  if (entry.manaLost) { nh = { ...nh, mana: { ...nh.mana, max: nh.mana.max + entry.manaLost } }; bits.push(`max Mana +${entry.manaLost} restored (lost Mana is regained normally)`); }
+  nh = { ...nh, diseases: (nh.diseases || []).filter((x) => x.key !== entry.key), diseaseImmune: Array.from(new Set([...(nh.diseaseImmune || []), entry.key])) };
+  return { hero: nh, line: `${h.name} is cured of ${d.name}${bits.length ? ` — ${bits.join(", ")}` : ""}.` };
+}
+// Give a hero a disease (symptoms start at the next rest unless `immediate`). Returns the new hero + lines.
+function contractDisease(h, key, immediate = false) {
+  const d = diseaseByKey(key);
+  let entry = { key, pending: !immediate };
+  let nh = h;
+  const lines = [];
+  if (immediate) { const a = activateDisease(nh, entry); nh = a.hero; entry = a.entry; lines.push(...a.lines); }
+  else lines.push(`${h.name} has contracted ${d.name}. Symptoms begin at the next rest, and the hero is not contagious until after it.`);
+  nh = { ...nh, diseases: [...(nh.diseases || []), entry] };
+  return { hero: nh, lines };
+}
+function diseaseRestFlags(h) {
+  const active = (h.diseases || []).filter((e) => !e.pending);
+  const flags = { hpDie: 6, noHp: false, noEnergy: false };
+  if (active.some((e) => e.key === "withering")) flags.hpDie = 3;
+  const crawe = active.find((e) => e.key === "crawe");
+  if (crawe && (crawe.zones || []).length >= HIT_ZONES.length) flags.noHp = true;
+  if (active.some((e) => e.key === "morgret")) flags.noEnergy = true;
+  return flags;
+}
+// One rest's worth of disease processing for a hero: cure test first, then symptoms, then contagion tests.
+function diseaseRestStep(h0, all) {
+  const none = { hero: h0, lines: [], flags: { hpDie: 6, noHp: false, noEnergy: false } };
+  if (!EXP.diseases) return none;
+  const hasAny = (h0.diseases || []).length > 0 || (h0.diseaseExposure || []).length > 0;
+  if (!hasAny && !(h0.diseaseImmune || []).length) return none;
+  let h = h0;
+  const lines = [];
+  for (const entry of h0.diseases || []) {
+    const d = diseaseByKey(entry.key);
+    if (!d) continue;
+    const t = diseaseTest(h, d);
+    const modTxt = d.mod ? ` (CON ${h.stats.CON}${d.mod}${(h.talents || []).includes("Resistance to Disease") ? "+25" : ""})` : "";
+    if (t.ok) {
+      const c = cureDisease(h, entry);
+      h = c.hero;
+      lines.push(`${h.name}: cure test ${t.roll} vs ${t.target}${modTxt} — passed. ${c.line}`);
+      continue;
+    }
+    lines.push(`${h.name}: cure test ${t.roll} vs ${t.target}${modTxt} — failed, still ill with ${d.name}.`);
+    let e = { ...entry };
+    if (e.pending) {
+      const a = activateDisease(h, e); h = a.hero; e = a.entry; lines.push(...a.lines);
+      const tk = tickDisease(h, e); h = tk.hero; e = tk.entry; lines.push(...tk.lines);
+    } else {
+      if (e.key === "crawe" && (e.zones || []).length < HIT_ZONES.length) {
+        const free = HIT_ZONES.filter((z) => !e.zones.includes(z));
+        const z = free[rollDie(free.length) - 1];
+        e = { ...e, zones: [...e.zones, z] };
+        lines.push(`${h.name}: blisters spread to the ${z}.`);
+      }
+      const tk = tickDisease(h, e); h = tk.hero; e = tk.entry; lines.push(...tk.lines);
+    }
+    h = { ...h, diseases: (h.diseases || []).map((x) => (x.key === e.key ? e : x)) };
+  }
+  // Contagion: the next rest after ending a turn next to a contagious diseased party member.
+  for (const key of Array.from(new Set((h0.diseaseExposure || []).map((x) => x.key)))) {
+    const d = diseaseByKey(key);
+    if (!d || !canContract(h, key)) { lines.push(`${h.name}: exposed to ${d ? d.name : key} but cannot catch it (already ill or immune).`); continue; }
+    const t = diseaseTest(h, d);
+    if (t.ok) lines.push(`${h.name}: contagion test for ${d.name} ${t.roll} vs ${t.target} — resisted.`);
+    else {
+      const c = contractDisease(h, key, true);
+      h = c.hero;
+      lines.push(`${h.name}: contagion test for ${d.name} ${t.roll} vs ${t.target} — failed! ${c.lines.join(" ")}`);
+    }
+  }
+  // Immunity from a cured disease ends once nobody in the party has it any more.
+  const stillIll = new Set((all || [h0]).filter((x) => x.id !== h0.id).concat([h]).flatMap((x) => (x.diseases || []).map((e) => e.key)));
+  h = { ...h, diseaseExposure: [], diseaseImmune: (h.diseaseImmune || []).filter((k) => stillIll.has(k)) };
+  return { hero: h, lines, flags: diseaseRestFlags(h) };
+}
+
 const defaultParty = () => ({
   threat: 2, threatFloor: 2, morale: 0, food: 4,
   coins: 0, // Party Pot — shared coins, built up via "Pool to Party" from a hero's personal pouch; starts empty since new heroes now start with their own 150c
@@ -560,6 +742,7 @@ const defaultParty = () => ({
   dungeonRestCount: 0, // completed (uninterrupted) Short Rests taken since entering the current dungeon — drives the Ambush risk escalation; resets to 0 on Exit Dungeon, never per level
   simplified: { encumbrance: false, morale: false, durability: false, sanity: false, scenario: false }, // Simplified Game (p21): true = system removed
   optionalRules: { lootMode: "hardcore", dungeonEvents: false, simplifiedAlchemy: false, newBeginning: false, manualTracking: false, alchemyOnly: false },
+  expansions: { falseProphet: false, fpDiseases: true }, // Expansions tab: The False Prophet master switch + its parts
   manualHero: { STR: "", DEX: "", perception: "", pickLocks: "" }, // typed numbers the Actions tools use when no hero is picked (Manual tracking)
   roomEvent: null, // current room's Dungeon Event (optional rule), persisted across tab switches
   newBeginning: { seed: "", quests: {} }, // A New Beginning expansion tracker: seed 1-12 and per-quest { name, settlement, note }
@@ -630,6 +813,7 @@ function normalizeParty(p) {
   merged.magicWorkshop = { ...defaultParty().magicWorkshop, ...(p?.magicWorkshop || {}) };
   merged.initiativeSetup = { ...defaultParty().initiativeSetup, ...(p?.initiativeSetup || {}) };
   merged.optionalRules = { ...defaultParty().optionalRules, ...(p?.optionalRules || {}) };
+  merged.expansions = { ...defaultParty().expansions, ...(p?.expansions || {}) };
   merged.simplified = { ...defaultParty().simplified, ...(p?.simplified || {}) };
   merged.advancedRules = { ...defaultParty().advancedRules, ...(p?.advancedRules || {}) };
   merged.darkness = { ...defaultParty().darkness, ...(p?.darkness || {}) };
@@ -4234,6 +4418,21 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.77.0",
+    date: "2026-10-24",
+    sections: {
+      Added: [
+        "Expansions tab (World & Campaign group): switch The False Prophet on to enable its rules. Each expansion lists what is new, what it replaces and what is still done by hand, and switching it off hides everything it added",
+        "Expanded Diseases (The False Prophet): replaces the core Disease rule with the book's 8 diseases. Hero cards get Risk of disease (CON test with modifier, Resistance to Disease +25 applied), Give disease, contagion (diseased token) buttons, Cured and a Process a rest button",
+        "Short Rest, Make Camp and an inn night now run disease checks automatically: cure test first, then symptoms, then contagion tests, then recovery. Withering Plague (max HP loss, 1d3 HP), Morgret's Flu (no Energy), Kefrah's Affliction, Merdur's Disease (STR), Nudrul's Infection (WIS and max Mana), Pestilence of Crawe (spreading blisters) and Death's Door (CON -20) are applied and reversed on cure",
+        "Not yet in the app: Lasting and Permanent Wounds, the Druid, the Knight's Squire, Druid and Knight levelling tables, Class Specialisation. Disease gaps: armour blocking on blistered zones, the Stupid rule and carrying a hero at 0 STR/WIS are manual; Rest for the Day on the Travel tab does not process diseases",
+      ],
+      Changed: [
+        "A New Beginning's switch moved from Party > Optional Rules to the Expansions tab (existing saves keep their setting)",
+      ],
+    },
+  },
   {
     version: "1.76.1",
     date: "2026-10-23",
@@ -8532,6 +8731,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               Add
             </button>
           </div>
+          <HeroDiseasePanel hero={hero} update={update} otherHeroes={otherHeroes} allHeroes={[hero, ...(otherHeroes || [])]} addLog={addLog} pushToast={pushToast} />
 
           {/* Basic stats */}
           <div className="flex items-center justify-between mb-2 mt-3 pb-1" style={HERO_HEADING_ROW}>
@@ -10044,23 +10244,26 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
     const freeStay = isSilverCity && party.estate?.owned;
     const canAfford = freeStay || party.innCostPerNight <= party.coins;
     const summary = [];
-    selected.forEach((hero) => {
+    selected.forEach((hero0) => {
+      const dz = diseaseRestStep(hero0, heroes);
+      const hero = dz.hero;
+      dz.lines.forEach((t) => { summary.push(t); addLog(t); });
       let newHp, newMana, newEnergy, newLuck;
       if (canAfford) {
-        const roll = rollDie(6) + rollDie(6);
+        const roll = dz.flags.noHp ? 0 : dz.flags.hpDie === 3 ? rollDie(3) : rollDie(6) + rollDie(6);
         newHp = Math.min(hero.hp.max, hero.hp.cur + roll);
         newMana = hero.mana.max;
-        newEnergy = hero.energy.max;
+        newEnergy = dz.flags.noEnergy ? hero.energy.cur : hero.energy.max;
         newLuck = hero.luck.max;
         summary.push(`${hero.name}: +${roll} HP (${newHp}/${hero.hp.max}), Mana/Luck/Energy refilled`);
         addLog(`${hero.name} rests at the inn: +${roll} HP (${newHp}/${hero.hp.max}), Mana/Luck/Energy refilled.`);
       } else {
         // Can't afford it — free fallback per the rulebook: sleep in the stable instead.
         // 1d6 HP (not 2d6), and only half (rounded down) of the Mana/Luck/Energy deficit.
-        const roll = rollDie(6);
+        const roll = dz.flags.noHp ? 0 : dz.flags.hpDie === 3 ? rollDie(3) : rollDie(6);
         newHp = Math.min(hero.hp.max, hero.hp.cur + roll);
         newMana = hero.mana.cur + Math.floor((hero.mana.max - hero.mana.cur) / 2);
-        newEnergy = hero.energy.cur + Math.floor((hero.energy.max - hero.energy.cur) / 2);
+        newEnergy = dz.flags.noEnergy ? hero.energy.cur : hero.energy.cur + Math.floor((hero.energy.max - hero.energy.cur) / 2);
         newLuck = hero.luck.cur + Math.floor((hero.luck.max - hero.luck.cur) / 2);
         summary.push(`${hero.name}: slept in the stable (couldn't afford the inn) — +${roll} HP (${newHp}/${hero.hp.max}), half Mana/Luck/Energy regained`);
         addLog(`${hero.name} couldn't afford the inn, slept in the stable: +${roll} HP, half Mana/Luck/Energy regained.`);
@@ -14234,16 +14437,21 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
 
     const masterCook = heroes.some((h) => (h.talents || []).includes("Master Cook"));
     if (masterCook) lines.push({ text: "Master Cook: each hero regains +2 HP from the ration (does not stack)." });
-    heroes.forEach((h) => {
+    heroes.forEach((h0) => {
+      const dz = diseaseRestStep(h0, heroes);
+      const h = dz.hero;
+      dz.lines.forEach((t) => lines.push({ text: t, warn: true }));
       const agitated = (h.mentalConditions || []).some((c) => c.name === "Agitated"); // regains only half (rounded down)
       const half = (n) => (agitated ? Math.floor(n / 2) : n);
-      const hpRoll = rollDie(6);
-      const hpGain = half(hpRoll + (masterCook ? 2 : 0));
+      const hpRoll = dz.flags.noHp ? 0 : rollDie(dz.flags.hpDie);
+      const hpGain = dz.flags.noHp ? 0 : half(hpRoll + (masterCook ? 2 : 0));
       const newHp = Math.min(h.hp.max, h.hp.cur + hpGain);
       const hasBedroll = (h.backpack || []).some((it) => it.name === "Bed Roll");
       let newEnergyCur = h.energy.cur;
       let energyLine;
-      if (hasBedroll) {
+      if (dz.flags.noEnergy) {
+        energyLine = "No Energy regained (Morgret's Flu).";
+      } else if (hasBedroll) {
         const missing = h.energy.max - h.energy.cur;
         newEnergyCur = Math.min(h.energy.max, h.energy.cur + half(missing));
         energyLine = agitated ? "Energy: Bed Roll, but Agitated halves what is regained." : "Energy fully regained (Bed Roll).";
@@ -15040,8 +15248,7 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
         {[["dungeonEvents", "Dungeon Events", "Roll 1d10 on entering an empty room (9–10 = event); the app then rolls the column and event from the 24-event table and resolves it. Adds a tool to the Actions tab."],
           ["simplifiedAlchemy", "Simplified Alchemy", "4/6/8 unique components for Weak/Standard/Supreme; no recipes; you choose the potion on success. Switches the Mix a Potion screen."],
           ["manualTracking", "Manual tracking (tools only roll and explain)", "The Actions tab tools stop spending AP and stop changing heroes, Threat, Morale and food. Each result is explained in text, tests use numbers you type in, and picking a hero in a tool still automates it. Switches on by itself when a campaign has no heroes."],
-          ["alchemyOnly", "Alchemy only (lite mode)", "Hides everything except Heroes, Alchemy, Dice, Reference and Campaigns, for tables that track the rest on their own party sheet. Your data is untouched; untick it (here, or from the Alchemy tab) to bring every tab back."],
-          ["newBeginning", "A New Beginning (expansion)", "Adds a quest tracker to the Quests tab for the von Braus 'A New Beginning' expansion (6 starting quests, 8 follow-ups). Needs the expansion PDF; its Hunger rules are handled manually."]].map(([k, label, desc]) => (
+          ["alchemyOnly", "Alchemy only (lite mode)", "Hides everything except Heroes, Alchemy, Dice, Reference and Campaigns, for tables that track the rest on their own party sheet. Your data is untouched; untick it (here, or from the Alchemy tab) to bring every tab back."]].map(([k, label, desc]) => (
           <label key={k} className="flex items-start gap-2 text-xs mb-1.5" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
             <input type="checkbox" checked={!!party.optionalRules?.[k]} onChange={(e) => setParty({ ...party, optionalRules: { ...party.optionalRules, [k]: e.target.checked } })} className="mt-0.5" />
             <span><b>{label}</b> — {desc}</span>
@@ -18534,6 +18741,179 @@ function QuestRollerPanel({ party, setParty, addLog }) {
 // ---------- Reference ----------
 
 // ---------- Help & FAQ ----------
+function HeroDiseasePanel({ hero, update, otherHeroes, addLog, pushToast, allHeroes }) {
+  const [mod, setMod] = useState(0);
+  const [pick, setPick] = useState(DISEASES[0].key);
+  const [msg, setMsg] = useState([]);
+  if (!EXP.diseases) return null;
+  const list = hero.diseases || [];
+  const exposed = hero.diseaseExposure || [];
+  const sources = (otherHeroes || []).flatMap((o) => (o.diseases || []).filter((e) => !e.pending && diseaseByKey(e.key)?.contagious).map((e) => ({ name: o.name, key: e.key })));
+  const say = (lines, title) => { setMsg(lines); lines.forEach((l) => addLog && addLog(l)); if (pushToast && title) pushToast(title, lines[0]); };
+  const btn = { background: palette.crimsonDark, color: palette.parchment };
+  const soft = { background: "#00000010", color: palette.ink };
+  const cureNow = (entry) => { const c = cureDisease(hero, entry); update(c.hero); say([c.line], `${hero.name} cured`); };
+  const riskRoll = () => {
+    const t = diseaseTest(hero, null, Number(mod) || 0);
+    if (t.ok) return say([`${hero.name}: CON test ${t.roll} vs ${t.target} — resisted the disease.`]);
+    const key = DISEASE_BY_D8[rollDie(8) - 1];
+    const d = diseaseByKey(key);
+    if (!canContract(hero, key)) return say([`${hero.name}: CON test ${t.roll} vs ${t.target} — failed, rolled ${d.name} but the hero cannot catch it (already ill with another disease, or immune).`]);
+    const c = contractDisease(hero, key);
+    update(c.hero);
+    say([`${hero.name}: CON test ${t.roll} vs ${t.target} — failed! Rolled ${d.name}.`, ...c.lines], `${hero.name} is ill`);
+  };
+  const manualContract = () => {
+    if (!canContract(hero, pick)) return say([`${hero.name} cannot contract ${diseaseByKey(pick).name} right now (already ill, immune, or has it).`]);
+    const c = contractDisease(hero, pick);
+    update(c.hero);
+    say(c.lines);
+  };
+  const expose = (s) => {
+    if (exposed.some((x) => x.key === s.key)) return;
+    update({ ...hero, diseaseExposure: [...exposed, { key: s.key, from: s.name }] });
+  };
+  const processRest = () => {
+    const r = diseaseRestStep(hero, allHeroes || [hero]);
+    update(r.hero);
+    say(r.lines.length ? r.lines : [`${hero.name}: nothing to process — no disease, exposure or immunity to check.`], "Rest processed");
+  };
+  const lungTest = () => {
+    const d = diseaseByKey("lungmould");
+    const t = diseaseTest(hero, d);
+    say([`${hero.name}: Lungmould CON test ${t.roll} vs ${t.target} — ${t.ok ? "passed, act normally." : "failed! Coughing fit: the activation is forfeit and enemies treat the hero as having made a Power Attack until its next activation."}`]);
+  };
+  return (
+    <div className="mb-3 rounded p-2" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+      <p className="text-xs font-bold mb-1" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Diseases (The False Prophet)</p>
+      {list.length === 0 && exposed.length === 0 && <p className="text-xs italic mb-1" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>Healthy.</p>}
+      {list.map((e) => {
+        const d = diseaseByKey(e.key);
+        if (!d) return null;
+        return (
+          <div key={e.key} className="mb-1.5 rounded p-1.5" style={{ background: `${palette.crimson}12`, border: `1px solid ${palette.crimson}55` }}>
+            <div className="flex items-center justify-between gap-2">
+              <b className="text-xs" style={{ color: palette.crimson, fontFamily: "Cinzel, serif" }}>{d.name}{e.pending ? " (symptoms start at next rest)" : ""}</b>
+              <button onClick={() => cureNow(e)} className="text-[11px] px-2 py-1 rounded font-semibold" style={btn}>Cured</button>
+            </div>
+            <p className="text-[11px]" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>{d.short}{d.contagious ? (e.pending ? " Not contagious until after the first rest." : " Contagious.") : ""} Cure test: CON{d.mod || ""}.</p>
+            {e.key === "crawe" && !e.pending && <p className="text-[11px]" style={{ color: palette.ink }}>Blisters on: <b>{(e.zones || []).join(", ") || "—"}</b> (no armour there){(e.zones || []).length >= 4 ? " — all zones covered: no HP regained resting." : ""}</p>}
+            {e.hpLost > 0 && <p className="text-[11px]" style={{ color: palette.inkSoft }}>Max HP lost so far: {e.hpLost}</p>}
+            {e.strLost > 0 && <p className="text-[11px]" style={{ color: palette.inkSoft }}>STR lost so far: {e.strLost}{hero.stats.STR <= 0 ? " — must be carried, no activation token." : ""}</p>}
+            {e.wisLost > 0 && <p className="text-[11px]" style={{ color: palette.inkSoft }}>WIS lost so far: {e.wisLost}{e.manaLost ? ` (max Mana −${e.manaLost})` : ""}{hero.stats.WIS <= 0 ? " — must be carried, no activation token." : ""}</p>}
+            {e.key === "lungmould" && !e.pending && <button onClick={lungTest} className="mt-1 text-[11px] px-2 py-1 rounded font-semibold" style={soft}>Roll the pre-attack CON test</button>}
+          </div>
+        );
+      })}
+      {(hero.diseaseImmune || []).length > 0 && <p className="text-[11px] mb-1" style={{ color: palette.forestDark, fontFamily: "Crimson Pro, serif" }}>Immune to catching from the party: {(hero.diseaseImmune || []).map((k) => diseaseByKey(k)?.name).filter(Boolean).join(", ")}.</p>}
+      {exposed.length > 0 && <p className="text-[11px] mb-1" style={{ color: palette.gold, fontFamily: "Crimson Pro, serif" }}>Diseased token: exposed to {exposed.map((x) => `${diseaseByKey(x.key)?.name} (${x.from})`).join(", ")}. A CON test happens at the next rest.</p>}
+      {sources.length > 0 && (
+        <div className="mb-1.5">
+          <p className="text-[11px] mb-0.5" style={{ color: palette.inkSoft }}>Ended a turn next to a contagious party member?</p>
+          <div className="flex flex-wrap gap-1">
+            {sources.map((s) => <button key={s.name + s.key} onClick={() => expose(s)} className="text-[11px] px-2 py-1 rounded" style={soft}>{s.name} — {diseaseByKey(s.key).name}</button>)}
+          </div>
+        </div>
+      )}
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <label className="text-[11px]" style={{ color: palette.inkSoft }}>CON modifier
+          <input type="number" value={mod} onChange={(e) => setMod(e.target.value)} className="ml-1 w-14 text-xs rounded px-1 py-0.5" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+        </label>
+        <button onClick={riskRoll} className="flex-1 text-xs px-2 py-1.5 rounded font-semibold" style={btn}>Risk of disease: roll CON test</button>
+      </div>
+      <div className="flex gap-1.5 mb-1.5">
+        <select value={pick} onChange={(e) => setPick(e.target.value)} className="flex-1 text-xs rounded px-1 py-1" style={{ border: `1px solid ${palette.line}`, background: "#fff" }}>
+          {DISEASES.map((d) => <option key={d.key} value={d.key}>{d.name}</option>)}
+        </select>
+        <button onClick={manualContract} className="text-xs px-2 py-1.5 rounded font-semibold" style={soft}>Give disease</button>
+      </div>
+      <button onClick={processRest} className="w-full text-xs px-2 py-1.5 rounded font-semibold" style={soft}>Process a rest (cure test, symptoms, contagion)</button>
+      <p className="text-[10px] mt-1 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>Short Rest, Make Camp and a night at the inn do this automatically. Use the button for a rest taken some other way.</p>
+      {msg.length > 0 && <div className="mt-1.5 text-[11px] space-y-0.5" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>{msg.map((l, i) => <p key={i}>{l}</p>)}</div>}
+    </div>
+  );
+}
+
+function ExpansionsTab({ party, setParty, heroes }) {
+  const ex = party.expansions || {};
+  const setEx = (patch) => setParty({ ...party, expansions: { ...party.expansions, ...patch } });
+  const on = !!ex.falseProphet;
+  const toggleRow = (checked, onChange, title, desc) => (
+    <label className="flex items-start gap-2 text-xs mb-2" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="mt-0.5" />
+      <span><b>{title}</b> — {desc}</span>
+    </label>
+  );
+  const body = { color: palette.ink, fontFamily: "Crimson Pro, serif" };
+  return (
+    <div className="space-y-4">
+      <Panel>
+        <SectionTitle icon={Sparkles}>Expansions</SectionTitle>
+        <p className="text-xs" style={body}>Switch an expansion on to enable its new rules and overrides. Each one lists below exactly what is new, what it replaces, and what the app handles for you. Switch it off again and everything it added disappears; your heroes' data is kept.</p>
+      </Panel>
+
+      <Panel>
+        <SectionTitle icon={Library}>The False Prophet</SectionTitle>
+        {toggleRow(on, (v) => setEx({ falseProphet: v }), "Enable The False Prophet", "the expansion book's rules, added in stages. Tick the parts you want to use below.")}
+        {on && (
+          <div className="pl-4" style={{ borderLeft: `2px solid ${palette.line}` }}>
+            {toggleRow(ex.fpDiseases !== false, (v) => setEx({ fpDiseases: v }), "Expanded Diseases", "replaces the core Disease rule with 8 named diseases.")}
+          </div>
+        )}
+        <div className="mt-2 rounded p-2 text-xs" style={{ background: "#fff", border: `1px solid ${palette.line}`, ...body }}>
+          <p className="font-bold mb-1" style={{ fontFamily: "Cinzel, serif" }}>Not in the app yet</p>
+          <p>Lasting and Permanent Wounds (optional rule), the Druid (shapeshifting, invocations, sacred grove, botany), the Knight's Squire, Druid and Knight levelling tables, and Class Specialisation. These are planned for later updates and need to be tracked by hand until then.</p>
+        </div>
+      </Panel>
+
+      {on && ex.fpDiseases !== false && (
+        <Panel>
+          <SectionTitle icon={Skull}>Expanded Diseases: what is new</SectionTitle>
+          <ul className="text-xs list-disc pl-4 space-y-1.5" style={body}>
+            <li><b>Replaces</b> the core rule where a failed CON test halves CON and STR and zeroes Energy. Now a failed test rolls 1d8 for one of eight diseases, each with its own symptoms and CON modifier.</li>
+            <li><b>Catching one:</b> on each hero card use "Risk of disease: roll CON test" (enter the modifier from the monster or event; the Resistance to Disease talent adds +25 by itself). The result is rolled and applied for you. Symptoms start at the next rest, and the hero is not contagious until after that rest.</li>
+            <li><b>Contagion:</b> on a healthy hero's card, tap the diseased party member they ended a turn next to. That is the "diseased token". At the next rest the app rolls their CON test; failing means they catch it at once.</li>
+            <li><b>Resting:</b> Short Rest, Make Camp and a night at an inn all do the cure test first (CON with the disease's modifier), then apply the symptoms, then the contagion tests, then recovery (so a cured hero rests normally). Any other kind of rest has the "Process a rest" button on the hero card.</li>
+            <li><b>Curing:</b> a passed cure test or the Cured button (potion, sick ward, Temple of Metheia) restores everything the disease took: max HP, Energy, STR, WIS, max Mana or CON. A hero cured of a disease cannot catch it again from the party until nobody has it any more.</li>
+            <li><b>Only one disease at a time,</b> except Death's Door, which lowers the immune system and lets more in.</li>
+            <li><b>Still done by hand:</b> blocking armour on blistered zones (Pestilence of Crawe), the Stupid special rule (Nudrul's Infection), carrying a hero at 0 STR or WIS, and deciding when a monster or event calls for the risk roll. The app shows a reminder for each.</li>
+            <li><b>Not covered:</b> the Weak background's disease modifier and counter, and Providence of Metheia's +10 CON. Put those in the CON modifier box.</li>
+          </ul>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-[11px]" style={{ ...body, borderCollapse: "collapse" }}>
+              <thead><tr style={{ background: palette.charcoal, color: palette.parchment }}><th className="text-left p-1">1d8</th><th className="text-left p-1">Disease</th><th className="p-1">Contagious</th><th className="p-1">CON</th></tr></thead>
+              <tbody>
+                {DISEASE_BY_D8.map((k, i) => { const d = diseaseByKey(k); return (
+                  <tr key={k} style={{ borderBottom: `1px solid ${palette.line}` }}>
+                    <td className="p-1 align-top">{i + 1}</td>
+                    <td className="p-1"><b>{d.name}</b><br />{d.text}</td>
+                    <td className="p-1 text-center align-top">{d.contagious ? "Yes" : "No"}</td>
+                    <td className="p-1 text-center align-top">{d.key === "death" ? "N/A" : d.mod}</td>
+                  </tr>
+                ); })}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-3">
+            <p className="text-xs font-bold mb-1" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Party health</p>
+            {heroes.length === 0 && <p className="text-xs italic" style={body}>No heroes yet.</p>}
+            {heroes.map((h) => (
+              <p key={h.id} className="text-xs" style={body}>
+                <b>{h.name}</b>: {(h.diseases || []).length ? (h.diseases || []).map((e) => `${diseaseByKey(e.key)?.name}${e.pending ? " (pending)" : ""}`).join(", ") : "healthy"}{(h.diseaseExposure || []).length ? ` · exposed to ${h.diseaseExposure.map((x) => diseaseByKey(x.key)?.name).join(", ")}` : ""}
+              </p>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      <Panel>
+        <SectionTitle icon={Map}>A New Beginning</SectionTitle>
+        {toggleRow(!!party.optionalRules?.newBeginning, (v) => setParty({ ...party, optionalRules: { ...party.optionalRules, newBeginning: v } }), "Enable A New Beginning", "adds a quest tracker to the Quests tab for the von Braus 'A New Beginning' expansion (6 starting quests, 8 follow-ups). Its Hunger rules are handled manually.")}
+      </Panel>
+    </div>
+  );
+}
+
 const HELP_DATA = [
   { group: "Getting started", items: [
     ["Where do I start?", "1. Campaigns tab: make a new campaign (or keep the default).\n2. Heroes tab: tap + to add a hero. Pick species, profession and background, then use Roll Starting Stats, Apply Starting Equipment and Apply Starting Talents/Perks. Each collapses into a small \"Setup\" bar once done.\n3. Party tab: tap Set Starting Morale from RES, and put your starting coins in the Party Pot.\n4. Travel tab: Depart Settlement, then Enter Dungeon when you reach one.\n5. Turn tab: Roll Start of Turn each round and play from there."],
@@ -18565,7 +18945,7 @@ const HELP_DATA = [
     ["Dungeon Events", "Party > Optional Rules. Adds a room roll (1d10, 9-10) to the Actions tab. The app then rolls the column and event from the 24-event table and resolves what it can, saving the result so it survives tab changes."],
     ["Simplified Alchemy", "Party > Optional Rules. Potions use 4, 6 or 8 unique components (Weak, Standard, Supreme) instead of recipes. Do not switch mid-campaign."],
     ["Manual tracking", "Party > Optional Rules. Actions tools and the Dungeon Event panel just roll and explain, with no AP, hero or party changes. Automatic when a campaign has no heroes. Combat and Turn tab tools do not support it yet."],
-    ["A New Beginning", "Party > Optional Rules. Adds a quest tracker (6 starting and 8 follow-up quests) to the Quest tab for the von Braus expansion. Its Hunger rules stay manual."],
+    ["Expansions", "Expansions tab. Switch on The False Prophet (Expanded Diseases so far) or A New Beginning. Each expansion lists what is new or changed, and switching it off hides everything it added. Expanded Diseases: use Risk of disease and Process a rest on a hero card; Short Rest, Make Camp and inn nights apply cures and symptoms automatically."],
     ["Simplified Game", "Party > Optional Rules. Remove Encumbrance, Party Morale, Durability, Sanity, or Scenario Die and Threat, as the rulebook allows. Their panels disappear and effects stop."],
     ["Loot mode", "Hardcore or Streamlined corpse looting is chosen on the Actions tab. Pick before play."],
     ["Advanced rules", "Combat tab > Advanced rules (all off by default): Overwatch, Limited Bleeding-Out Time, Quick Slot Damage, Quiver & Ammunition and the Darkness rule."],
@@ -18992,7 +19372,10 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
     const pathfinderCamp = fed && heroes.some((h) => (h.talents || []).includes("Pathfinder"));
     if (masterCookCamp) lines.push("Master Cook: +2 HP for each hero from the ration.");
     if (pathfinderCamp) lines.push("Pathfinder: +1 HP for each hero (overnight travel rest).");
-    heroes.forEach((h) => {
+    heroes.forEach((h0) => {
+      const dz = diseaseRestStep(h0, heroes);
+      const h = dz.hero;
+      dz.lines.forEach((t) => lines.push(t));
       const notes = [];
       // Resilient to Hunger: no hunger effects until the 3rd day; that day then counts as day 1.
       const resilient = (h.talents || []).includes("Resilient to Hunger");
@@ -19000,12 +19383,14 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
       if (resilient && days > 0 && hd === 0) notes.push("Resilient to Hunger — unaffected");
       let hp = h.hp.cur;
       let energy = h.energy.cur;
-      const hpRoll = rollDie(6);
-      if (hd === 0) { const bonus = (masterCookCamp ? 2 : 0) + (pathfinderCamp ? 1 : 0); const g = Math.min(h.hp.max - hp, hpRoll + bonus); hp += g; notes.push(`+${g} HP${bonus ? ` (incl. +${bonus} talent)` : ""}`); }
+      const hpRoll = dz.flags.noHp ? 0 : rollDie(dz.flags.hpDie);
+      if (hd === 0) { const bonus = dz.flags.noHp ? 0 : (masterCookCamp ? 2 : 0) + (pathfinderCamp ? 1 : 0); const g = Math.min(h.hp.max - hp, hpRoll + bonus); hp += g; notes.push(`+${g} HP${bonus ? ` (incl. +${bonus} talent)` : ""}`); }
       else if (hd === 1) { const g = Math.min(h.hp.max - hp, Math.floor(hpRoll / 2)); hp += g; notes.push(`+${g} HP (half, hungry)`); }
       else notes.push("no HP recovery (hungry)");
       if (hd >= 6) { hp = Math.max(0, hp - 1); notes.push("-1 HP (starving)"); }
-      if (hd === 0) {
+      if (dz.flags.noEnergy) {
+        notes.push("no Energy regained (Morgret's Flu)");
+      } else if (hd === 0) {
         const hasBedroll = (h.backpack || []).some((it) => it.name === "Bed Roll");
         if (hasBedroll) { notes.push(`Energy ${energy} → ${h.energy.max} (Bed Roll)`); energy = h.energy.max; }
         else {
@@ -19760,6 +20145,8 @@ export default function App() {
   const [party, setParty] = useState(defaultParty());
   Object.assign(SIMP, defaultParty().simplified, party.simplified || {});
   MANUAL.on = !!party.optionalRules?.manualTracking || heroes.length === 0;
+  EXP.on = !!party.expansions?.falseProphet;
+  EXP.diseases = EXP.on && party.expansions?.fpDiseases !== false;
   const [log, setLog] = useState([]);
   const [tab, setTab] = useState("party");
   const navRef = useRef(null);
@@ -20147,6 +20534,7 @@ export default function App() {
     ["quest", "Quest", Map],
     ["compendium", "Compendium", ScrollText],
     ["lore", "Lore", Library],
+    ["expansions", "Expansions", Sparkles],
     ["campaigns", "Campaigns", FolderOpen],
   ];
 
@@ -20419,6 +20807,7 @@ export default function App() {
         {tab === "quest" && <QuestRollerPanel party={party} setParty={setParty} addLog={addLog} />}
         {tab === "compendium" && <CompendiumTab heroes={heroes} updateHero={(next) => updateHero(next.id, next)} addLog={addLog} initialCat={compendiumInitialCat} initialHero={compendiumInitialHero} />}
         {tab === "lore" && <LoreTab goToTab={goToTab} />}
+        {tab === "expansions" && <ExpansionsTab party={party} setParty={setParty} heroes={heroes} />}
         {tab === "bestiary" && <BestiaryTab />}
         {tab === "campaigns" && (
           <CampaignsTab

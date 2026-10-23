@@ -3,7 +3,7 @@ import {
   Plus, Minus, Trash2, Flame, Heart, Zap, Brain, Sparkles, Dice5,
   Swords, Shield, BookOpen, Users, Skull,
   RotateCcw, Coins, Wheat, ScrollText, Pencil, Check, X, FolderOpen, Loader2, Map, Download, Upload,
-  Landmark, Bed, ClipboardList, Timer, Flashlight, FlaskConical, Library, ChevronUp, ShieldAlert, ShoppingCart
+  Landmark, Bed, ClipboardList, CircleHelp, Timer, Flashlight, FlaskConical, Library, ChevronUp, ShieldAlert, ShoppingCart
 } from "lucide-react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
@@ -4234,6 +4234,15 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.74.0",
+    date: "2026-10-23",
+    sections: {
+      Added: [
+        "Help & FAQ guide: a ? button in the header (and a Help & FAQ button in the desktop sidebar) opens a searchable guide at the top of the Reference tab. It covers getting started, playing a turn, heroes and levelling, money/travel/settlements, every optional rule, and saving, backups and troubleshooting",
+      ],
+    },
+  },
   {
     version: "1.73.0",
     date: "2026-10-23",
@@ -18438,9 +18447,99 @@ function QuestRollerPanel({ party, setParty, addLog }) {
 }
 
 // ---------- Reference ----------
+
+// ---------- Help & FAQ ----------
+const HELP_DATA = [
+  { group: "Getting started", items: [
+    ["Where do I start?", "1. Campaigns tab: make a new campaign (or keep the default).\n2. Heroes tab: tap + to add a hero. Pick species, profession and background, then use Roll Starting Stats, Apply Starting Equipment and Apply Starting Talents/Perks. Each collapses into a small \"Setup\" bar once done.\n3. Party tab: tap Set Starting Morale from RES, and put your starting coins in the Party Pot.\n4. Travel tab: Depart Settlement, then Enter Dungeon when you reach one.\n5. Turn tab: Roll Start of Turn each round and play from there."],
+    ["What does each tab do?", "Party: Threat, Morale, food, coins, Optional Rules and the log. Turn: the round tracker, Initiative Bag, rests, Fear/Terror, traps and prayers. Heroes: hero sheets, level-ups, gear. Combat: attack and damage calculators plus the Advanced rules. Bestiary: enemy stats and behaviour. Actions: doors, chests, searching, levers and other dungeon tools. Alchemy: potions. Dice: quick dice. Reference: rules summaries and this guide. Travel: moving between places, camp and the dungeon status. Settlement and Guilds: shops, activities and training. Quest: the quest roller. Compendium: every Talent, Perk, spell, item and prayer. Lore: world background. Campaigns: save slots and backup."],
+    ["Do I need heroes to use the tools?", "No. Switch on Manual tracking in Party > Optional Rules (it turns on by itself in a campaign with no heroes). The Actions tools then just roll and explain, never block on AP, and tell you in text what to change. Type your own numbers in the Manual tracking box at the top of the Actions tab, or pick a hero in a tool to automate it for that hero."],
+    ["Can I install it like an app?", "Yes. Use the Install banner on Android or desktop, or Share > Add to Home Screen on iPhone. It works offline once loaded."],
+  ]},
+  { group: "Playing a turn", items: [
+    ["What do I do each round?", "Turn tab: Roll Start of Turn (advances the round and refreshes everyone's AP, Energy and effects), then use the Initiative Bag to see who acts. Spend AP on the Actions, Combat and Heroes tabs as the heroes act."],
+    ["Why does a tool say \"not enough AP\"?", "AP only refreshes when you tap Roll Start of Turn. Either roll it, or turn on Manual tracking so tools stop checking AP."],
+    ["How do I handle fights?", "Combat tab: pick the hero and weapon and the app works out hit chance, damage, Bleed, Crushing, Piercing and similar. Use the Bestiary tab for enemy stats and the Initiative Bag on the Turn tab for the token draw. When the fight ends, tap End Battle on the Turn tab so active prayers stop."],
+    ["How do doors, chests, searching and levers work?", "Actions tab. Choose a hero in the tool (or No hero) and tap the button. Doors and chests roll the lock and trap together, searching rolls the furniture or tile table, and Loot a Corpse follows your Hardcore or Streamlined setting. Threat rises automatically unless Manual tracking is on."],
+    ["How do I rest?", "Turn tab > Short Rest rolls the Scenario die, lowers Threat by 5 and handles interruptions. Travel tab > Make Camp (Overnight Rest) applies full recovery and the Hunger Track for you."],
+    ["What happens at 0 Sanity?", "Tap Roll Psychology (1d20) on that hero. The app picks the condition from the 14 in the rulebook and applies its effects automatically. Fear and Terror tests have their own panel on the Turn tab."],
+    ["What are Perfect Results?", "A natural 01-05 on a successful stat or skill test. The app offers +1 Energy or a permanent +1 to that skill or stat (once per settlement visit, skills cap at 80)."],
+  ]},
+  { group: "Heroes & levelling", items: [
+    ["How do I level up?", "A hero gains one level per completed quest, on the first night of a settlement visit. When it is ready a green \"Level N ready\" button appears on the hero. Tap it, spend Improvement Points (the costs and caps come from the 2.571 tables) and pick the Talent or Perk your profession earns at that level."],
+    ["How do I equip things?", "On the hero card, move items between the Backpack and Quick Slots, and equip weapons and armour. Moving gear costs AP only while in a dungeon. Rings and necklaces must be worn to give their bonus. Relic Slots (Warrior Priests, or anyone with Pious) hold a god's relic, and its effect applies automatically."],
+    ["Where do bonuses and penalties come from?", "The hero card lists automatic effects (gear, prayers, Half Morale, darkness, relics and so on). You never need to add them by hand, and they come off when the cause ends."],
+  ]},
+  { group: "Money, travel & settlements", items: [
+    ["How do I buy, sell and spend coins?", "Settlement tab: buy gear, sell loot, pay for Activities and use Resolve an Activity for the result. Guilds tab: training, spells, recharge and so on. Coins come from and go to the Party Pot or a hero's own pouch, as chosen in each shop."],
+    ["How do I travel between places?", "Travel tab: the Dungeon Status card handles Depart Settlement, Enter Dungeon and Exit Dungeon. Exiting resets Party Morale to its starting value and ends temporary conditions."],
+    ["How do I brew potions?", "Alchemy tab > Mix a Potion. With Simplified Alchemy on, you pick unique components and choose the potion on success."],
+    ["What is the Quest tab?", "A quest roller for generating quests. If you enable A New Beginning, it also gets a tracker for that expansion's quests."],
+  ]},
+  { group: "Optional rules", items: [
+    ["Dungeon Events", "Party > Optional Rules. Adds a room roll (1d10, 9-10) to the Actions tab. The app then rolls the column and event from the 24-event table and resolves what it can, saving the result so it survives tab changes."],
+    ["Simplified Alchemy", "Party > Optional Rules. Potions use 4, 6 or 8 unique components (Weak, Standard, Supreme) instead of recipes. Do not switch mid-campaign."],
+    ["Manual tracking", "Party > Optional Rules. Actions tools and the Dungeon Event panel just roll and explain, with no AP, hero or party changes. Automatic when a campaign has no heroes. Combat and Turn tab tools do not support it yet."],
+    ["A New Beginning", "Party > Optional Rules. Adds a quest tracker (6 starting and 8 follow-up quests) to the Quest tab for the von Braus expansion. Its Hunger rules stay manual."],
+    ["Simplified Game", "Party > Optional Rules. Remove Encumbrance, Party Morale, Durability, Sanity, or Scenario Die and Threat, as the rulebook allows. Their panels disappear and effects stop."],
+    ["Loot mode", "Hardcore or Streamlined corpse looting is chosen on the Actions tab. Pick before play."],
+    ["Advanced rules", "Combat tab > Advanced rules (all off by default): Overwatch, Limited Bleeding-Out Time, Quick Slot Damage, Quiver & Ammunition and the Darkness rule."],
+  ]},
+  { group: "Saving & troubleshooting", items: [
+    ["Where is my data stored?", "In this browser on this device only. Clearing site data, switching browser or switching device will lose it unless you have a backup."],
+    ["How do I back up or move a campaign?", "Campaigns tab > Backup & Restore. Export a campaign to a file, and use Import Campaign from File to bring it back here or onto another device. Export regularly."],
+    ["The app looks out of date", "It updates itself. When an update toast appears, tap it to reload. If something still looks old, close the app fully and reopen it."],
+    ["A number looks wrong", "Most numbers are automatic. Check the hero card's effects list for what is applying. If it is a rules question, the Compendium and Reference tabs hold the rulebook text, and the rulebook always wins."],
+    ["Something is broken", "Please report it on the project's GitHub Issues page with what you tapped and what you expected."],
+  ]},
+];
+
+function HelpGuide() {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(null);
+  const term = q.trim().toLowerCase();
+  const groups = HELP_DATA.map((g) => ({ ...g, items: g.items.filter(([a, b]) => !term || (a + " " + b).toLowerCase().includes(term)) })).filter((g) => g.items.length);
+  const total = groups.reduce((n, g) => n + g.items.length, 0);
+  return (
+    <Panel>
+      <div id="lod-help" style={{ scrollMarginTop: 12 }}>
+        <SectionTitle icon={BookOpen}>Help & FAQ</SectionTitle>
+        <input
+          type="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search help (e.g. AP, level up, backup)…"
+          className="w-full px-3 py-2 rounded text-sm mb-3"
+          style={{ background: "#fff", border: `1px solid ${palette.line}`, color: palette.ink, fontFamily: "Crimson Pro, serif" }}
+        />
+        {groups.length === 0 && <p className="text-xs italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>Nothing matches that. Try a shorter word.</p>}
+        {groups.map((g) => (
+          <div key={g.group} className="mb-3">
+            <div className="text-xs font-bold uppercase mb-1" style={{ color: palette.forestDark, fontFamily: "Cinzel, serif" }}>{g.group}</div>
+            {g.items.map(([a, b]) => {
+              const k = g.group + a;
+              const isOpen = open === k || (!!term && total <= 3);
+              return (
+                <div key={k} className="mb-1 rounded" style={{ border: `1px solid ${palette.line}`, background: isOpen ? "#fff" : "transparent" }}>
+                  <button onClick={() => setOpen(isOpen && open === k ? null : k)} className="w-full text-left px-3 py-2.5 flex items-center justify-between gap-2 text-sm font-semibold" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
+                    <span>{a}</span>
+                    <span style={{ color: palette.inkSoft }}>{isOpen ? "−" : "+"}</span>
+                  </button>
+                  {isOpen && <p className="px-3 pb-3 text-xs whitespace-pre-line" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif", lineHeight: 1.5 }}>{b}</p>}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
 function Reference() {
   return (
     <div className="space-y-4">
+      <HelpGuide />
       <Panel>
         <SectionTitle icon={Users}>Species & Classes</SectionTitle>
         <p className="text-xs mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
@@ -20023,6 +20122,7 @@ export default function App() {
               Rulebook v2.571 · QRS v2.5
             </span>
           </div>
+          <div className="flex items-center gap-2 shrink-0">
           <span
             className="flex items-center gap-1 text-xs shrink-0"
             style={{ color: "#B8A78A", fontFamily: "JetBrains Mono, monospace", fontVariant: "small-caps", letterSpacing: "0.02em", whiteSpace: "nowrap" }}
@@ -20031,6 +20131,16 @@ export default function App() {
             {saveState === "saved" && (<><span>saved</span> <Check size={12} /></>)}
             {saveState === "error" && "save failed"}
           </span>
+          <button
+            onClick={() => { setTab("reference"); setTimeout(() => document.getElementById("lod-help")?.scrollIntoView({ behavior: "smooth", block: "start" }), 150); }}
+            aria-label="Help and FAQ"
+            title="Help & FAQ"
+            className="flex items-center justify-center rounded-full shrink-0"
+            style={{ width: 36, height: 36, color: palette.goldSoft, border: `1px solid ${palette.goldSoft}`, background: "rgba(212,175,110,0.12)" }}
+          >
+            <CircleHelp size={18} />
+          </button>
+          </div>
         </div>
       </header>
 
@@ -20139,6 +20249,13 @@ export default function App() {
           {saveState === "saved" && (<><span>saved</span> <Check size={12} /></>)}
           {saveState === "error" && "save failed"}
         </span>
+        <button
+          onClick={() => { setTab("reference"); setTimeout(() => document.getElementById("lod-help")?.scrollIntoView({ behavior: "smooth", block: "start" }), 150); }}
+          className="flex items-center gap-2 px-3 py-2 rounded text-xs font-semibold"
+          style={{ color: palette.goldSoft, border: `1px solid ${palette.goldSoft}`, background: "rgba(212,175,110,0.12)", fontFamily: "Cinzel, serif" }}
+        >
+          <CircleHelp size={14} /> Help & FAQ
+        </button>
 
         <nav className="flex flex-col gap-1">
           {sidebarGroups.map((group) => (

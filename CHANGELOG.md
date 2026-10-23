@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.74.0] — 2026-10-23
+
+### Added
+- Help & FAQ guide: a ? button in the header (and a Help & FAQ button in the desktop sidebar) opens a searchable guide at the top of the Reference tab. It covers getting started, playing a turn, heroes and levelling, money/travel/settlements, every optional rule, and saving, backups and troubleshooting
+
 ## [1.73.0] — 2026-10-23
 
 ### Added

@@ -555,7 +555,9 @@ const defaultParty = () => ({
   dungeonState: "settlement", // "settlement" | "travel" | "dungeon" — drives the Travel tab status badge and the auto-clear of tempEffects on dungeon exit
   dungeonRestCount: 0, // completed (uninterrupted) Short Rests taken since entering the current dungeon — drives the Ambush risk escalation; resets to 0 on Exit Dungeon, never per level
   simplified: { encumbrance: false, morale: false, durability: false, sanity: false, scenario: false }, // Simplified Game (p21): true = system removed
-  optionalRules: { lootMode: "hardcore", dungeonEvents: false, simplifiedAlchemy: false }, // optional/campaign rules (rulebook p21, p110, p177-178)
+  optionalRules: { lootMode: "hardcore", dungeonEvents: false, simplifiedAlchemy: false },
+  roomEvent: null, // current room's Dungeon Event (optional rule), persisted across tab switches
+  ghostQuest: null, // The Ghost event: { village, found, delivered } // optional/campaign rules (rulebook p21, p110, p177-178)
   bottleOfExperienceMade: false, // Simplified Alchemy: one Bottle of Experience between two dungeon quests
   maxThreat: 0, // quest's Maximum Threat (0 = none set) — at/over it a Wandering Monster is placed and Threat drops by 5
   wmTriggerAt: 0, // quest's "Wandering Monster appears at Threat X" level (0 = none)
@@ -605,7 +607,7 @@ const defaultParty = () => ({
   // rulebook it's meant to persist across multiple turns of the same battle (drawn tokens
   // for still-living models return to the bag and get reused each round), not reset every
   // turn. Living here means it also survives switching tabs mid-combat.
-  initiativeSetup: { enemyCount: 1, namedMonsterCount: 0, largeMonsterCount: 0, perfectHearing: false, enemyPerfectHearing: false, swiftLeader: false, doorMirror: false, magicTokens: false, sneaky: false, doorBashed: false, ambushed: false },
+  initiativeSetup: { enemyCount: 1, namedMonsterCount: 0, largeMonsterCount: 0, perfectHearing: false, enemyPerfectHearing: false, swiftLeader: false, doorMirror: false, magicTokens: false, tracks: false, sneaky: false, doorBashed: false, ambushed: false },
   advancedRules: { overwatch: false, limitedBleeding: false, quickSlotDamage: false, darkness: false, quiver: false }, // optional rules (rulebook p184/193/194)
   initiativeBag: null, // array of "hero"/"enemy" tokens still in the bag, or null before first build
   initiativeDrawOrder: [], // tokens drawn so far, in order
@@ -4149,6 +4151,22 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.70.0",
+    date: "2026-10-23",
+    sections: {
+      Added: [
+        "Dungeon Events now use the real 24-event table: the room roll (1d10, 9-10) chains into the 1d6 column and 1d12 event, and the result is saved so it survives tab switches",
+        "Automated events: Wailing Sound (Sanity and Party Morale, respecting Simplified Game), Tracks in the Dust (+1 hero Initiative token), Cave in (squares and per-hero DEX test with 3d6 damage), Intoxicating Mist (end-of-turn damage), Crystals (+10 Mana per crystal for wizards), Scribbles on the Wall (PER test, 1d8 outcome, curses, Morale)",
+        "Pickup events spend 2 AP and put items in the chosen hero's backpack: Potions (1d3+1), Lost Weapon and Tattered Cloak (with Durability loss), Mushrooms, Partial Map, parchment scroll or map, the Ring (magic or mundane), the Bruised Adventurer's key (2 rations) and Corpse searching",
+        "The Ghost: rolls his home village, tracks the quest, and awards 300 XP to every hero on delivery",
+        "Stray Adventurer and Stray Dog count as no event (they need the Companions rules)",
+      ],
+      Changed: [
+        "All checkboxes are now toggle switches, much easier to tap on a phone",
+      ],
+    },
+  },
   {
     version: "1.69.0",
     date: "2026-10-23",
@@ -14133,13 +14151,13 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
   // rulebook actually wants it to persist across turns of the same fight.
   const initSetup = party.initiativeSetup;
   const setInitSetup = (patch) => setParty((prev) => ({ ...prev, initiativeSetup: { ...prev.initiativeSetup, ...patch } }));
-  const { enemyCount, namedMonsterCount, largeMonsterCount, perfectHearing, enemyPerfectHearing, swiftLeader, sneaky, doorBashed, ambushed, doorMirror, magicTokens } = initSetup;
+  const { enemyCount, namedMonsterCount, largeMonsterCount, perfectHearing, enemyPerfectHearing, swiftLeader, sneaky, doorBashed, ambushed, doorMirror, magicTokens, tracks } = initSetup;
   const magicTokenTotal = heroes.reduce((n, h) => n + magicTotals(h).tokens, 0);
   const hasDoorMirror = heroes.some((h) => heroHasItem(h, /^Door Mirror/i));
   const bag = party.initiativeBag;
   const drawOrder = party.initiativeDrawOrder;
 
-  const heroTokenCount = heroes.filter((h) => !(party.advancedRules?.overwatch && h.overwatch)).length + (perfectHearing && !enemyPerfectHearing ? 1 : 0) + (swiftLeader ? 1 : 0) + (doorMirror ? 2 : 0) + (magicTokens ? magicTokenTotal : 0);
+  const heroTokenCount = heroes.filter((h) => !(party.advancedRules?.overwatch && h.overwatch)).length + (perfectHearing && !enemyPerfectHearing ? 1 : 0) + (swiftLeader ? 1 : 0) + (doorMirror ? 2 : 0) + (magicTokens ? magicTokenTotal : 0) + (tracks ? 1 : 0);
   const enemyTokenCount =
     Math.max(0, Number(enemyCount) || 0) +
     Math.max(0, Number(namedMonsterCount) || 0) +
@@ -14238,6 +14256,7 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
             ["Swift Leader (+1 hero)", "swiftLeader", swiftLeader],
             ...(hasDoorMirror ? [["Door Mirror: encounter behind the door (+2 hero)", "doorMirror", doorMirror]] : []),
             ...(magicTokenTotal > 0 ? [[`Magic items, first combat turn (+${magicTokenTotal} hero)`, "magicTokens", magicTokens]] : []),
+            ...(tracks ? [["Tracks in the Dust (+1 hero)", "tracks", tracks]] : []),
             ["Sneaky (+1 enemy)", "sneaky", sneaky],
             ["Door bashed (+2 enemy)", "doorBashed", doorBashed],
             ["Ambushed (+3 enemy)", "ambushed", ambushed],
@@ -14774,7 +14793,7 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
 
       <Panel className="mb-4">
         <SectionTitle icon={ClipboardList}>Optional Rules</SectionTitle>
-        {[["dungeonEvents", "Dungeon Events", "Roll 1d10 on entering an empty room (9–10 = event). Adds a tool to the Actions tab."],
+        {[["dungeonEvents", "Dungeon Events", "Roll 1d10 on entering an empty room (9–10 = event); the app then rolls the column and event from the 24-event table and resolves it. Adds a tool to the Actions tab."],
           ["simplifiedAlchemy", "Simplified Alchemy", "4/6/8 unique components for Weak/Standard/Supreme; no recipes; you choose the potion on success. Switches the Mix a Potion screen."]].map(([k, label, desc]) => (
           <label key={k} className="flex items-start gap-2 text-xs mb-1.5" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
             <input type="checkbox" checked={!!party.optionalRules?.[k]} onChange={(e) => setParty({ ...party, optionalRules: { ...party.optionalRules, [k]: e.target.checked } })} className="mt-0.5" />
@@ -14784,7 +14803,7 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
         <div className="mt-3 pt-3" style={{ borderTop: `1px solid ${palette.line}` }}>
           <p className="text-xs font-bold mb-0.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Simplified Game</p>
           <p className="text-[11px] mb-2 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-            Tick a system to remove it (rulebook p21). Its panels disappear and its effects stop; Talents, Perks and gear that only refer to it are ignored. This changes campaign balance and may affect some rewards.
+            Switch a system on to remove it (rulebook p21). Its panels disappear and its effects stop; Talents, Perks and gear that only refer to it are ignored. This changes campaign balance and may affect some rewards.
           </p>
           {SIMPLIFIED_SYSTEMS.map(([k, label, desc]) => (
             <label key={k} className="flex items-start gap-2 text-xs mb-1.5" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
@@ -16583,6 +16602,344 @@ function lootTableLookup(tableKey, roll) {
   return "—";
 }
 
+// ---------- Dungeon Events (optional rule, rulebook v2.571) ----------
+// 1d10 on the first activation in a new room (9-10 = event), then 1d6 picks the column (1-3 / 4-6) and 1d12 the event.
+const DUNGEON_EVENTS = [
+  { col: 1, d12: 1, key: "strayAdventurer", title: "Stray Adventurer", companion: true, text: "A lone adventurer would join the party for 50c until it leaves the dungeon. Needs the Companions rules, so the app treats it as no event." },
+  { col: 1, d12: 2, key: "trap", title: "Trap", text: "One of your heroes has run into a trap. Draw a trap card and resolve it." },
+  { col: 1, d12: 3, key: "potions", title: "Potions", text: "A couple of dusty, cobweb-covered bottles sit in a corner: 1d3+1 potions. Any hero spending 2 AP can pick them up; they must be identified as usual." },
+  { col: 1, d12: 4, key: "crack", title: "Crack in the Wall", text: "A bricked-up opening hides a room. Place a random room (not a corridor) that isn't in the exploration deck next to this one, joined by a closed door. No other doors out of it. The wall can be broken down like a door and has 20 HP. No encounters or events in the hidden room." },
+  { col: 1, d12: 5, key: "lostWeapon", title: "Lost Weapon", text: "A random weapon lies on the floor, having lost 1d3−1 Durability. Any hero spending 2 AP may pick it up." },
+  { col: 1, d12: 6, key: "corpse", title: "Corpse", text: "Barely more than a skeleton. Any hero may spend 2 AP to search it using the Dead Adventurer listing." },
+  { col: 1, d12: 7, key: "mushrooms", title: "Mushrooms", text: "Strange mushrooms grow along a wall. A hero spending 2 AP collects them. Eating them from a quick slot takes 1 AP and sends the hero into Frenzy (without the perk). It still costs 1 Energy, or 5 HP if the hero has none. Enough for 1d3 frenzy fits." },
+  { col: 1, d12: 8, key: "caveIn", title: "Cave in", text: "The roof collapses. Randomise 1d6 squares on the tile struck by debris. Anyone standing in one takes 3d6 DMG unless they dive away with a successful DEX test (move them to an adjacent square). A struck bridge collapses and everyone on it falls." },
+  { col: 1, d12: 9, key: "portcullis", title: "Portcullis", text: "A portcullis falls over the opening the heroes used to enter. It can be opened as normal." },
+  { col: 1, d12: 10, key: "daylight", title: "Daylight", text: "A hidden door is revealed that leads out of the dungeon; the party may leave by it. From now on, any Wandering Monsters triggered in this dungeon spawn in this room." },
+  { col: 1, d12: 11, key: "ring", title: "The Ring", text: "One hero spots a ring on the floor. Roll 1d6: 1-3 it is magic (identify it before use), 4-6 it is a mundane golden ring worth 150c." },
+  { col: 1, d12: 12, key: "cloak", title: "A Tattered Cloak", text: "A battered cloak hangs on a nail. Any hero spending 2 AP may take it. It has lost 1d4 Durability." },
+  { col: 2, d12: 1, key: "torch", title: "A Lit Torch", text: "A lit torch hangs on the wall (cannot be removed). Any PER test made in this room gets +10 to the PER value." },
+  { col: 2, d12: 2, key: "parchment", title: "Parchment in the Wall", text: "An old parchment protrudes from the wall. A hero spending 2 AP investigates it: 1d6 — 1 spell scroll, 2-3 partial map, 4-6 the scribblings of a mad man." },
+  { col: 2, d12: 3, key: "wailing", title: "Wailing Sound", text: "A chilling wail echoes through the room. Each hero loses 1 Sanity and Party Morale falls by 4." },
+  { col: 2, d12: 4, key: "mist", title: "Intoxicating Mist", text: "For every turn a hero ends in this room, he or she takes 1 DMG. Armour and NA don't help. Enemies are unaffected." },
+  { col: 2, d12: 5, key: "partialMap", title: "A Partial Map", text: "A map lies on the floor. Any hero spending 2 AP studies it for the normal partial map effect. It only works in the current dungeon." },
+  { col: 2, d12: 6, key: "strayDog", title: "Stray Dog", companion: true, text: "A stray dog would befriend the party, but needs the Companion's Compendium. Without it this counts as no event." },
+  { col: 2, d12: 7, key: "goblins", title: "Goblin Raiding Party", text: "Goblins arrive from the path the heroes just travelled. Place them randomly in the tile the heroes came from. They carry shortswords and shields and have armour 1." },
+  { col: 2, d12: 8, key: "tracks", title: "Tracks in the Dust", text: "The party gets +1 Initiative Token on the next tile it enters, should there be an encounter." },
+  { col: 2, d12: 9, key: "crystals", title: "Crystals", text: "Green-sheened crystals (1d4). Any wizard notices their power: each gives the wizard 10 Mana, never above max. Picking them up takes 2 AP." },
+  { col: 2, d12: 10, key: "bruised", title: "Bruised Adventurer", text: "A battered adventurer offers a key that will open the next lock (door or chest) in exchange for 2 rations of food." },
+  { col: 2, d12: 11, key: "scribbles", title: "Scribbles on the Wall", text: "Half-faded writing on the wall. A hero spends 2 AP and takes a PER test to read it. If successful, roll 1d8." },
+  { col: 2, d12: 12, key: "ghost", title: "The Ghost", text: "A ghost asks the party to return his father's sword to his home village. If accepted, build a playing-card deck with one card per unturned exploration card, one black and the rest red; turn a card for every new tile. The black card is the body and sword: one hero spends 2 AP searching it (Dead Adventurer). On entering his home village, each hero gains 300 XP." },
+];
+const GHOST_VILLAGES = ["Caelkirk", "Irondale", "Windfair", "Whiteport", "Rochdale", "Coalfell", "Freyfell", "Silver City"];
+
+function DungeonEventPanel({ party, setParty, heroes, updateHero, addLog, grantTreasureMorale }) {
+  const ev = party.roomEvent;
+  const def = ev?.key ? DUNGEON_EVENTS.find((e) => e.key === ev.key) : null;
+  const data = ev?.data || {};
+  const [pick, setPick] = useState("");
+  const [fb, setFb] = useState(null);
+  const hero = heroes.find((h) => h.id === pick) || heroes[0];
+  const setData = (patch) => setParty((p) => (p.roomEvent ? { ...p, roomEvent: { ...p.roomEvent, data: { ...(p.roomEvent.data || {}), ...patch } } } : p));
+  const spend = (h, n) => {
+    const ap = h.ap ?? 2;
+    if (ap < n) { setFb(`${h.name} doesn't have enough AP (needs ${n}, has ${ap}). Check the Turn tab.`); return null; }
+    setFb(null);
+    return { ...h, ap: ap - n };
+  };
+  const mkItems = (items) => items.map((it) => ({ id: uid(), value: "", enc: 0, dur: "", slot: "backpack", ...it }));
+  const give = (h, items, ap, line) => {
+    const base = ap ? spend(h, ap) : { ...h };
+    if (!base) return false;
+    updateHero(h.id, { ...base, backpack: [...h.backpack, ...mkItems(items)] });
+    addLog(`${h.name}${ap ? ` (${ap} AP)` : ""}: ${line}`);
+    return true;
+  };
+
+  const rollEvent = () => {
+    const r = rollDie(10);
+    if (r < 9) {
+      setParty((p) => ({ ...p, roomEvent: { r, hit: false } }));
+      addLog(`New room: Dungeon Event roll ${r} — nothing happens.`);
+      return;
+    }
+    const col = rollDie(6) <= 3 ? 1 : 2;
+    const d12 = rollDie(12);
+    const d = DUNGEON_EVENTS.find((e) => e.col === col && e.d12 === d12);
+    const dt = {};
+    let extra = () => ({});
+    let note = d.title;
+    if (d.key === "trap") { dt.victim = heroes.length ? heroes[Math.floor(Math.random() * heroes.length)].name : ""; note += dt.victim ? ` — ${dt.victim} triggers it` : ""; }
+    if (d.key === "potions") dt.n = rollDie(3) + 1;
+    if (d.key === "lostWeapon") { const w = WEAPONS[Math.floor(Math.random() * WEAPONS.length)]; dt.weapon = { name: w.name, cost: w.cost, enc: w.enc }; dt.loss = rollDie(3) - 1; }
+    if (d.key === "mushrooms") dt.uses = rollDie(3);
+    if (d.key === "caveIn") dt.squares = rollDie(6);
+    if (d.key === "cloak") dt.loss = rollDie(4);
+    if (d.key === "ring") { dt.d6 = rollDie(6); note += dt.d6 <= 3 ? " (magic)" : " (mundane)"; }
+    if (d.key === "goblins") { dt.n = rollDiceString("2d4"); note += ` — ${dt.n} goblins`; }
+    if (d.key === "crystals") dt.n = rollDie(4);
+    if (d.key === "ghost") dt.village = GHOST_VILLAGES[rollDie(8) - 1];
+    if (d.key === "wailing") {
+      heroes.forEach((h) => { if (!SIMP.sanity) updateHero(h.id, { ...h, sanity: { ...h.sanity, cur: Math.max(0, h.sanity.cur - 1) } }); });
+      extra = (p) => (SIMP.morale ? {} : { morale: Math.max(0, p.morale - 4) });
+      note += SIMP.morale || SIMP.sanity ? " — effects applied where those systems are in use" : " — each hero −1 Sanity, Party Morale −4";
+    }
+    if (d.key === "tracks") extra = (p) => ({ initiativeSetup: { ...p.initiativeSetup, tracks: true } });
+    setParty((p) => ({ ...p, ...extra(p), roomEvent: { r, hit: true, col, d12, key: d.key, data: dt } }));
+    setFb(null);
+    addLog(`New room: Dungeon Event roll ${r} — event! Column ${col === 1 ? "1-3" : "4-6"}, 1d12 → ${d12}: ${note}.`);
+  };
+
+  const btn = (label, onClick, disabled, tone) => (
+    <button onClick={onClick} disabled={disabled} className="w-full text-xs px-3 py-2 rounded font-bold mt-1.5"
+      style={{ background: tone === "gold" ? palette.gold : palette.crimsonDark, color: tone === "gold" ? palette.charcoal : palette.parchment, fontFamily: "Cinzel, serif", opacity: disabled ? 0.45 : 1 }}>
+      {label}
+    </button>
+  );
+  const heroSel = (
+    <label className="text-xs block mt-1.5" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+      Acting hero
+      <select value={hero?.id || ""} onChange={(e) => setPick(e.target.value)} className="w-full text-xs rounded px-2 py-1 mt-0.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+        {heroes.map((h) => <option key={h.id} value={h.id}>{h.name} (AP {h.ap ?? 2})</option>)}
+      </select>
+    </label>
+  );
+  const done = (t) => <p className="text-xs mt-1.5 font-semibold" style={{ color: palette.forestDark, fontFamily: "Crimson Pro, serif" }}>• {t}</p>;
+
+  const readScribbles = () => {
+    if (!hero) return;
+    const base = spend(hero, 2);
+    if (!base) return;
+    const per = Number(hero.skills?.perception) || 0;
+    const roll = rollPercent();
+    if (roll > per) {
+      updateHero(hero.id, base);
+      setData({ scribble: { text: `${hero.name} rolled ${roll} vs PER ${per} — failed. The writing stays unreadable (2 AP spent). Another hero may try.` } });
+      addLog(`${hero.name} tries to read the scribbles: PER ${roll} vs ${per} — failed.`);
+      return;
+    }
+    const d8 = rollDie(8);
+    let text = "";
+    let patch = base;
+    if (d8 === 1) text = "The text describes parts of the dungeon: look at the top 3 cards of the closest pile of exploration cards.";
+    else if (d8 === 2) text = "A warning of a trap ahead: the party automatically succeeds with the PER needed to spot the next trap.";
+    else if (d8 === 3) { const n = grantTreasureMorale("Wonderful Treasure", hero.name); text = `A hidden compartment holds a wonderful treasure (part of the 2 AP). Roll it on the Treasure Table. ${n}`; }
+    else if (d8 === 4) text = "The ramblings of a madman. Nothing of value.";
+    else if (d8 === 5) text = "\"Becrin was here.\" Wonder if he is still here, or if he managed to get out?";
+    else if (d8 === 6) { const n = rollDie(3); text = `An incantation summons ${n} Blood Demon${n > 1 ? "s" : ""} armed with broadswords, armour 0. Place them randomly in the room.`; }
+    else if (d8 === 7) {
+      if (!SIMP.morale) { setParty((p) => ({ ...p, morale: Math.max(0, p.morale - 3) })); text = "A heart-breaking farewell of an adventurer who never left. Party Morale −3."; }
+      else text = "A heart-breaking farewell of a lost adventurer (Party Morale is removed in your game).";
+    } else {
+      const cr = rollDie(10);
+      const curse = CURSES_TABLE.find((c) => c.roll === cr);
+      let effect = curse.effect;
+      let detail = curse.text;
+      if (effect === "randomSkill") {
+        const key = Object.keys(SKILL_LABELS)[Math.floor(Math.random() * Object.keys(SKILL_LABELS).length)];
+        effect = { skill: key, amount: -5 };
+        detail = `${SKILL_LABELS[key]} -5`;
+      }
+      patch = { ...base, ...addTempEffect(base, `Curse (scribbles): ${detail}`, effect) };
+      text = `${hero.name} was tricked into reading a curse aloud. Curses table ${cr}: ${detail}, until the party leaves the dungeon (see Temporary Effects on the hero).`;
+    }
+    updateHero(hero.id, patch);
+    setData({ scribble: { text: `PER ${roll} vs ${per} — read it! 1d8 → ${d8}. ${text}`, solved: true } });
+    addLog(`${hero.name} reads the scribbles: PER ${roll} vs ${per}; 1d8 → ${d8}. ${text}`);
+  };
+
+  const body = () => {
+    if (!def) return null;
+    if (def.companion) return <p className="text-xs mt-1.5 italic" style={{ color: palette.inkSoft }}>Treated as no event. Remove the '?' token.</p>;
+    switch (def.key) {
+      case "trap":
+        return <>{data.victim && <p className="text-xs mt-1.5 font-semibold" style={{ color: palette.crimson }}>{data.victim} runs into it. Draw a trap card and resolve it (PER roll, then Sanity/Morale effects on the card).</p>}</>;
+      case "potions":
+        return <>{heroSel}{data.taken ? done(`Picked up: ${data.names}.`) : btn(`Pick up ${data.n} potion${data.n > 1 ? "s" : ""} (2 AP)`, () => {
+          const items = [...Array(data.n)].map(() => { const p = rollRandomPotion("Standard"); return { name: p.potionName, value: p.cost, enc: 1, dur: "1" }; });
+          if (give(hero, items, 2, `picks up ${items.map((i) => i.name).join(", ")} from the dusty bottles (identify them as usual).`)) setData({ taken: true, names: `${items.map((i) => i.name).join(", ")} → ${hero.name} (identify them as usual)` });
+        }, !hero)}</>;
+      case "lostWeapon":
+        return <>{heroSel}{data.taken ? done(`${data.weapon.name} taken by ${data.takenBy}.`) : btn(`Take the ${data.weapon.name}${SIMP.durability ? "" : ` (−${data.loss} DUR)`} (2 AP)`, () => {
+          const dur = SIMP.durability ? 6 : 6 - data.loss;
+          if (give(hero, [{ name: data.weapon.name, value: data.weapon.cost, enc: data.weapon.enc, dur: `${dur}/6` }], 2, `takes a lost ${data.weapon.name} (${dur}/6 DUR).`)) setData({ taken: true, takenBy: hero.name });
+        }, !hero)}</>;
+      case "corpse":
+        return <>{heroSel}{data.corpse ? done(data.corpse) : btn("Search the corpse (2 AP)", () => {
+          const base = spend(hero, 2);
+          if (!base) return;
+          const roll = rollDie(10);
+          const text = annotateDiceInText(furnitureSearchResult("Dead Adventurer", roll).text);
+          const note = grantTreasureMorale(text, hero.name);
+          updateHero(hero.id, base);
+          setData({ corpse: `${hero.name} rolled ${roll}: ${text} ${note}` });
+          addLog(`${hero.name} searches the skeleton (2 AP): rolled ${roll} — ${text}`);
+        }, !hero)}</>;
+      case "mushrooms":
+        return <>{heroSel}{data.taken ? done(`${data.uses} frenzy fit${data.uses > 1 ? "s" : ""} of mushrooms collected by ${data.takenBy}.`) : btn(`Collect the mushrooms (2 AP, ${data.uses} use${data.uses > 1 ? "s" : ""})`, () => {
+          if (give(hero, [{ name: `Strange Mushrooms (${data.uses} frenzy fit${data.uses > 1 ? "s" : ""}: 1 AP to eat, gives Frenzy, costs 1 Energy or 5 HP)`, enc: 0 }], 2, `collects strange mushrooms (${data.uses} uses).`)) setData({ taken: true, takenBy: hero.name });
+        }, !hero)}</>;
+      case "caveIn":
+        return (
+          <div className="mt-1.5">
+            <p className="text-xs font-semibold" style={{ color: palette.crimson }}>{data.squares} square{data.squares > 1 ? "s" : ""} struck by debris. For each hero standing in one:</p>
+            {heroes.map((h) => (
+              <div key={h.id} className="flex items-center justify-between gap-2 mt-1">
+                <span className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>{h.name}{data.cave?.[h.id] ? ` — ${data.cave[h.id]}` : ""}</span>
+                {!data.cave?.[h.id] && (
+                  <button className="text-[10px] px-2 py-1 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }} onClick={() => {
+                    const dex = Number(h.stats.DEX) || 0;
+                    const roll = rollPercent();
+                    let line;
+                    if (roll <= dex) line = `DEX ${roll} vs ${dex} — dives clear (move to an adjacent square)`;
+                    else {
+                      const dmg = rollDiceString("3d6");
+                      updateHero(h.id, { ...h, hp: { ...h.hp, cur: Math.max(0, h.hp.cur - dmg) } });
+                      line = `DEX ${roll} vs ${dex} — crushed for ${dmg} DMG`;
+                    }
+                    setData({ cave: { ...(data.cave || {}), [h.id]: line } });
+                    addLog(`Cave in: ${h.name} ${line}.`);
+                  }}>Struck: DEX test</button>
+                )}
+              </div>
+            ))}
+          </div>
+        );
+      case "ring":
+        return <>{heroSel}{data.taken ? done(data.d6 <= 3 ? "A magic ring: have a Wizard identify it, then roll its property." : "A mundane golden ring worth 150c.") : btn(data.d6 <= 3 ? "Take the magic ring (free)" : "Take the golden ring (free)", () => {
+          const item = data.d6 <= 3 ? { name: "Ring (magic, unidentified)", enc: 0 } : { name: "Golden Ring (mundane)", value: 150, enc: 0 };
+          if (give(hero, [item], 0, data.d6 <= 3 ? "finds a magic ring (identify it before use)." : "finds a mundane golden ring worth 150c.")) setData({ taken: true });
+        }, !hero)}</>;
+      case "cloak":
+        return <>{heroSel}{data.taken ? done("Cloak taken.") : btn(`Take the cloak${SIMP.durability ? "" : ` (−${data.loss} DUR)`} (2 AP)`, () => {
+          const dur = SIMP.durability ? 6 : Math.max(1, 6 - data.loss);
+          if (give(hero, [{ name: "Cloak", value: 50, enc: 1, dur: `${dur}/6` }], 2, `takes a tattered cloak (${dur}/6 DUR).`)) setData({ taken: true });
+        }, !hero)}</>;
+      case "parchment":
+        return <>{heroSel}{data.parch ? done(data.parch) : btn("Investigate the parchment (2 AP)", () => {
+          const d6 = rollDie(6);
+          if (d6 === 1) {
+            const sp = SPELLS[Math.floor(Math.random() * SPELLS.length)];
+            if (give(hero, [{ name: `Scroll of ${sp.name}`, enc: 1, dur: "1" }], 2, `finds a Scroll of ${sp.name} in the wall.`)) setData({ parch: `1d6 → 1: a Scroll of ${sp.name}, now in ${hero.name}'s backpack.` });
+          } else if (d6 <= 3) {
+            if (give(hero, [{ name: "Partial Map", value: 75, enc: 0 }], 2, "finds a partial map in the wall.")) setData({ parch: `1d6 → ${d6}: a partial map, now in ${hero.name}'s backpack.` });
+          } else {
+            const base = spend(hero, 2);
+            if (!base) return;
+            updateHero(hero.id, base);
+            setData({ parch: `1d6 → ${d6}: just the scribblings of a mad man.` });
+            addLog(`${hero.name} investigates the parchment (2 AP): the scribblings of a mad man.`);
+          }
+        }, !hero)}</>;
+      case "wailing":
+        return done(SIMP.sanity && SIMP.morale ? "Sanity and Party Morale are removed in your game: no effect." : `Applied: ${SIMP.sanity ? "" : "each hero −1 Sanity"}${!SIMP.sanity && !SIMP.morale ? ", " : ""}${SIMP.morale ? "" : "Party Morale −4"}.`);
+      case "mist":
+        return (
+          <div className="mt-1.5">
+            <p className="text-xs" style={{ color: palette.inkSoft }}>When a hero ends a turn in this room, take 1 DMG (armour and NA don't help).</p>
+            {btn("Heroes still in the room: −1 HP each", () => {
+              heroes.filter((h) => !data.out?.[h.id]).forEach((h) => updateHero(h.id, { ...h, hp: { ...h.hp, cur: Math.max(0, h.hp.cur - 1) } }));
+              addLog("Intoxicating Mist: heroes still in the room take 1 DMG at the end of the turn.");
+            })}
+            <p className="text-[10px] mt-1.5" style={{ color: palette.inkSoft }}>Tick heroes who have left the room:</p>
+            <div className="flex flex-wrap gap-2 mt-0.5">
+              {heroes.map((h) => (
+                <label key={h.id} className="text-xs flex items-center gap-1" style={{ color: palette.ink }}>
+                  <input type="checkbox" checked={!!data.out?.[h.id]} onChange={() => setData({ out: { ...(data.out || {}), [h.id]: !data.out?.[h.id] } })} /> {h.name}
+                </label>
+              ))}
+            </div>
+          </div>
+        );
+      case "partialMap":
+        return <>{heroSel}{data.taken ? done("Partial map taken (this dungeon only).") : btn("Study and take the map (2 AP)", () => {
+          if (give(hero, [{ name: "Partial Map (this dungeon only)", enc: 0 }], 2, "picks up a partial map (this dungeon only).")) setData({ taken: true });
+        }, !hero)}</>;
+      case "goblins":
+        return <p className="text-xs mt-1.5 font-semibold" style={{ color: palette.crimson }}>Place {data.n} goblins (shortsword, shield, armour 1) randomly in the tile the heroes came from. Start a battle from the Combat tab.</p>;
+      case "tracks":
+        return done("+1 hero Initiative token added to the Initiative setup (Turn tab). Untick it there if the next tile has no encounter.");
+      case "crystals": {
+        const wizards = heroes.filter((h) => (h.mana?.max || 0) > 0);
+        const left = data.held ?? 0;
+        return (
+          <div className="mt-1.5">
+            {!data.taken && <>{heroSel}{btn(`Pick up ${data.n} crystal${data.n > 1 ? "s" : ""} (2 AP)`, () => {
+              const base = spend(hero, 2);
+              if (!base) return;
+              updateHero(hero.id, base);
+              setData({ taken: true, held: data.n });
+              addLog(`${hero.name} gathers ${data.n} green crystal${data.n > 1 ? "s" : ""} (2 AP).`);
+            }, !hero)}</>}
+            {data.taken && <p className="text-xs font-semibold" style={{ color: palette.forestDark }}>{left} crystal{left === 1 ? "" : "s"} left. Each gives a wizard 10 Mana (up to max).</p>}
+            {data.taken && wizards.length === 0 && <p className="text-xs italic" style={{ color: palette.inkSoft }}>No wizard in the party to use them.</p>}
+            {data.taken && wizards.map((w) => (
+              <button key={w.id} disabled={left <= 0 || w.mana.cur >= w.mana.max} className="w-full text-xs px-3 py-2 rounded font-bold mt-1.5" style={{ background: palette.crimsonDark, color: palette.parchment, opacity: left <= 0 || w.mana.cur >= w.mana.max ? 0.45 : 1 }} onClick={() => {
+                const gain = Math.min(10, w.mana.max - w.mana.cur);
+                updateHero(w.id, { ...w, mana: { ...w.mana, cur: w.mana.cur + gain } });
+                setData({ held: left - 1 });
+                addLog(`${w.name} drains a crystal: +${gain} Mana (${w.mana.cur + gain}/${w.mana.max}).`);
+              }}>Use a crystal on {w.name} ({w.mana.cur}/{w.mana.max} Mana)</button>
+            ))}
+          </div>
+        );
+      }
+      case "bruised":
+        return <>{heroSel}{data.traded ? done("Traded 2 rations for the key. It opens the next lock, door or chest.") : btn(`Trade 2 rations for the key (party has ${party.food})`, () => {
+          if ((Number(party.food) || 0) < 2) { setFb("The party doesn't have 2 rations to trade."); return; }
+          setParty((p) => ({ ...p, food: p.food - 2 }));
+          if (give(hero, [{ name: "Adventurer's Key (opens the next lock, door or chest)", enc: 0 }], 0, "trades 2 rations for the bruised adventurer's key.")) setData({ traded: true });
+        }, !hero || (Number(party.food) || 0) < 2)}</>;
+      case "scribbles":
+        return <>{heroSel}{data.scribble?.text && <p className="text-xs mt-1.5 font-semibold" style={{ color: data.scribble.solved ? palette.forestDark : palette.crimson }}>{data.scribble.text}</p>}{!data.scribble?.solved && btn("Read the writing (2 AP, PER test)", readScribbles, !hero)}</>;
+      case "ghost":
+        return data.accepted || party.ghostQuest ? done(`Quest accepted: return the sword to ${party.ghostQuest?.village || data.village}.`) : (
+          <div className="mt-1.5">
+            <p className="text-xs font-semibold" style={{ color: palette.crimson }}>His home village: {data.village} (1d8).</p>
+            {btn("Accept the quest", () => { setParty((p) => ({ ...p, ghostQuest: { village: data.village, found: false, delivered: false } })); setData({ accepted: true }); addLog(`The Ghost: quest accepted — return his father's sword to ${data.village}.`); })}
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const gq = party.ghostQuest;
+  return (
+    <Panel>
+      <SectionTitle icon={Sparkles}>Dungeon Event (optional)</SectionTitle>
+      <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+        Only in a room (not a corridor or Objective Room) with no Encounter. Roll before the first hero activation that starts fully inside it; one event per room. 9-10 triggers an event.
+      </p>
+      <button onClick={rollEvent} className="w-full text-sm px-3 py-2 rounded font-bold" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>Roll 1d10 for this room</button>
+      {ev && !ev.hit && <p className="text-xs mt-2 font-semibold" style={{ color: palette.forestDark, fontFamily: "Crimson Pro, serif" }}>Rolled {ev.r}: no event. Remove the '?' token.</p>}
+      {ev?.hit && def && (
+        <div className="rounded p-2 mt-2" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+          <p className="text-xs font-bold" style={{ color: palette.crimson, fontFamily: "Cinzel, serif" }}>
+            Rolled {ev.r}: {def.title} <span style={{ color: palette.inkSoft, fontFamily: "JetBrains Mono, monospace", fontWeight: 400 }}>(col {ev.col === 1 ? "1-3" : "4-6"}, d12 {ev.d12})</span>
+          </p>
+          <p className="text-xs mt-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>{def.text}</p>
+          {fb && <p className="text-xs mt-1.5 font-semibold" style={{ color: palette.crimson }}>{fb}</p>}
+          {body()}
+          <button onClick={() => { setParty((p) => ({ ...p, roomEvent: null })); setFb(null); }} className="text-[10px] mt-2 underline" style={{ color: palette.inkSoft }}>Clear this event</button>
+        </div>
+      )}
+      {gq && !gq.delivered && (
+        <div className="rounded p-2 mt-2" style={{ background: palette.parchment, border: `1px solid ${palette.gold}` }}>
+          <p className="text-xs font-bold" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>The Ghost's sword: deliver to {gq.village}</p>
+          <label className="text-xs flex items-center gap-1.5 mt-1" style={{ color: palette.ink }}>
+            <input type="checkbox" checked={!!gq.found} onChange={() => setParty((p) => ({ ...p, ghostQuest: { ...p.ghostQuest, found: !p.ghostQuest.found } }))} /> Black card found: body and sword recovered
+          </label>
+          {btn(`Delivered in ${gq.village}: +300 XP to every hero`, () => {
+            heroes.forEach((h) => updateHero(h.id, { ...h, xp: (Number(h.xp) || 0) + 300 }));
+            setParty((p) => ({ ...p, ghostQuest: { ...p.ghostQuest, delivered: true } }));
+            addLog(`The Ghost's sword delivered in ${gq.village}: each hero gains 300 XP.`);
+          }, !gq.found, "gold")}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   const [doorResult, setDoorResult] = useState(null);
   const [doorHero, setDoorHero] = useState("");
@@ -16697,7 +17054,6 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   const [corpseInCombat, setCorpseInCombat] = useState(false);
   const [corpseResult, setCorpseResult] = useState(null);
   const [corpseFeedback, setCorpseFeedback] = useState(null);
-  const [eventResult, setEventResult] = useState(null);
   const lootCorpse = () => {
     let who = "Corpse loot";
     if (lootMode === "hardcore") {
@@ -16713,12 +17069,6 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
     setCorpseFeedback(null);
     addLog(`${who} loots a ${corpseTier} corpse: rolled ${roll} — ${result}.`);
   };
-  const rollDungeonEvent = () => {
-    const r = rollDie(10);
-    setEventResult({ r, hit: r >= 9 });
-    addLog(r >= 9 ? `New room: Dungeon Event roll ${r} — event triggered, resolve it from the Quick Reference Compendium.` : `New room: Dungeon Event roll ${r} — nothing happens.`);
-  };
-
   const searchFurniture = () => {
     if (!furnitureType || !activeFurnitureHero) return;
     if (!trySpendAP(activeFurnitureHero, furnitureInCombat ? 2 : 1, setFurnitureFeedback)) return;
@@ -17470,18 +17820,7 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
       </Panel>
 
       {party.optionalRules?.dungeonEvents && (
-        <Panel>
-          <SectionTitle icon={Sparkles}>Dungeon Event (optional)</SectionTitle>
-          <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-            Only in a room (not a corridor or Objective Room) with no Encounter. Roll before the first hero activation that starts fully inside it; one event per room.
-          </p>
-          <button onClick={rollDungeonEvent} className="w-full text-sm px-3 py-2 rounded font-bold" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>Roll 1d10 for this room</button>
-          {eventResult && (
-            <p className="text-xs mt-2 font-semibold" style={{ color: eventResult.hit ? palette.crimson : palette.forestDark, fontFamily: "Crimson Pro, serif" }}>
-              Rolled {eventResult.r}: {eventResult.hit ? "Dungeon Event! Resolve it from the Quick Reference Compendium table, then remove the '?' token." : "no event. Remove the '?' token."}
-            </p>
-          )}
-        </Panel>
+        <DungeonEventPanel party={party} setParty={setParty} heroes={heroes} updateHero={updateHero} addLog={addLog} grantTreasureMorale={grantTreasureMorale} />
       )}
     </div>
   );

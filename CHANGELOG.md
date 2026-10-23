@@ -3,6 +3,18 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.70.0] — 2026-10-23
+
+### Added
+- Dungeon Events now use the real 24-event table: the room roll (1d10, 9-10) chains into the 1d6 column and 1d12 event, and the result is saved so it survives tab switches
+- Automated events: Wailing Sound (Sanity and Party Morale, respecting Simplified Game), Tracks in the Dust (+1 hero Initiative token), Cave in (squares and per-hero DEX test with 3d6 damage), Intoxicating Mist (end-of-turn damage), Crystals (+10 Mana per crystal for wizards), Scribbles on the Wall (PER test, 1d8 outcome, curses, Morale)
+- Pickup events spend 2 AP and put items in the chosen hero's backpack: Potions (1d3+1), Lost Weapon and Tattered Cloak (with Durability loss), Mushrooms, Partial Map, parchment scroll or map, the Ring (magic or mundane), the Bruised Adventurer's key (2 rations) and Corpse searching
+- The Ghost: rolls his home village, tracks the quest, and awards 300 XP to every hero on delivery
+- Stray Adventurer and Stray Dog count as no event (they need the Companions rules)
+
+### Changed
+- All checkboxes are now toggle switches, much easier to tap on a phone
+
 ## [1.69.0] — 2026-10-23
 
 ### Added

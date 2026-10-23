@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.76.1] — 2026-10-23
+
+### Fixed
+- Alchemy only (lite) mode can now always be switched off: a "Lite mode on: show all tabs" button sits in the header on every tab (and in the desktop sidebar), instead of only on the Alchemy tab
+
 ## [1.76.0] — 2026-10-23
 
 ### Added

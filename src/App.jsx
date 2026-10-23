@@ -4235,6 +4235,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.76.1",
+    date: "2026-10-23",
+    sections: {
+      Fixed: [
+        "Alchemy only (lite) mode can now always be switched off: a \"Lite mode on: show all tabs\" button sits in the header on every tab (and in the desktop sidebar), instead of only on the Alchemy tab",
+      ],
+    },
+  },
+  {
     version: "1.76.0",
     date: "2026-10-23",
     sections: {
@@ -20204,6 +20213,11 @@ export default function App() {
             >
               Rulebook v2.571 · QRS v2.5
             </span>
+            {alchOnly && (
+              <button onClick={() => setParty({ ...party, optionalRules: { ...party.optionalRules, alchemyOnly: false } })} className="block mt-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-full" style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}>
+                Lite mode on: show all tabs
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
           <span
@@ -20332,6 +20346,11 @@ export default function App() {
           {saveState === "saved" && (<><span>saved</span> <Check size={12} /></>)}
           {saveState === "error" && "save failed"}
         </span>
+        {alchOnly && (
+          <button onClick={() => setParty({ ...party, optionalRules: { ...party.optionalRules, alchemyOnly: false } })} className="text-xs font-bold px-3 py-2 rounded" style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}>
+            Lite mode on: show all tabs
+          </button>
+        )}
         <button
           onClick={() => { setTab("reference"); setTimeout(() => document.getElementById("lod-help")?.scrollIntoView({ behavior: "smooth", block: "start" }), 150); }}
           className="flex items-center gap-2 px-3 py-2 rounded text-xs font-semibold"

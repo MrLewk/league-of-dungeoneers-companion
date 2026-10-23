@@ -3,6 +3,14 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.71.0] — 2026-10-23
+
+### Added
+- A New Beginning (von Braus expansion) quest tracker: switch it on under Party > Optional Rules and a section appears in the Quests tab with 6 Starting Quests and 8 Follow-up Quests, a seed (1-12) selector, and a renameable name, settlement and note on every quest. Its expanded Hunger rules are handled manually from the expansion rulebook
+
+### Fixed
+- Hero cards no longer stretch wider than the screen on phones (for example a Dwarf Warrior Priest hid the Level and XP fields); long dropdown options now shrink to fit
+
 ## [1.70.0] — 2026-10-23
 
 ### Added

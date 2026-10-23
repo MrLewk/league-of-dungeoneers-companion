@@ -109,3 +109,9 @@ input[type="checkbox"]:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* Long <option> text must never widen a card: selects shrink to their container (fixes overflow on small phones) */
+select {
+  min-width: 0;
+  max-width: 100%;
+}

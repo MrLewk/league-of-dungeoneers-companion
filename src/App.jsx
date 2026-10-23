@@ -555,8 +555,9 @@ const defaultParty = () => ({
   dungeonState: "settlement", // "settlement" | "travel" | "dungeon" — drives the Travel tab status badge and the auto-clear of tempEffects on dungeon exit
   dungeonRestCount: 0, // completed (uninterrupted) Short Rests taken since entering the current dungeon — drives the Ambush risk escalation; resets to 0 on Exit Dungeon, never per level
   simplified: { encumbrance: false, morale: false, durability: false, sanity: false, scenario: false }, // Simplified Game (p21): true = system removed
-  optionalRules: { lootMode: "hardcore", dungeonEvents: false, simplifiedAlchemy: false },
+  optionalRules: { lootMode: "hardcore", dungeonEvents: false, simplifiedAlchemy: false, newBeginning: false },
   roomEvent: null, // current room's Dungeon Event (optional rule), persisted across tab switches
+  newBeginning: { seed: "", quests: {} }, // A New Beginning expansion tracker: seed 1-12 and per-quest { name, settlement, note }
   ghostQuest: null, // The Ghost event: { village, found, delivered } // optional/campaign rules (rulebook p21, p110, p177-178)
   bottleOfExperienceMade: false, // Simplified Alchemy: one Bottle of Experience between two dungeon quests
   maxThreat: 0, // quest's Maximum Threat (0 = none set) — at/over it a Wandering Monster is placed and Threat drops by 5
@@ -4152,6 +4153,18 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.71.0",
+    date: "2026-10-23",
+    sections: {
+      Added: [
+        "A New Beginning (von Braus expansion) quest tracker: switch it on under Party > Optional Rules and a section appears in the Quests tab with 6 Starting Quests and 8 Follow-up Quests, a seed (1-12) selector, and a renameable name, settlement and note on every quest. Its expanded Hunger rules are handled manually from the expansion rulebook",
+      ],
+      Fixed: [
+        "Hero cards no longer stretch wider than the screen on phones (for example a Dwarf Warrior Priest hid the Level and XP fields); long dropdown options now shrink to fit",
+      ],
+    },
+  },
+  {
     version: "1.70.0",
     date: "2026-10-23",
     sections: {
@@ -7620,7 +7633,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
   return (
     <Panel className="mb-3">
       <div className="flex items-start justify-between gap-2">
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <div
             className="flex items-center gap-1.5 group"
             style={{ borderBottom: "1.5px solid transparent" }}
@@ -14794,7 +14807,8 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
       <Panel className="mb-4">
         <SectionTitle icon={ClipboardList}>Optional Rules</SectionTitle>
         {[["dungeonEvents", "Dungeon Events", "Roll 1d10 on entering an empty room (9–10 = event); the app then rolls the column and event from the 24-event table and resolves it. Adds a tool to the Actions tab."],
-          ["simplifiedAlchemy", "Simplified Alchemy", "4/6/8 unique components for Weak/Standard/Supreme; no recipes; you choose the potion on success. Switches the Mix a Potion screen."]].map(([k, label, desc]) => (
+          ["simplifiedAlchemy", "Simplified Alchemy", "4/6/8 unique components for Weak/Standard/Supreme; no recipes; you choose the potion on success. Switches the Mix a Potion screen."],
+          ["newBeginning", "A New Beginning (expansion)", "Adds a quest tracker to the Quests tab for the von Braus 'A New Beginning' expansion (6 starting quests, 8 follow-ups). Needs the expansion PDF; its Hunger rules are handled manually."]].map(([k, label, desc]) => (
           <label key={k} className="flex items-start gap-2 text-xs mb-1.5" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
             <input type="checkbox" checked={!!party.optionalRules?.[k]} onChange={(e) => setParty({ ...party, optionalRules: { ...party.optionalRules, [k]: e.target.checked } })} className="mt-0.5" />
             <span><b>{label}</b> — {desc}</span>
@@ -17826,6 +17840,62 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   );
 }
 
+const NB_START_QUESTS = [1, 2, 3, 4, 5, 6].map((n) => ({ id: `start${n}`, label: `Starting Quest ${n}` }));
+const NB_FOLLOW_QUESTS = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ id: `follow${n}`, label: `Follow-up Quest ${n}` }));
+
+// Quest tracker for the paid von Braus expansion "A New Beginning". Quest names aren't built in (the content is
+// the publisher's), so every row is renameable and carries a settlement and a note.
+function NewBeginningPanel({ party, setParty, addLog }) {
+  const nb = party.newBeginning || { seed: "", quests: {} };
+  const quests = party.quests || { completed: {} };
+  const setNb = (patch) => setParty((p) => ({ ...p, newBeginning: { ...(p.newBeginning || { seed: "", quests: {} }), ...patch } }));
+  const setQ = (id, patch) => setNb({ quests: { ...nb.quests, [id]: { ...(nb.quests[id] || {}), ...patch } } });
+  const toggle = (id, label) => {
+    const key = `nb:${id}`;
+    const isDone = !!quests.completed?.[key];
+    setParty((p) => ({ ...p, quests: { ...(p.quests || { completed: {} }), completed: { ...(p.quests?.completed || {}), [key]: !isDone } } }));
+    if (!isDone) addLog && addLog(`Quest complete: ${label}.`);
+  };
+  const inputStyle = { background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", color: palette.ink };
+  const row = (q) => {
+    const d = nb.quests[q.id] || {};
+    const label = d.name || q.label;
+    const done = !!quests.completed?.[`nb:${q.id}`];
+    return (
+      <div key={q.id} className="py-2" style={{ borderTop: `1px solid ${palette.line}` }}>
+        <div className="flex items-center gap-2">
+          <input type="checkbox" checked={done} onChange={() => toggle(q.id, label)} />
+          <input type="text" value={d.name || ""} placeholder={q.label} onChange={(e) => setQ(q.id, { name: e.target.value })} className={`flex-1 min-w-0 px-2 py-1 rounded text-sm font-semibold ${done ? "line-through opacity-60" : ""}`} style={inputStyle} />
+        </div>
+        <div className="grid grid-cols-2 gap-2 mt-1.5">
+          <input type="text" value={d.settlement || ""} placeholder="Settlement" onChange={(e) => setQ(q.id, { settlement: e.target.value })} className="min-w-0 px-2 py-1 rounded text-xs" style={inputStyle} />
+          <input type="text" value={d.note || ""} placeholder="Note" onChange={(e) => setQ(q.id, { note: e.target.value })} className="min-w-0 px-2 py-1 rounded text-xs" style={inputStyle} />
+        </div>
+      </div>
+    );
+  };
+  const count = (list) => list.filter((q) => quests.completed?.[`nb:${q.id}`]).length;
+  return (
+    <Panel>
+      <SectionTitle icon={BookOpen}>A New Beginning (expansion)</SectionTitle>
+      <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+        Replaces First Blood. Rename each quest, and note its settlement, once you have the expansion. Its expanded Hunger rules aren't automated: follow them from the expansion rulebook.
+      </p>
+      <label className="text-xs block mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+        Seed (which of the 12 quest distributions)
+        <select value={nb.seed || ""} onChange={(e) => setNb({ seed: e.target.value })} className="w-full px-2 py-1.5 rounded text-sm mt-0.5" style={inputStyle}>
+          <option value="">Not set</option>
+          {[...Array(12)].map((_, i) => <option key={i + 1} value={String(i + 1)}>Seed {i + 1}</option>)}
+        </select>
+      </label>
+      <p className="text-sm font-bold mb-1" style={{ color: palette.crimson, fontFamily: "Cinzel, serif" }}>Starting Quests <span className="text-xs font-normal" style={{ color: palette.inkSoft }}>({count(NB_START_QUESTS)}/{NB_START_QUESTS.length})</span></p>
+      {NB_START_QUESTS.map(row)}
+      <p className="text-sm font-bold mt-4 mb-1" style={{ color: palette.crimson, fontFamily: "Cinzel, serif" }}>Follow-up Quests <span className="text-xs font-normal" style={{ color: palette.inkSoft }}>({count(NB_FOLLOW_QUESTS)}/{NB_FOLLOW_QUESTS.length})</span></p>
+      {NB_FOLLOW_QUESTS.map(row)}
+    </Panel>
+  );
+}
+
 function QuestChecklistRow({ label, sub, checked, onToggle }) {
   return (
     <label className="flex items-start gap-2 py-1.5 text-sm" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
@@ -17942,6 +18012,8 @@ function QuestRollerPanel({ party, setParty, addLog }) {
           />
         ))}
       </Panel>
+
+      {party.optionalRules?.newBeginning && <NewBeginningPanel party={party} setParty={setParty} addLog={addLog} />}
 
       <Panel>
         <SectionTitle icon={BookOpen}>Quest Book I: Main Quests</SectionTitle>

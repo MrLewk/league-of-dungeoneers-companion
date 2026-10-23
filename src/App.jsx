@@ -98,6 +98,7 @@ const defaultHero = () => ({
   conditions: [],
   backpackUpgrade: "",
   tempEffects: [],
+  quiver: { cur: 0, fired: 0 }, // Quiver & Ammunition optional rule: arrows/bolts in the quiver (max 10) and shots fired this battle
   mentalConditions: [], // [{id, name, detail, effect}] — see MENTAL_CONDITIONS_TABLE
   alchemyComponents: [], // [{id, name, type: "Ingredient"|"Part", qty, exquisiteQty}]
   alchemyRecipes: [], // [{id, potionName, strength, components: [name,...]}] — custom, on top of COMMON_RECIPES
@@ -552,7 +553,8 @@ const defaultParty = () => ({
   innCostPerNight: 25,
   startingMorale: 0,
   round: 1,
-  lightSources: [], // [{id, name, remaining}] — turns left before it goes out
+  lightSources: [], // [{id, name, kind: torch|lantern|headlamp|other, carrier (hero id), oil: 2 full | 1 half | 0 out}]
+  darkness: { cond: null, litTile: false, pmApplied: 0 }, // Darkness advanced rule: cond lit|dim|dark; pmApplied = PM already lost for having no light
   dungeonLuck: 0, // party-held Luck Points from Black Lever result 8 — lost on leaving the dungeon
   travelMode: "walking", // "walking" | "mounted"
   allCamels: false,
@@ -590,7 +592,7 @@ const defaultParty = () => ({
   // for still-living models return to the bag and get reused each round), not reset every
   // turn. Living here means it also survives switching tabs mid-combat.
   initiativeSetup: { enemyCount: 1, namedMonsterCount: 0, largeMonsterCount: 0, perfectHearing: false, enemyPerfectHearing: false, swiftLeader: false, sneaky: false, doorBashed: false, ambushed: false },
-  advancedRules: { overwatch: false, limitedBleeding: false, quickSlotDamage: false }, // optional rules (rulebook p184/193/194)
+  advancedRules: { overwatch: false, limitedBleeding: false, quickSlotDamage: false, darkness: false, quiver: false }, // optional rules (rulebook p184/193/194)
   initiativeBag: null, // array of "hero"/"enemy" tokens still in the bag, or null before first build
   initiativeDrawOrder: [], // tokens drawn so far, in order
 });
@@ -607,6 +609,9 @@ function normalizeParty(p) {
   merged.initiativeSetup = { ...defaultParty().initiativeSetup, ...(p?.initiativeSetup || {}) };
   merged.optionalRules = { ...defaultParty().optionalRules, ...(p?.optionalRules || {}) };
   merged.advancedRules = { ...defaultParty().advancedRules, ...(p?.advancedRules || {}) };
+  merged.darkness = { ...defaultParty().darkness, ...(p?.darkness || {}) };
+  // Older saves tracked light as a turn countdown; convert to the Threat-roll burn model (rulebook 2.571 p67).
+  merged.lightSources = (merged.lightSources || []).map((l) => (l.kind ? l : { id: l.id, name: l.name, kind: lightKind(l.name), carrier: "", oil: 2 }));
   merged.quests = { ...defaultParty().quests, ...(p?.quests || {}) };
   merged.quests.completed = { ...(p?.quests?.completed || {}) };
   return merged;
@@ -700,6 +705,67 @@ function traumaTriggerFor(cause) {
   if (/miscast/i.test(cause || "")) return 4;
   return null;
 }
+// ---------- Light sources & Darkness (rulebook 2.571 pp67, 166-167; QRS 2.5) ----------
+function lightKind(name) {
+  if (/head ?lamp/i.test(name)) return "headlamp";
+  if (/lantern|lamp/i.test(name)) return "lantern";
+  if (/torch/i.test(name)) return "torch";
+  return "other";
+}
+// Torches and spell/crystal light stay lit until removed; lanterns and headlamps burn oil (2 full, 1 half, 0 out).
+const isLitSource = (l) => l.kind === "torch" || l.kind === "other" || (l.oil ?? 2) > 0;
+// "Whenever the result of a Threat Roll is below the current Threat Level": a Torch is consumed;
+// a Lantern (and Headlamp, which follows the Lantern rules) loses half its oil — the second time it goes out.
+function burnLights(sources) {
+  const notes = [];
+  const out = [];
+  (sources || []).forEach((l) => {
+    if (l.kind === "torch") { notes.push(`${l.name} is consumed — discard it.`); return; }
+    if (l.kind === "lantern" || l.kind === "headlamp") {
+      const was = l.oil ?? 2;
+      if (was <= 0) { out.push(l); return; }
+      const oil = was - 1;
+      notes.push(oil > 0 ? `${l.name} burns down to half its oil.` : `${l.name} goes out (refill with Lamp Oil: 1 AP).`);
+      out.push({ ...l, oil });
+      return;
+    }
+    out.push(l);
+  });
+  return { sources: out, notes };
+}
+const hasLitPortable = (party) => (party.lightSources || []).some((l) => isLitSource(l));
+// Torches/lanterns give the party +5 on Fear/Terror Tests, but not in a Lit dungeon (Darkness rule).
+function lightResBonus(party) {
+  if (party.advancedRules?.darkness && party.darkness?.cond === "lit") return 0;
+  return (party.lightSources || []).some((l) => (l.kind === "torch" || l.kind === "lantern" || l.kind === "headlamp") && isLitSource(l)) ? 5 : 0;
+}
+const lightRes = (party) => lightResBonus(party) > 0;
+// Darkness (Advanced Rule): characters on a Lit tile ignore the penalties; a lit light source on the tile makes it Lit.
+function darknessEffect(h, party) {
+  const d = party.darkness;
+  if (!party.advancedRules?.darkness || party.dungeonState !== "dungeon" || !d || (d.cond !== "dim" && d.cond !== "dark")) return null;
+  if (d.litTile || hasLitPortable(party)) return null;
+  const nv = (h.talents || []).includes("Night Vision");
+  if (d.cond === "dim") {
+    if (nv) return null;
+    return { label: "Dim dungeon: −10 PER & RS, −5 DEX and DEX skills", effect: { multi: [{ skill: "perception", amount: -10 }, { skill: "rs", amount: -10 }, { skill: "rs", amount: -5 }, { skill: "dodge", amount: -5 }, { skill: "pickLocks", amount: -5 }, { stat: "DEX", amount: -5 }] } };
+  }
+  return { label: "Dark dungeon: −20 PER & RS, −15 DEX and DEX skills", effect: { multi: [{ skill: "perception", amount: -20 }, { skill: "rs", amount: -20 }, { skill: "rs", amount: -15 }, { skill: "dodge", amount: -15 }, { skill: "pickLocks", amount: -15 }, { stat: "DEX", amount: -15 }] } };
+}
+function lightPerEffect(h, party) {
+  let amt = 0;
+  (party.lightSources || []).filter((l) => l.carrier === h.id && isLitSource(l)).forEach((l) => {
+    if (l.kind === "torch") amt = Math.max(amt, 5);
+    else if (l.kind === "lantern" || l.kind === "headlamp") amt = Math.max(amt, 10);
+  });
+  return amt ? { label: `Carrying a light: +${amt} PER`, effect: { skill: "perception", amount: amt } } : null;
+}
+// Quiver (optional rule, p58): holds up to 10 arrows/bolts; arrows are tracked as backpack items like "Arrows x10".
+const usesAmmo = (hero) => /bow|arbalest/i.test(hero?.weapon?.name || "") && !/sling/i.test(hero?.weapon?.name || "");
+const isAmmoItem = (it) => /^(barbed )?(arrows?|bolts?|arrow\/bolt)\b/i.test(it?.name || "");
+const ammoQty = (it) => { const m = (it.name || "").match(/(\d+)/); return m ? Number(m[1]) : 1; };
+const withAmmoQty = (it, n) => ({ ...it, name: /\d+/.test(it.name) ? it.name.replace(/\d+/, String(n)) : `${it.name} x${n}` });
+const QUIVER_MAX = 10;
 const IRRATIONAL_FEAR_FACTIONS = ["Orcs and Goblins", "Beasts", "Undead", "Reptiles", "Dark Elves"];
 
 // Values per QRS v2.24 (a couple differ slightly from the core rulebook — QRS is the current reference)
@@ -3855,6 +3921,24 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.67.0",
+    date: "2026-10-23",
+    sections: {
+      Added: [
+        "Darkness (Advanced rule, off by default — tick it under Advanced rules on the Combat tab): entering a dungeon rolls its light conditions (1 Lit, 2-4 Dim, 5-6 Dark; override or re-roll on the Turn tab). Dim and Dark dungeons apply −PER, −RS and −DEX/DEX-skill penalties automatically (Night Vision aware; Dark hits Night Vision too) and −4/−7 Party Morale with no light source, all reversed the moment a light is lit. A \"party on a Lit tile\" switch ignores the penalties, and Lit dungeons remove the torch/lantern Fear and Terror bonus",
+        "Light Sources rebuilt to rulebook 2.571: Torch, Lantern, Headlamp and spell/crystal light, each with a carrier. A Threat Roll below the current Threat Level now consumes Torches and halves Lantern/Headlamp oil (second time it goes out), at Start of Turn and on Short Rests. Refill with Lamp Oil (1 AP). Carriers gain +5 PER (Torch) or +10 PER (Lantern/Headlamp) automatically, and a lit light gives the party +5 on Fear/Terror Tests",
+        "Torch attack button: 1 AP, CS +15, no damage, pushes the target 1 square; an unmodified 90-00 puts the Torch out",
+        "Quiver & Ammunition (optional rule, off by default): a hero card quiver (10 max) with Fill quiver from the backpack, Shot fired, and Recover ammo after battle (1d6 per shot fired, 1-2 recovers it, 2 AP). Ranged to-hit rolls on the Combat tab use up a shot automatically and stop when the quiver is empty",
+      ],
+      Fixed: [
+        "General Equipment shop: the \"All\" tab is now alphabetical, like the category tabs",
+      ],
+      Changed: [
+        "Light sources no longer count down by round, as the 2.571 rules burn them on Threat Rolls instead; existing saved lights are converted automatically and can be assigned a carrier",
+      ],
+    },
+  },
+  {
     version: "1.66.0",
     date: "2026-10-23",
     sections: {
@@ -6065,6 +6149,7 @@ function normalizeHeroBase(h) {
     backpack: (h.backpack || base.backpack).map((it) => ({ slot: "backpack", ...it })),
     backpackUpgrade: h.backpackUpgrade || "",
     tempEffects: h.tempEffects || [],
+    quiver: { ...base.quiver, ...(h.quiver || {}) },
     mentalConditions: h.mentalConditions || [],
     backgroundCounter: h.backgroundCounter || 0,
     backgroundClaimed: h.backgroundClaimed || false,
@@ -7781,6 +7866,60 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               <button onClick={() => set({ addicted: false, tobaccoClean: 0 })} className="ml-2 px-2 py-1 rounded font-bold" style={{ background: palette.forestDark, color: palette.parchment }}>Cured</button>
             </div>
           )}
+
+          {/* Quiver & Ammunition optional rule (rulebook p58, p61) */}
+          {party?.advancedRules?.quiver && usesAmmo(hero) && (() => {
+            const q = hero.quiver || { cur: 0, fired: 0 };
+            const reserve = (hero.backpack || []).filter(isAmmoItem).reduce((n, it) => n + ammoQty(it), 0);
+            const fillQuiver = () => {
+              let need = QUIVER_MAX - q.cur;
+              if (need <= 0) { addLog && addLog(`${hero.name}'s quiver is already full.`); return; }
+              let taken = 0;
+              const backpack = [];
+              (hero.backpack || []).forEach((it) => {
+                if (isAmmoItem(it) && need > 0) {
+                  const have = ammoQty(it);
+                  const take = Math.min(have, need);
+                  need -= take; taken += take;
+                  if (have - take > 0) backpack.push(withAmmoQty(it, have - take));
+                } else backpack.push(it);
+              });
+              if (taken === 0) { addLog && addLog(`${hero.name} has no spare ammunition in the backpack to fill the quiver.`); return; }
+              set({ backpack, quiver: { ...q, cur: q.cur + taken } });
+              addLog && addLog(`${hero.name} fills the quiver (+${taken}, now ${q.cur + taken}/${QUIVER_MAX}).`);
+            };
+            const shotFired = () => { if (q.cur < 1) return; set({ quiver: { cur: q.cur - 1, fired: q.fired + 1 } }); };
+            const recoverAmmo = () => {
+              if (q.fired < 1) return;
+              let rec = 0;
+              for (let i = 0; i < q.fired; i++) if (rollDie(6) <= 2) rec++;
+              let backpack = hero.backpack || [];
+              if (rec > 0) {
+                const idx = backpack.findIndex(isAmmoItem);
+                if (idx >= 0) backpack = backpack.map((it, i) => (i === idx ? withAmmoQty(it, ammoQty(it) + rec) : it));
+                else backpack = [...backpack, { id: uid(), name: `${/crossbow|arbalest/i.test(hero.weapon.name) ? "Bolts" : "Arrows"} x${rec}`, value: 0, enc: "", dur: "", slot: "backpack" }];
+              }
+              set({ backpack, quiver: { ...q, fired: 0 }, ap: Math.max(0, (hero.ap ?? 2) - 2) });
+              addLog && addLog(`${hero.name} searches for ammunition after the battle (2 AP): ${q.fired} fired, ${rec} recovered (1-2 on 1d6; any poison or holy water is lost). ${rec} returned to the backpack.`);
+              pushToast && pushToast("Ammunition recovered", `${hero.name}: ${rec} of ${q.fired} recovered.`);
+            };
+            return (
+              <div className="rounded p-2 mb-3" style={{ background: "#B8860B12", border: `1px solid ${palette.gold}` }}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.ink }} className="uppercase font-bold">Quiver</span>
+                  <span className="text-xs font-bold" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.ink }}>{q.cur}/{QUIVER_MAX} · spare {reserve} · fired {q.fired}</span>
+                </div>
+                <div className="flex gap-1.5 flex-wrap">
+                  <button onClick={fillQuiver} className="text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: palette.forestDark, color: palette.parchment }}>Fill quiver</button>
+                  <button onClick={shotFired} disabled={q.cur < 1} className="text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: palette.ember, color: palette.parchment, opacity: q.cur < 1 ? 0.5 : 1 }}>Shot fired (−1)</button>
+                  <button onClick={recoverAmmo} disabled={q.fired < 1} className="text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: palette.gold, color: palette.charcoal, opacity: q.fired < 1 ? 0.5 : 1 }}>Recover ammo (2 AP)</button>
+                </div>
+                <p className="text-[10px] mt-1.5" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+                  Only quiver ammunition can be used in battle; spare ammo can't be moved into the quiver until the battle ends. Ranged to-hit rolls on the Combat tab use up a shot automatically.
+                </p>
+              </div>
+            );
+          })()}
 
           {/* Mental Conditions — diagnosed once Sanity hits 0, persist until cured */}
           {hero.mentalConditions && hero.mentalConditions.length > 0 && (
@@ -11189,7 +11328,11 @@ function GuildShopList({ title, desc, items, heroes, party, setParty, updateHero
   // field, so they render exactly as before with no filter row.
   const categories = [...new Set(items.map((i) => i.category).filter(Boolean))];
   const [activeCat, setActiveCat] = useState("All");
-  const shownItems = categories.length > 0 && activeCat !== "All" ? items.filter((i) => i.category === activeCat) : items;
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  // Categorised lists (General Equipment) are always shown alphabetically, including the "All" view.
+  const shownItems = categories.length > 0
+    ? [...(activeCat !== "All" ? items.filter((i) => i.category === activeCat) : items)].sort(byName)
+    : items;
 
   const buy = (item) => {
     const h = heroes.find((x) => x.id === hero);
@@ -12972,7 +13115,7 @@ function FearTerrorPanel({ heroes, updateHero, party, setParty, addLog, pushToas
   const [skip, setSkip] = useState({});
   const [results, setResults] = useState(null);
 
-  const lit = (party.lightSources || []).some((l) => (l.remaining ?? 1) > 0);
+  const lit = lightRes(party);
   const hasFx = (h) => (h.tempEffects || []).some((e) => e.auto === "fear" || e.auto === "terror");
   const anyActive = heroes.some(hasFx);
 
@@ -13118,21 +13261,14 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
   const rollStartOfTurn = () => {
     // Step 1 of the Turn Sequence: the Scenario die roll always begins a new turn, so
     // this also advances the round counter, resets every hero's AP to 2, and ticks down
-    // light sources — the same mechanics "Next Round" used to require a separate tap for.
+    // (lights now burn on Threat Rolls instead) — the same mechanics "Next Round" used to require a separate tap for.
     const lines = [];
     heroes.forEach((h) => updateHero(h.id, { ...h, ap: Math.max(0, 2 - (h.apPenalty || 0)), apPenalty: 0 }));
-    const wentOut = [];
-    const surviving = [];
-    (party.lightSources || []).forEach((l) => {
-      const remaining = l.remaining - 1;
-      if (remaining <= 0) wentOut.push(l.name);
-      else surviving.push({ ...l, remaining });
-    });
+    let surviving = party.lightSources || [];
     const nextRoundNum = party.round + 1;
 
     const scenarioRoll = rollDie(10);
     lines.push(`Round ${nextRoundNum} begins — AP reset for all heroes.`);
-    if (wentOut.length) lines.push(`Light source(s) went out: ${wentOut.join(", ")}.`);
     lines.push(`Scenario die: ${scenarioRoll}`);
     if (scenarioRoll < 9) {
       lines.push("No Threat roll this turn.");
@@ -13143,6 +13279,12 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
     }
     const threatRoll = rollDie(20);
     lines.push(`Threat roll: ${threatRoll} (current Threat ${party.threat})`);
+    // A Threat Roll below the current Threat Level burns the party's lights (Torch consumed, Lantern loses half its oil).
+    if (threatRoll !== 20 && threatRoll < party.threat) {
+      const burned = burnLights(surviving);
+      surviving = burned.sources;
+      burned.notes.forEach((n) => lines.push(n));
+    }
     let newThreat = party.threat;
     if (threatRoll === 20) {
       newThreat = clamp(party.threat - 5, party.threatFloor, 999);
@@ -13249,10 +13391,16 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
     // Rulebook 2.571 p164/p178 + QRS 2.5: the Scenario die is rolled when taking a Short Rest (9 or 0 = Threat Test),
     // then Threat is reduced by 5 — both happen even if a Wandering Monster interrupts the rest.
     let restThreat = party.threat;
+    let restLightSources = party.lightSources || [];
     const scen = rollDie(10);
     lines.push({ text: `Scenario die: ${scen}${scen >= 9 ? " — Threat Test!" : " — no Threat roll."}` });
     if (scen >= 9) {
       const tr = rollDie(20);
+      if (tr !== 20 && tr < party.threat) {
+        const burned = burnLights(restLightSources);
+        restLightSources = burned.sources;
+        burned.notes.forEach((n) => lines.push({ text: n }));
+      }
       if (tr === 20) {
         restThreat = clamp(restThreat - 5, party.threatFloor, 999);
         lines.push({ text: `Threat roll 20 — natural 20, Threat −5 (now ${restThreat}).` });
@@ -13273,8 +13421,8 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
     }
     restThreat = clamp(restThreat - 5, party.threatFloor, 999);
     lines.push({ text: `Rest: Threat −5 (now ${restThreat}).` });
-    const torchesOut = (party.lightSources || []).filter((l) => /torch/i.test(l.name));
-    const restLights = (party.lightSources || []).filter((l) => !/torch/i.test(l.name));
+    const torchesOut = restLightSources.filter((l) => l.kind === "torch");
+    const restLights = restLightSources.filter((l) => l.kind !== "torch");
     if (torchesOut.length) lines.push({ text: `Torches go out during the rest (${torchesOut.map((l) => l.name).join(", ")}); lanterns are flipped.` });
 
     if (wmSpotted) {
@@ -13378,15 +13526,67 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
     addLog("Round counter reset to 1 — AP reset for all heroes.");
   };
 
-  // Light sources
-  const [lightName, setLightName] = useState("Torch");
-  const [lightDuration, setLightDuration] = useState(6);
-  const addLightSource = () => {
-    setParty((prev) => ({ ...prev, lightSources: [...(prev.lightSources || []), { id: uid(), name: lightName || "Light", remaining: Math.max(1, Number(lightDuration) || 1) }] }));
-    addLog(`Added a light source: ${lightName || "Light"} (${Math.max(1, Number(lightDuration) || 1)} turns).`);
+  // Light sources (rulebook 2.571 p67): torches and lanterns burn on Threat Rolls below the Threat Level, not by round.
+  const [lightMsg, setLightMsg] = useState(null);
+  const lightLabel = { torch: "Torch", lantern: "Lantern", headlamp: "Headlamp", other: "Light (spell/crystal)" };
+  const addLight = (kind) => {
+    const itemRe = { torch: /^torch/i, lantern: /^lantern/i, headlamp: /^headlamp/i }[kind];
+    let carrier = "";
+    if (itemRe) {
+      const h = heroes.find((x) => (x.backpack || []).some((it) => itemRe.test(it.name)));
+      if (h) {
+        carrier = h.id;
+        if (kind === "torch") { // a lit Torch is consumed from the backpack
+          const idx = h.backpack.findIndex((it) => /^torch/i.test(it.name));
+          updateHero(h.id, { ...h, backpack: h.backpack.filter((_, i) => i !== idx) });
+        }
+      }
+    }
+    setParty((prev) => ({ ...prev, lightSources: [...(prev.lightSources || []), { id: uid(), name: lightLabel[kind], kind, carrier, oil: 2 }] }));
+    const who = heroes.find((x) => x.id === carrier);
+    addLog(`Lit a ${lightLabel[kind]}${who ? `, carried by ${who.name}` : ""}.`);
   };
+  const setLightCarrier = (id, carrier) => setParty((prev) => ({ ...prev, lightSources: (prev.lightSources || []).map((l) => (l.id === id ? { ...l, carrier } : l)) }));
   const removeLightSource = (id) => {
     setParty((prev) => ({ ...prev, lightSources: (prev.lightSources || []).filter((l) => l.id !== id) }));
+  };
+  const refillLantern = (l) => {
+    const h = heroes.find((x) => x.id === l.carrier);
+    if (!h) { setLightMsg("Pick who carries it first."); return; }
+    const idx = (h.backpack || []).findIndex((it) => /lamp oil/i.test(it.name));
+    if (idx < 0) { setLightMsg(`${h.name} has no Lamp Oil.`); return; }
+    if ((h.ap ?? 2) < 1) { setLightMsg(`${h.name} has no AP left (refilling costs 1 AP).`); return; }
+    updateHero(h.id, { ...h, ap: (h.ap ?? 2) - 1, backpack: h.backpack.filter((_, i) => i !== idx) });
+    setParty((prev) => ({ ...prev, lightSources: (prev.lightSources || []).map((x) => (x.id === l.id ? { ...x, oil: 2 } : x)) }));
+    const line = `${h.name} refills the ${l.name} with Lamp Oil (1 AP).`;
+    setLightMsg(line); addLog(line);
+  };
+  // Torch attack: 1 AP, CS +15 against a target of the same size or smaller. No damage; a hit pushes the target 1 square
+  // (no following). An unmodified 90-00 fails and the Torch is extinguished and discarded.
+  const torchAttack = (l) => {
+    const h = heroes.find((x) => x.id === l.carrier);
+    if (!h) { setLightMsg("Pick who carries the Torch first."); return; }
+    if ((h.ap ?? 2) < 1) { setLightMsg(`${h.name} has no AP left (the attack costs 1 AP).`); return; }
+    const target = (Number(h.skills.cs) || 0) + 15;
+    const r = rollPercent();
+    updateHero(h.id, { ...h, ap: (h.ap ?? 2) - 1 });
+    let line;
+    if (r >= 90) {
+      removeLightSource(l.id);
+      line = `${h.name} swings the Torch: rolled ${r} vs ${target} — the attack fails and the Torch is extinguished and discarded.`;
+    } else if (r <= target) {
+      line = `${h.name} swings the Torch: rolled ${r} vs ${target} (CS +15) — HIT. No damage; the target (same size or smaller, not a Flyer) is pushed 1 square away. ${h.name} may not follow.`;
+    } else {
+      line = `${h.name} swings the Torch: rolled ${r} vs ${target} (CS +15) — miss.`;
+    }
+    setLightMsg(line); addLog(line);
+  };
+  const setDarkCond = (cond) => setParty((prev) => ({ ...prev, darkness: { ...(prev.darkness || {}), cond } }));
+  const rollDarkCond = () => {
+    const r = rollDie(6);
+    const cond = r === 1 ? "lit" : r <= 4 ? "dim" : "dark";
+    setDarkCond(cond);
+    addLog(`Light conditions re-rolled (${r}): ${cond}.`);
   };
 
   // Initiative Bag — reads/writes party.initiativeSetup / initiativeBag / initiativeDrawOrder
@@ -13427,7 +13627,7 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
       <Panel className="mb-4">
         <SectionTitle icon={Dice5}>Start of Turn</SectionTitle>
         <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-          Rolling advances the round: AP resets to 2 for every hero, light sources count down, then the Scenario die (1d10) is rolled — on a 9-10 it rolls Threat (1d20) and, if triggered, the matching Threat Table, applying the result to Threat automatically.
+          Rolling advances the round: AP resets to 2 for every hero, then the Scenario die (1d10) is rolled — on a 9-10 it rolls Threat (1d20) and, if triggered, the matching Threat Table, applying the result to Threat automatically.
         </p>
         <div className="flex items-center gap-3 mb-2">
           <div
@@ -13628,34 +13828,65 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
 
       <Panel className="mb-4">
         <SectionTitle icon={Flashlight}>Light Sources</SectionTitle>
-        <div className="flex gap-1.5 mb-2">
-          <input
-            value={lightName}
-            onChange={(e) => setLightName(e.target.value)}
-            placeholder="Name"
-            className="flex-1 min-w-0 text-xs rounded px-2 py-1.5"
-            style={{ border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-          />
-          <input
-            type="number"
-            value={lightDuration}
-            onChange={(e) => setLightDuration(Number(e.target.value) || 1)}
-            className="w-16 text-xs rounded px-2 py-1.5"
-            style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }}
-            title="Turns remaining"
-          />
-          <button onClick={addLightSource} className="px-3 py-1.5 rounded font-semibold active:scale-95 transition-transform" style={{ background: palette.forestDark, color: palette.parchment }}>
-            <Plus size={14} />
-          </button>
+        <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+          Whenever a Threat Roll comes in below the current Threat Level, Torches are consumed and Lanterns/Headlamps lose half their oil (the second time they go out) — applied automatically at Start of Turn and Short Rest. A lit Torch gives the party +5 on Fear/Terror Tests and its carrier +5 PER; a Lantern +5 and +10 PER (applied automatically).
+        </p>
+        {party.advancedRules?.darkness && (
+          <div className="rounded p-2 mb-2" style={{ background: "#00000008", border: `1px solid ${palette.line}` }}>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] font-bold uppercase" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Dungeon light</span>
+              <button onClick={rollDarkCond} className="text-[10px] px-2 py-1 rounded font-semibold" style={{ background: palette.forestDark, color: palette.parchment }}>Roll 1d6</button>
+            </div>
+            <div className="flex gap-1.5 mb-1.5">
+              {[["lit", "Lit"], ["dim", "Dim"], ["dark", "Dark"]].map(([k, label]) => (
+                <button key={k} onClick={() => setDarkCond(k)} className="flex-1 text-xs px-2 py-1.5 rounded font-bold"
+                  style={{ background: party.darkness?.cond === k ? palette.charcoal : "#00000010", color: party.darkness?.cond === k ? palette.parchment : palette.ink, fontFamily: "Cinzel, serif" }}>{label}</button>
+              ))}
+            </div>
+            <label className="flex items-center gap-2 text-xs mb-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+              <input type="checkbox" checked={!!party.darkness?.litTile} onChange={(e) => setParty((prev) => ({ ...prev, darkness: { ...(prev.darkness || {}), litTile: e.target.checked } }))} />
+              Party is on a Lit tile (braziers, glowing crystals) — ignores the penalties
+            </label>
+            <p className="text-[10px]" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+              {!party.darkness?.cond ? "Not rolled yet — it is rolled when you enter a dungeon." :
+                party.darkness.cond === "lit" ? "Lit: no penalties and no range limit, but torches and lanterns give no RES bonus (they still affect Pyrophobia creatures)." :
+                party.darkness.cond === "dim" ? `Dim: −10 PER and RS, −5 DEX Tests and DEX skills (not CS) for heroes without Night Vision; ranged attacks reach 10 squares (Lit squares excluded). ${hasLitPortable(party) ? "A lit light source is present, so the party counts as Lit." : "No light source: Party Morale −4."}` :
+                `Dark: −20 PER and RS, −15 DEX Tests and DEX skills (not CS), even with Night Vision; ranged attacks reach 3 squares (Lit squares excluded). ${hasLitPortable(party) ? "A lit light source is present, so the party counts as Lit." : "No light source: Party Morale −7."}`}
+            </p>
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-1.5 mb-2">
+          {["torch", "lantern", "headlamp", "other"].map((k) => (
+            <button key={k} onClick={() => addLight(k)} className="flex items-center justify-center gap-1 text-xs px-2 py-2 rounded font-semibold active:scale-95 transition-transform"
+              style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Crimson Pro, serif" }}>
+              <Plus size={13} /> {lightLabel[k]}
+            </button>
+          ))}
         </div>
+        {lightMsg && <p className="text-xs mb-2 rounded p-2" style={{ background: "#B8860B18", color: palette.ink, fontFamily: "Crimson Pro, serif" }}>{lightMsg}</p>}
         {(party.lightSources || []).length === 0 ? (
-          <p className="text-xs italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>None tracked. Add a torch/lantern with however many turns it has left, per your table/card.</p>
+          <p className="text-xs italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>No light source lit. Tap one above when it is lit (a Torch or Lantern in a hero's backpack picks its carrier automatically; a Torch is used up).</p>
         ) : (
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {party.lightSources.map((l) => (
-              <div key={l.id} className="flex items-center justify-between text-xs rounded p-2" style={{ background: l.remaining <= 1 ? "#7A1F2B15" : "#00000008", fontFamily: "Crimson Pro, serif" }}>
-                <span style={{ color: palette.ink }}>{l.name} — {l.remaining} turn{l.remaining === 1 ? "" : "s"} left</span>
-                <button onClick={() => removeLightSource(l.id)} style={{ color: palette.crimson }}><X size={13} /></button>
+              <div key={l.id} className="rounded p-2 text-xs" style={{ background: isLitSource(l) ? "#00000008" : "#7A1F2B15", fontFamily: "Crimson Pro, serif" }}>
+                <div className="flex items-center justify-between mb-1">
+                  <span style={{ color: palette.ink }}>
+                    <b>{l.name}</b>
+                    {(l.kind === "lantern" || l.kind === "headlamp") && ` — ${(l.oil ?? 2) === 2 ? "full oil" : (l.oil ?? 2) === 1 ? "half oil" : "out of oil"}`}
+                  </span>
+                  <button onClick={() => removeLightSource(l.id)} style={{ color: palette.crimson }} title="Remove / discard"><X size={13} /></button>
+                </div>
+                {l.kind !== "other" && (
+                  <select value={l.carrier || ""} onChange={(e) => setLightCarrier(l.id, e.target.value)} className="w-full text-xs rounded px-2 py-1 mb-1" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                    <option value="">Carried by…</option>
+                    {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                  </select>
+                )}
+                <div className="flex gap-1.5 flex-wrap">
+                  {l.kind === "torch" && <button onClick={() => torchAttack(l)} className="px-2 py-1 rounded font-semibold" style={{ background: palette.ember, color: palette.parchment }}>Torch attack (1 AP)</button>}
+                  {(l.kind === "lantern" || l.kind === "headlamp") && (l.oil ?? 2) < 2 && <button onClick={() => refillLantern(l)} className="px-2 py-1 rounded font-semibold" style={{ background: palette.gold, color: palette.charcoal }}>Refill with Lamp Oil (1 AP)</button>}
+                </div>
               </div>
             ))}
           </div>
@@ -14314,6 +14545,15 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
   };
 
   const roll = () => {
+    // Quiver & Ammunition: a ranged attack uses up one arrow/bolt from the shooter's quiver.
+    if (mode === "ranged" && adv.quiver && heroPick) {
+      const sh = heroes.find((x) => x.id === heroPick);
+      if (sh && usesAmmo(sh)) {
+        const q = sh.quiver || { cur: 0, fired: 0 };
+        if (q.cur < 1) { pushToast && pushToast("Quiver empty", `${sh.name} has no ammunition in the quiver — fill it from the backpack between battles.`); return; }
+        updateHero({ ...sh, quiver: { cur: q.cur - 1, fired: q.fired + 1 } });
+      }
+    }
     const r = rollPercent();
     // A natural 91-00 always fails; 01-05 is only a Perfect Result when the Test succeeds (p22).
     const ok = r <= effective && r <= 90;
@@ -15499,7 +15739,9 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
         <SectionTitle icon={ShieldAlert}>Advanced rules (optional)</SectionTitle>
         {[["overwatch", "Overwatch", "A hero with Energy and a ready weapon skips activating and fires/strikes once on an enemy's move for 1 Energy."],
           ["limitedBleeding", "Limited Bleeding-Out Time", "Heroes at 0 HP have 1d6+1 combat turns before they die."],
-          ["quickSlotDamage", "Quick Slot Damage", "Torso hits can damage Quick Slot items (and break damaging potions)."]].map(([k, label, desc]) => (
+          ["quickSlotDamage", "Quick Slot Damage", "Torso hits can damage Quick Slot items (and break damaging potions)."],
+          ["darkness", "Darkness (Lit / Dim / Dark)", "Light conditions are rolled when entering a dungeon; Dim/Dark dungeons penalise PER, RS and DEX skills and Party Morale without a light source."],
+          ["quiver", "Quiver & Ammunition", "A quiver holds 10 arrows/bolts; shots fired are tracked and can be recovered after battle (1d6 each, 1-2 recovers)."]].map(([k, label, desc]) => (
           <label key={k} className="flex items-start gap-2 text-xs mb-1.5" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
             <input type="checkbox" checked={!!adv[k]} onChange={(e) => setParty && setParty((prev) => ({ ...prev, advancedRules: { ...prev.advancedRules, [k]: e.target.checked } }))} className="mt-0.5" />
             <span><b>{label}</b> — {desc}</span>
@@ -17134,7 +17376,14 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
       if ((next.mentalConditions || []).some((c) => c.dungeonRes)) notes.push(`${h.name} has Fear of the Dark: −20 RES while in the dungeon (applied automatically).`);
       if (next !== h) updateHero(h.id, next);
     });
-    setParty((prev) => ({ ...prev, bottleOfExperienceMade: false }));
+    // Darkness (Advanced Rule): roll the dungeon's overall light conditions before entering (1 Lit, 2-4 Dim, 5-6 Dark).
+    let cond = null;
+    if (party.advancedRules?.darkness) {
+      const r = rollDie(6);
+      cond = r === 1 ? "lit" : r <= 4 ? "dim" : "dark";
+      notes.push(`Light conditions rolled ${r}: the dungeon is ${cond === "lit" ? "Lit" : cond === "dim" ? "Dim" : "Dark"}. (Change it on the Turn tab if the quest says otherwise.)`);
+    }
+    setParty((prev) => ({ ...prev, bottleOfExperienceMade: false, darkness: { cond, litTile: false, pmApplied: 0 } }));
     setDungeonState("dungeon");
     notes.forEach((n) => addLog(n));
   };
@@ -17182,7 +17431,7 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
     });
     setDungeonState("travel");
     // Party Morale resets to Starting Morale when the party leaves the dungeon (rulebook 2.571 p76).
-    setParty((prev) => ({ ...prev, dungeonRestCount: 0, wmTriggerFired: false, encounter: { empty: 0, eventBonus: 0, mod: 0 }, ...((Number(prev.startingMorale) || 0) > 0 ? { morale: Math.min(20, prev.startingMorale) } : {}) }));
+    setParty((prev) => ({ ...prev, dungeonRestCount: 0, wmTriggerFired: false, encounter: { empty: 0, eventBonus: 0, mod: 0 }, darkness: { cond: null, litTile: false, pmApplied: 0 }, ...((Number(prev.startingMorale) || 0) > 0 ? { morale: Math.min(20, prev.startingMorale) } : {}) }));
     setShowExitConfirm(false);
     const line = clearedCount > 0
       ? `Exited dungeon — cleared ${clearedCount} temporary effect${clearedCount === 1 ? "" : "s"} across ${heroesAffected} hero${heroesAffected === 1 ? "" : "es"}.`
@@ -18151,9 +18400,9 @@ export default function App() {
       pushToast("Wandering Monster", "The quest's Wandering Monster trigger has been reached. Place it now (this happens only once per quest).");
     }
   }, [party.threat, party.maxThreat, party.wmTriggerAt, party.wmTriggerFired, party.threatFloor, campaignId]);
-  // Situational psychology penalties, kept in sync automatically (rulebook 2.571 pp72-76):
-  // Half Morale (-20 RES for everyone while PM is below half of Starting PM) and Fear of the Dark
-  // (-20 RES while the party is in a dungeon). Stored as tempEffects flagged `auto`.
+  // Situational penalties kept in sync automatically as tempEffects flagged `auto` (and removed when they stop applying):
+  // Half Morale (-20 RES for everyone), Fear of the Dark (-20 RES in a dungeon), Darkness (Dim/Dark penalties),
+  // and the PER bonus for carrying a lit torch/lantern (rulebook 2.571 pp67, 72-76, 166-167).
   useEffect(() => {
     if (!campaignId) return;
     const inDungeon = party.dungeonState === "dungeon";
@@ -18166,14 +18415,15 @@ export default function App() {
         const wants = {
           halfMorale: halfMorale ? { label: "Half Morale: −20 RES", effect: { stat: "RES", amount: -20 } } : null,
           fearDark: inDungeon && (h.mentalConditions || []).some((c) => c.dungeonRes) ? { label: "Fear of the Dark: −20 RES (in a dungeon)", effect: { stat: "RES", amount: -20 } } : null,
+          darkness: darknessEffect(h, party),
+          lightPer: lightPerEffect(h, party),
         };
         Object.entries(wants).forEach(([key, want]) => {
           const has = (cur.tempEffects || []).find((e) => e.auto === key);
-          if (want && !has) {
+          if (has && want && JSON.stringify(has.effect) === JSON.stringify(want.effect)) return;
+          if (has) { cur = { ...cur, ...removeTempEffect(cur, has.id) }; changed = true; }
+          if (want) {
             cur = { ...cur, ...applyEffectDelta(cur, want.effect, 1), tempEffects: [...(cur.tempEffects || []), { id: uid(), label: want.label, effect: want.effect, auto: key }] };
-            changed = true;
-          } else if (!want && has) {
-            cur = { ...cur, ...removeTempEffect(cur, has.id) };
             changed = true;
           }
         });
@@ -18181,7 +18431,19 @@ export default function App() {
       });
       return changed ? out : prev;
     });
-  }, [heroes, party.morale, party.startingMorale, party.dungeonState, campaignId]);
+  }, [heroes, party.morale, party.startingMorale, party.dungeonState, party.lightSources, party.darkness, party.advancedRules, campaignId]);
+
+  // Darkness (Advanced Rule): a party with no portable light source in a Dim/Dark dungeon suffers -4/-7 Party Morale,
+  // reversed when it gets one (entering a Lit tile does not remove it).
+  useEffect(() => {
+    if (!campaignId) return;
+    const d = party.darkness || {};
+    const want = party.advancedRules?.darkness && party.dungeonState === "dungeon" && (d.cond === "dim" || d.cond === "dark") && !hasLitPortable(party) ? (d.cond === "dark" ? 7 : 4) : 0;
+    const applied = d.pmApplied || 0;
+    if (want === applied) return;
+    setParty((p) => ({ ...p, morale: clamp((Number(p.morale) || 0) - (want - applied), 0, 20), darkness: { ...(p.darkness || {}), pmApplied: want } }));
+    addLog(want > applied ? `No light source in a ${d.cond} dungeon: Party Morale −${want - applied}.` : `Light restored: Party Morale +${applied - want} back.`);
+  }, [party.lightSources, party.darkness, party.dungeonState, party.advancedRules, campaignId]);
   const dismissToast = useCallback((id) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);

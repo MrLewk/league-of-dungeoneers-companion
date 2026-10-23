@@ -3,6 +3,20 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.67.0] — 2026-10-23
+
+### Added
+- Darkness advanced rule (toggle): Lit/Dim/Dark roll on entering a dungeon, automatic PER/RS/DEX penalties (Night Vision aware), −4/−7 Party Morale without a light source, Lit-tile switch
+- Light Sources rebuilt: Torch, Lantern, Headlamp, other light with carriers; Threat Rolls below the Threat Level consume Torches / halve Lantern oil; Lamp Oil refill; carrier PER bonuses and Fear/Terror +5 applied automatically
+- Torch attack button (1 AP, CS +15, push)
+- Quiver & Ammunition optional rule: quiver tracking, Fill quiver, Shot fired, Recover ammo (1d6 per shot, 1-2, 2 AP); Combat ranged rolls use a shot automatically
+
+### Fixed
+- General Equipment shop: the "All" tab is now alphabetical, like the category tabs
+
+### Changed
+- Light sources no longer count down by round (rulebook 2.571); old saves convert automatically
+
 ## [1.66.0] — 2026-10-23
 
 ### Added

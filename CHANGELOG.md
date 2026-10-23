@@ -3,6 +3,16 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.73.0] — 2026-10-23
+
+### Added
+- Manual tracking (Party > Optional Rules): the Actions tab tools and the Dungeon Event panel just roll and explain. They never block on AP, never spend AP unless a chosen hero has enough, and leave heroes, backpacks, Threat, Morale, food and Initiative tokens alone, describing each change in text so you can apply it yourself. It switches on automatically for a campaign with no heroes
+- Manual numbers box at the top of the Actions tab (Perception, STR, Pick Locks, DEX) for tests when no hero is picked, and a "No hero (manual numbers)" choice in each tool. Picking a hero still gives the full automation for that tool
+
+### Known limitations
+- Not covered yet: the Combat tab calculators (damage roller, Fear / Terror, and similar) and the Turn tab tools (Start of Turn, Initiative, Bandage, healing and so on) still expect heroes and do not follow Manual tracking. They are planned for a later release
+- Not covered yet: trap cards, Settlement and Shop tabs, and the Quests tab are unchanged by Manual tracking
+
 ## [1.72.0] — 2026-10-23
 
 ### Added

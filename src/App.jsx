@@ -511,6 +511,9 @@ function backpackEncBonus(hero) {
 
 // Simplified Game (rulebook 2.571 p21): subsystems the table has chosen to remove. Refreshed from party.simplified on every
 // App render so helpers and components can simply check SIMP.<system> (true = that system is removed).
+// Manual tracking: Actions tools just roll and explain (no AP, no changes to heroes or party numbers) unless a hero is picked.
+// Switched on in Optional Rules, and automatically when a campaign has no heroes.
+const MANUAL = { on: false };
 const SIMP = { encumbrance: false, morale: false, durability: false, sanity: false, scenario: false };
 const SIMPLIFIED_SYSTEMS = [
   ["encumbrance", "Encumbrance", "no carrying limit, no −10 overload penalty, no ENC totals"],
@@ -556,7 +559,8 @@ const defaultParty = () => ({
   dungeonState: "settlement", // "settlement" | "travel" | "dungeon" — drives the Travel tab status badge and the auto-clear of tempEffects on dungeon exit
   dungeonRestCount: 0, // completed (uninterrupted) Short Rests taken since entering the current dungeon — drives the Ambush risk escalation; resets to 0 on Exit Dungeon, never per level
   simplified: { encumbrance: false, morale: false, durability: false, sanity: false, scenario: false }, // Simplified Game (p21): true = system removed
-  optionalRules: { lootMode: "hardcore", dungeonEvents: false, simplifiedAlchemy: false, newBeginning: false },
+  optionalRules: { lootMode: "hardcore", dungeonEvents: false, simplifiedAlchemy: false, newBeginning: false, manualTracking: false },
+  manualHero: { STR: "", DEX: "", perception: "", pickLocks: "" }, // typed numbers the Actions tools use when no hero is picked (Manual tracking)
   roomEvent: null, // current room's Dungeon Event (optional rule), persisted across tab switches
   newBeginning: { seed: "", quests: {} }, // A New Beginning expansion tracker: seed 1-12 and per-quest { name, settlement, note }
   ghostQuest: null, // The Ghost event: { village, found, delivered } // optional/campaign rules (rulebook p21, p110, p177-178)
@@ -4230,6 +4234,20 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.73.0",
+    date: "2026-10-23",
+    sections: {
+      Added: [
+        "Manual tracking (Party > Optional Rules): the Actions tab tools and the Dungeon Event panel just roll and explain. They never block on AP, never spend AP unless a chosen hero has enough, and leave heroes, backpacks, Threat, Morale, food and Initiative tokens alone, describing each change in text so you can apply it yourself. It switches on automatically for a campaign with no heroes",
+        "Manual numbers box at the top of the Actions tab (Perception, STR, Pick Locks, DEX) for tests when no hero is picked, and a \"No hero (manual numbers)\" choice in each tool. Picking a hero still gives the full automation for that tool",
+      ],
+      "Known limitations": [
+        "Not covered yet: the Combat tab calculators (damage roller, Fear / Terror, and similar) and the Turn tab tools (Start of Turn, Initiative, Bandage, healing and so on) still expect heroes and do not follow Manual tracking. They are planned for a later release",
+        "Not covered yet: trap cards, Settlement and Shop tabs, and the Quests tab are unchanged by Manual tracking",
+      ],
+    },
+  },
   {
     version: "1.72.0",
     date: "2026-10-23",
@@ -14928,6 +14946,7 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
         <SectionTitle icon={ClipboardList}>Optional Rules</SectionTitle>
         {[["dungeonEvents", "Dungeon Events", "Roll 1d10 on entering an empty room (9–10 = event); the app then rolls the column and event from the 24-event table and resolves it. Adds a tool to the Actions tab."],
           ["simplifiedAlchemy", "Simplified Alchemy", "4/6/8 unique components for Weak/Standard/Supreme; no recipes; you choose the potion on success. Switches the Mix a Potion screen."],
+          ["manualTracking", "Manual tracking (tools only roll and explain)", "The Actions tab tools stop spending AP and stop changing heroes, Threat, Morale and food. Each result is explained in text, tests use numbers you type in, and picking a hero in a tool still automates it. Switches on by itself when a campaign has no heroes."],
           ["newBeginning", "A New Beginning (expansion)", "Adds a quest tracker to the Quests tab for the von Braus 'A New Beginning' expansion (6 starting quests, 8 follow-ups). Needs the expansion PDF; its Hunger rules are handled manually."]].map(([k, label, desc]) => (
           <label key={k} className="flex items-start gap-2 text-xs mb-1.5" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
             <input type="checkbox" checked={!!party.optionalRules?.[k]} onChange={(e) => setParty({ ...party, optionalRules: { ...party.optionalRules, [k]: e.target.checked } })} className="mt-0.5" />
@@ -16807,10 +16826,13 @@ function DungeonEventPanel({ party, setParty, heroes, updateHero, addLog, grantT
   const data = ev?.data || {};
   const [pick, setPick] = useState("");
   const [fb, setFb] = useState(null);
-  const hero = heroes.find((h) => h.id === pick) || heroes[0];
+  const mh = party.manualHero || {};
+  const manualHero = { id: "", name: "The hero", ap: 99, stats: { STR: Number(mh.STR) || 0, DEX: Number(mh.DEX) || 0, CON: 0, WIS: 0, RES: 0 }, skills: { perception: Number(mh.perception) || 0, pickLocks: 0, heal: 0 }, backpack: [], hp: { cur: 1, max: 1 }, energy: { cur: 0, max: 0 }, sanity: { cur: 0, max: 0 }, talents: [], perks: [] };
+  const hero = heroes.find((h) => h.id === pick) || (MANUAL.on ? manualHero : heroes[0]);
   const setData = (patch) => setParty((p) => (p.roomEvent ? { ...p, roomEvent: { ...p.roomEvent, data: { ...(p.roomEvent.data || {}), ...patch } } } : p));
   const spend = (h, n) => {
     const ap = h.ap ?? 2;
+    if (MANUAL.on) return { ...h, ap: h.id && ap >= n ? ap - n : ap }; // never blocks in manual mode
     if (ap < n) { setFb(`${h.name} doesn't have enough AP (needs ${n}, has ${ap}). Check the Turn tab.`); return null; }
     setFb(null);
     return { ...h, ap: ap - n };
@@ -16848,11 +16870,11 @@ function DungeonEventPanel({ party, setParty, heroes, updateHero, addLog, grantT
     if (d.key === "crystals") dt.n = rollDie(4);
     if (d.key === "ghost") dt.village = GHOST_VILLAGES[rollDie(8) - 1];
     if (d.key === "wailing") {
-      heroes.forEach((h) => { if (!SIMP.sanity) updateHero(h.id, { ...h, sanity: { ...h.sanity, cur: Math.max(0, h.sanity.cur - 1) } }); });
-      extra = (p) => (SIMP.morale ? {} : { morale: Math.max(0, p.morale - 4) });
+      if (!MANUAL.on) heroes.forEach((h) => { if (!SIMP.sanity) updateHero(h.id, { ...h, sanity: { ...h.sanity, cur: Math.max(0, h.sanity.cur - 1) } }); });
+      extra = (p) => (SIMP.morale || MANUAL.on ? {} : { morale: Math.max(0, p.morale - 4) });
       note += SIMP.morale || SIMP.sanity ? " — effects applied where those systems are in use" : " — each hero −1 Sanity, Party Morale −4";
     }
-    if (d.key === "tracks") extra = (p) => ({ initiativeSetup: { ...p.initiativeSetup, tracks: true } });
+    if (d.key === "tracks" && !MANUAL.on) extra = (p) => ({ initiativeSetup: { ...p.initiativeSetup, tracks: true } });
     setParty((p) => ({ ...p, ...extra(p), roomEvent: { r, hit: true, col, d12, key: d.key, data: dt } }));
     setFb(null);
     addLog(`New room: Dungeon Event roll ${r} — event! Column ${col === 1 ? "1-3" : "4-6"}, 1d12 → ${d12}: ${note}.`);
@@ -16868,6 +16890,7 @@ function DungeonEventPanel({ party, setParty, heroes, updateHero, addLog, grantT
     <label className="text-xs block mt-1.5" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
       Acting hero
       <select value={hero?.id || ""} onChange={(e) => setPick(e.target.value)} className="w-full text-xs rounded px-2 py-1 mt-0.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+        {MANUAL.on && <option value="">No hero (manual numbers)</option>}
         {heroes.map((h) => <option key={h.id} value={h.id}>{h.name} (AP {h.ap ?? 2})</option>)}
       </select>
     </label>
@@ -16896,7 +16919,7 @@ function DungeonEventPanel({ party, setParty, heroes, updateHero, addLog, grantT
     else if (d8 === 5) text = "\"Becrin was here.\" Wonder if he is still here, or if he managed to get out?";
     else if (d8 === 6) { const n = rollDie(3); text = `An incantation summons ${n} Blood Demon${n > 1 ? "s" : ""} armed with broadswords, armour 0. Place them randomly in the room.`; }
     else if (d8 === 7) {
-      if (!SIMP.morale) { setParty((p) => ({ ...p, morale: Math.max(0, p.morale - 3) })); text = "A heart-breaking farewell of an adventurer who never left. Party Morale −3."; }
+      if (!SIMP.morale) { if (!MANUAL.on) setParty((p) => ({ ...p, morale: Math.max(0, p.morale - 3) })); text = `A heart-breaking farewell of an adventurer who never left. Party Morale −3${MANUAL.on ? " (apply it yourself)" : ""}.`; }
       else text = "A heart-breaking farewell of a lost adventurer (Party Morale is removed in your game).";
     } else {
       const cr = rollDie(10);
@@ -16951,6 +16974,7 @@ function DungeonEventPanel({ party, setParty, heroes, updateHero, addLog, grantT
         return (
           <div className="mt-1.5">
             <p className="text-xs font-semibold" style={{ color: palette.crimson }}>{data.squares} square{data.squares > 1 ? "s" : ""} struck by debris. For each hero standing in one:</p>
+            {heroes.length === 0 && <p className="text-xs mt-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>Each struck character takes 3d6 DMG (roll {rollDiceString("3d6")} for one) unless a DEX test succeeds.</p>}
             {heroes.map((h) => (
               <div key={h.id} className="flex items-center justify-between gap-2 mt-1">
                 <span className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>{h.name}{data.cave?.[h.id] ? ` — ${data.cave[h.id]}` : ""}</span>
@@ -17000,7 +17024,7 @@ function DungeonEventPanel({ party, setParty, heroes, updateHero, addLog, grantT
           }
         }, !hero)}</>;
       case "wailing":
-        return done(SIMP.sanity && SIMP.morale ? "Sanity and Party Morale are removed in your game: no effect." : `Applied: ${SIMP.sanity ? "" : "each hero −1 Sanity"}${!SIMP.sanity && !SIMP.morale ? ", " : ""}${SIMP.morale ? "" : "Party Morale −4"}.`);
+        return MANUAL.on ? done("Each hero loses 1 Sanity and Party Morale falls by 4 (apply it yourself).") : done(SIMP.sanity && SIMP.morale ? "Sanity and Party Morale are removed in your game: no effect." : `Applied: ${SIMP.sanity ? "" : "each hero −1 Sanity"}${!SIMP.sanity && !SIMP.morale ? ", " : ""}${SIMP.morale ? "" : "Party Morale −4"}.`);
       case "mist":
         return (
           <div className="mt-1.5">
@@ -17026,7 +17050,7 @@ function DungeonEventPanel({ party, setParty, heroes, updateHero, addLog, grantT
       case "goblins":
         return <p className="text-xs mt-1.5 font-semibold" style={{ color: palette.crimson }}>Place {data.n} goblins (shortsword, shield, armour 1) randomly in the tile the heroes came from. Start a battle from the Combat tab.</p>;
       case "tracks":
-        return done("+1 hero Initiative token added to the Initiative setup (Turn tab). Untick it there if the next tile has no encounter.");
+        return done(MANUAL.on ? "Add +1 hero Initiative token on the next tile you enter (should there be an encounter)." : "+1 hero Initiative token added to the Initiative setup (Turn tab). Untick it there if the next tile has no encounter.");
       case "crystals": {
         const wizards = heroes.filter((h) => (h.mana?.max || 0) > 0);
         const left = data.held ?? 0;
@@ -17040,7 +17064,7 @@ function DungeonEventPanel({ party, setParty, heroes, updateHero, addLog, grantT
               addLog(`${hero.name} gathers ${data.n} green crystal${data.n > 1 ? "s" : ""} (2 AP).`);
             }, !hero)}</>}
             {data.taken && <p className="text-xs font-semibold" style={{ color: palette.forestDark }}>{left} crystal{left === 1 ? "" : "s"} left. Each gives a wizard 10 Mana (up to max).</p>}
-            {data.taken && wizards.length === 0 && <p className="text-xs italic" style={{ color: palette.inkSoft }}>No wizard in the party to use them.</p>}
+            {data.taken && wizards.length === 0 && <p className="text-xs italic" style={{ color: palette.inkSoft }}>{heroes.length === 0 ? "Each crystal gives a wizard 10 Mana (never above max)." : "No wizard in the party to use them."}</p>}
             {data.taken && wizards.map((w) => (
               <button key={w.id} disabled={left <= 0 || w.mana.cur >= w.mana.max} className="w-full text-xs px-3 py-2 rounded font-bold mt-1.5" style={{ background: palette.crimsonDark, color: palette.parchment, opacity: left <= 0 || w.mana.cur >= w.mana.max ? 0.45 : 1 }} onClick={() => {
                 const gain = Math.min(10, w.mana.max - w.mana.cur);
@@ -17053,11 +17077,11 @@ function DungeonEventPanel({ party, setParty, heroes, updateHero, addLog, grantT
         );
       }
       case "bruised":
-        return <>{heroSel}{data.traded ? done("Traded 2 rations for the key. It opens the next lock, door or chest.") : btn(`Trade 2 rations for the key (party has ${party.food})`, () => {
-          if ((Number(party.food) || 0) < 2) { setFb("The party doesn't have 2 rations to trade."); return; }
-          setParty((p) => ({ ...p, food: p.food - 2 }));
+        return <>{heroSel}{data.traded ? done("Traded 2 rations for the key. It opens the next lock, door or chest.") : btn(MANUAL.on ? "Trade 2 rations for the key" : `Trade 2 rations for the key (party has ${party.food})`, () => {
+          if (!MANUAL.on && (Number(party.food) || 0) < 2) { setFb("The party doesn't have 2 rations to trade."); return; }
+          if (!MANUAL.on) setParty((p) => ({ ...p, food: p.food - 2 }));
           if (give(hero, [{ name: "Adventurer's Key (opens the next lock, door or chest)", enc: 0 }], 0, "trades 2 rations for the bruised adventurer's key.")) setData({ traded: true });
-        }, !hero || (Number(party.food) || 0) < 2)}</>;
+        }, !hero || (!MANUAL.on && (Number(party.food) || 0) < 2))}</>;
       case "scribbles":
         return <>{heroSel}{data.scribble?.text && <p className="text-xs mt-1.5 font-semibold" style={{ color: data.scribble.solved ? palette.forestDark : palette.crimson }}>{data.scribble.text}</p>}{!data.scribble?.solved && btn("Read the writing (2 AP, PER test)", readScribbles, !hero)}</>;
       case "ghost":
@@ -17110,11 +17134,15 @@ function DungeonEventPanel({ party, setParty, heroes, updateHero, addLog, grantT
 }
 
 function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
+  const mh = party.manualHero || {};
+  const manualHero = { id: "", name: "The hero", ap: 99, stats: { STR: Number(mh.STR) || 0, DEX: Number(mh.DEX) || 0, CON: 0, WIS: 0, RES: 0 }, skills: { perception: Number(mh.perception) || 0, pickLocks: Number(mh.pickLocks) || 0, heal: 0 }, backpack: [], hp: { cur: 1, max: 1 }, energy: { cur: 0, max: 0 }, sanity: { cur: 0, max: 0 }, talents: [], perks: [] };
+  const pickH = (id) => heroes.find((h) => h.id === id) || (MANUAL.on ? manualHero : heroes[0]);
+  const setManual = (k, v) => setParty((p) => ({ ...p, manualHero: { ...(p.manualHero || {}), [k]: v } }));
   const [doorResult, setDoorResult] = useState(null);
   const [doorHero, setDoorHero] = useState("");
   const [doorDamageInput, setDoorDamageInput] = useState(0);
   const [doorFeedback, setDoorFeedback] = useState(null);
-  const activeDoorHero = heroes.find((h) => h.id === doorHero) || heroes[0];
+  const activeDoorHero = pickH(doorHero);
 
   const [searchHeroId, setSearchHeroId] = useState("");
   const [searchersCount, setSearchersCount] = useState(1);
@@ -17125,9 +17153,9 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   const [furnitureHeroId, setFurnitureHeroId] = useState("");
   const [furnitureInCombat, setFurnitureInCombat] = useState(false);
   const [furnitureFeedback, setFurnitureFeedback] = useState(null);
-  const activeFurnitureHero = heroes.find((h) => h.id === furnitureHeroId) || heroes[0];
+  const activeFurnitureHero = pickH(furnitureHeroId);
   const [searchFeedback, setSearchFeedback] = useState(null);
-  const activeSearchHero = heroes.find((h) => h.id === searchHeroId) || heroes[0];
+  const activeSearchHero = pickH(searchHeroId);
 
   // Apply a Bandage (p185): healer uses a Quick Slot bandage on an adjacent hero (1 AP) or
   // themselves (2 AP); Heal Test; bandage used up either way; patient loses 1 AP next turn.
@@ -17212,8 +17240,8 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
     if (pm <= 0) return "";
     const before = party.morale;
     const after = Math.min(20, before + pm);
-    setParty((prev) => ({ ...prev, morale: Math.min(20, prev.morale + pm) }));
-    addLog(`${who}: ${pm === 3 ? "Wonderful" : "Fine"} treasure found — Party Morale +${after - before} → ${after}.`);
+    if (!MANUAL.on) setParty((prev) => ({ ...prev, morale: Math.min(20, prev.morale + pm) }));
+    addLog(`${who}: ${pm === 3 ? "Wonderful" : "Fine"} treasure found — Party Morale +${after - before}${MANUAL.on ? " (add it yourself)" : ` → ${after}`}.`);
     return `Party Morale +${after - before} (${pm === 3 ? "Wonderful" : "Fine"} treasure).`;
   };
   const hasThief = heroes.some((h) => h.profession === "Thief");
@@ -17226,10 +17254,10 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   const lootCorpse = () => {
     let who = "Corpse loot";
     if (lootMode === "hardcore") {
-      const h = heroes.find((x) => x.id === corpseHeroId) || heroes[0];
-      if (!h) return;
-      if (!trySpendAP(h, corpseInCombat ? 2 : 1, setCorpseFeedback)) return;
-      who = h.name;
+      const h = heroes.find((x) => x.id === corpseHeroId) || (MANUAL.on ? null : heroes[0]);
+      if (!h && !MANUAL.on) return;
+      if (h && !trySpendAP(h, corpseInCombat ? 2 : 1, setCorpseFeedback)) return;
+      if (h) who = h.name;
     }
     const roll = rollDie(10);
     const result = lootTableLookup(corpseTier, roll);
@@ -17255,6 +17283,11 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   const trySpendAP = (hero, amount, onFail) => {
     if (!hero) return false;
     const ap = hero.ap ?? 2;
+    if (MANUAL.on) {
+      // Manual tracking: never block. A real hero with enough AP still pays it; otherwise the action just goes ahead.
+      if (hero.id && ap >= amount) updateHero(hero.id, { ...hero, ap: ap - amount });
+      return true;
+    }
     if (ap < amount) {
       const msg = `${hero.name} doesn't have enough AP (needs ${amount}, has ${ap}). Check the Turn tab.`;
       (onFail || setDoorFeedback)({ text: msg, tone: "bad" });
@@ -17266,7 +17299,7 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
 
   const openDoorOrChest = () => {
     if (!trySpendAP(activeDoorHero, 1)) return;
-    setParty((prev) => ({ ...prev, threat: prev.threat + 1 }));
+    if (!MANUAL.on) setParty((prev) => ({ ...prev, threat: prev.threat + 1 }));
     const openRoll = rollDie(10);
     const trapRoll = rollDie(6);
     const trapped = trapRoll === 6;
@@ -17280,7 +17313,7 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   const forceOpen = () => {
     if (!doorResult || !doorResult.locked) return;
     if (!trySpendAP(activeDoorHero, 1)) return;
-    setParty((prev) => ({ ...prev, threat: prev.threat + 2 }));
+    if (!MANUAL.on) setParty((prev) => ({ ...prev, threat: prev.threat + 2 }));
     const dmg = Math.max(0, doorDamageInput);
     const newHp = Math.max(0, doorResult.hpRemaining - dmg);
     const broken = newHp <= 0;
@@ -17294,7 +17327,7 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
     if (!doorResult || !doorResult.locked || !activeDoorHero) return;
     if (!trySpendAP(activeDoorHero, 1)) return;
     const dmg = 8 + damageBonus(Number(activeDoorHero.stats.STR) || 0);
-    setParty((prev) => ({ ...prev, threat: prev.threat + 1 }));
+    if (!MANUAL.on) setParty((prev) => ({ ...prev, threat: prev.threat + 1 }));
     const newHp = Math.max(0, doorResult.hpRemaining - dmg);
     const broken = newHp <= 0;
     setDoorResult((prev) => ({ ...prev, hpRemaining: newHp, locked: !broken, jammed: false }));
@@ -17327,7 +17360,7 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   const [portcHelperSameSide, setPortcHelperSameSide] = useState(false);
   const [portcHelpersFarSide, setPortcHelpersFarSide] = useState(0);
   const [portcFeedback, setPortcFeedback] = useState(null);
-  const activePortcHero = heroes.find((h) => h.id === portcHeroId) || heroes[0];
+  const activePortcHero = pickH(portcHeroId);
 
   const liftPortcullis = () => {
     if (!activePortcHero) return;
@@ -17339,7 +17372,7 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
       setPortcFeedback({ text: `${activePortcHero.name} lifts the portcullis! (Rolled ${roll} vs STR ${target}.)`, tone: "good" });
       addLog(`${activePortcHero.name} lifts a portcullis: rolled ${roll} vs STR ${target}${bonus ? ` (base + ${bonus} helpers)` : ""} — success!`);
     } else {
-      setParty((prev) => ({ ...prev, threat: prev.threat + 1 }));
+      if (!MANUAL.on) setParty((prev) => ({ ...prev, threat: prev.threat + 1 }));
       setPortcFeedback({ text: `${activePortcHero.name} fails to lift it (rolled ${roll} vs STR ${target}) — the drop raises Threat +1. May retry.`, tone: "warn" });
       addLog(`${activePortcHero.name} fails to lift a portcullis: rolled ${roll} vs STR ${target}${bonus ? ` (base + ${bonus} helpers)` : ""}. Threat +1.`);
     }
@@ -17348,12 +17381,12 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   // ---- Cobweb Covered Opening ----
   const [cobwebHeroId, setCobwebHeroId] = useState("");
   const [cobwebResult, setCobwebResult] = useState(null);
-  const activeCobwebHero = heroes.find((h) => h.id === cobwebHeroId) || heroes[0];
+  const activeCobwebHero = pickH(cobwebHeroId);
 
   const clearCobweb = () => {
     if (!activeCobwebHero) return;
     if (!trySpendAP(activeCobwebHero, 2, setCobwebResult)) return;
-    setParty((prev) => ({ ...prev, threat: prev.threat + 1 }));
+    if (!MANUAL.on) setParty((prev) => ({ ...prev, threat: prev.threat + 1 }));
     const roll = rollDie(10);
     const spiders = roll >= 9 ? rollDie(2) : 0;
     setCobwebResult({ text: `${activeCobwebHero.name} cuts through the cobweb opening (2 AP). Threat +1.${spiders ? ` Rolled ${roll} on 1d10 — ${spiders} Giant Spider${spiders > 1 ? "s" : ""} appear! Place each individually on the tile being left or entered.` : ` Rolled ${roll} on 1d10 — no spiders.`}`, tone: spiders ? "bad" : "good" });
@@ -17367,7 +17400,7 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   const [leverHeroId, setLeverHeroId] = useState("");
   const [leverDraw, setLeverDraw] = useState(null);
   const [leverFeedback, setLeverFeedback] = useState(null);
-  const activeLeverHero = heroes.find((h) => h.id === leverHeroId) || heroes[0];
+  const activeLeverHero = pickH(leverHeroId);
 
   const prepareLeverDeck = () => {
     const red = rollDie(4) + 1;
@@ -17393,7 +17426,7 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
         addLog("Party gains 1 dungeon Luck Point (lost if unused when leaving the dungeon).");
         break;
       case "threat2":
-        setParty((prev) => ({ ...prev, threat: prev.threat + 2 }));
+        if (!MANUAL.on) setParty((prev) => ({ ...prev, threat: prev.threat + 2 }));
         addLog("Threat +2 from the lever.");
         break;
       case "moralePartySanity":
@@ -17468,6 +17501,21 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   };
   return (
     <div className="space-y-4">
+      {MANUAL.on && (
+        <Panel>
+          <SectionTitle icon={ClipboardList}>Manual tracking</SectionTitle>
+          <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+            {heroes.length === 0 ? "This campaign has no heroes, so the tools only roll and explain." : "Manual tracking is on: tools only roll and explain."} AP, hero stats, Threat, Morale and food are left alone, so apply any results yourself. Choose a hero in a tool to have that tool automate things for them. Numbers for tests when no hero is picked:
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {[["perception", "Perception"], ["STR", "STR"], ["pickLocks", "Pick Locks"], ["DEX", "DEX"]].map(([k, label]) => (
+              <label key={k} className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>{label}
+                <input type="number" inputMode="numeric" value={mh[k] ?? ""} onChange={(e) => setManual(k, e.target.value)} className="w-full px-2 py-1.5 rounded text-sm mt-0.5" style={{ background: "#fff", border: `1px solid ${palette.line}`, color: palette.ink }} />
+              </label>
+            ))}
+          </div>
+        </Panel>
+      )}
       <Panel>
         <SectionTitle icon={ClipboardList}>Door / Chest Opener</SectionTitle>
         <p className="text-xs mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft, fontStyle: "italic" }}>
@@ -17480,6 +17528,7 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
             className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
             style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
           >
+            {MANUAL.on && <option value="">No hero (manual numbers)</option>}
             {heroes.map((h) => <option key={h.id} value={h.id}>{h.name} ({h.ap ?? 2} AP)</option>)}
           </select>
         )}
@@ -17535,7 +17584,8 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
                   className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
                   style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
                 >
-                  {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                  {MANUAL.on && <option value="">No hero (manual numbers)</option>}
+            {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
                 </select>
 
                 {!doorResult.jammed && (
@@ -17615,6 +17665,7 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
             className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
             style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
           >
+            {MANUAL.on && <option value="">No hero (manual numbers)</option>}
             {heroes.map((h) => <option key={h.id} value={h.id}>{h.name} (STR {h.stats.STR}, {h.ap ?? 2} AP)</option>)}
           </select>
         )}
@@ -17660,6 +17711,7 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
             className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
             style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
           >
+            {MANUAL.on && <option value="">No hero (manual numbers)</option>}
             {heroes.map((h) => <option key={h.id} value={h.id}>{h.name} ({h.ap ?? 2} AP)</option>)}
           </select>
         )}
@@ -17731,7 +17783,8 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
                 className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
                 style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
               >
-                {heroes.map((h) => <option key={h.id} value={h.id}>{h.name} ({h.ap ?? 2} AP)</option>)}
+                {MANUAL.on && <option value="">No hero (manual numbers)</option>}
+            {heroes.map((h) => <option key={h.id} value={h.id}>{h.name} ({h.ap ?? 2} AP)</option>)}
               </select>
             )}
 
@@ -17805,6 +17858,7 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
             className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
             style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
           >
+            {MANUAL.on && <option value="">No hero (manual numbers)</option>}
             {heroes.map((h) => <option key={h.id} value={h.id}>{h.name} (Perception {h.skills.perception ?? 0}, {h.ap ?? 2} AP)</option>)}
           </select>
         )}
@@ -17910,7 +17964,8 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
           style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
         >
           <option value="">Choose a hero…</option>
-          {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+          {MANUAL.on && <option value="">No hero (manual numbers)</option>}
+            {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
         </select>
         <label className="flex items-center gap-2 text-xs mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
           <input type="checkbox" checked={furnitureInCombat} onChange={(e) => setFurnitureInCombat(e.target.checked)} />
@@ -17962,7 +18017,8 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
           <>
             <select value={corpseHeroId} onChange={(e) => setCorpseHeroId(e.target.value)} className="w-full text-xs rounded px-2 py-1.5 mb-2" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
               <option value="">Choose a hero…</option>
-              {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+              {MANUAL.on && <option value="">No hero (manual numbers)</option>}
+            {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
             </select>
             <label className="flex items-center gap-2 text-xs mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
               <input type="checkbox" checked={corpseInCombat} onChange={(e) => setCorpseInCombat(e.target.checked)} />
@@ -19519,6 +19575,7 @@ export default function App() {
   const [heroes, setHeroes] = useState([defaultHero()]);
   const [party, setParty] = useState(defaultParty());
   Object.assign(SIMP, defaultParty().simplified, party.simplified || {});
+  MANUAL.on = !!party.optionalRules?.manualTracking || heroes.length === 0;
   const [log, setLog] = useState([]);
   const [tab, setTab] = useState("party");
   const navRef = useRef(null);

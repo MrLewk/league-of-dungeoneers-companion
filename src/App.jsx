@@ -559,7 +559,7 @@ const defaultParty = () => ({
   dungeonState: "settlement", // "settlement" | "travel" | "dungeon" — drives the Travel tab status badge and the auto-clear of tempEffects on dungeon exit
   dungeonRestCount: 0, // completed (uninterrupted) Short Rests taken since entering the current dungeon — drives the Ambush risk escalation; resets to 0 on Exit Dungeon, never per level
   simplified: { encumbrance: false, morale: false, durability: false, sanity: false, scenario: false }, // Simplified Game (p21): true = system removed
-  optionalRules: { lootMode: "hardcore", dungeonEvents: false, simplifiedAlchemy: false, newBeginning: false, manualTracking: false },
+  optionalRules: { lootMode: "hardcore", dungeonEvents: false, simplifiedAlchemy: false, newBeginning: false, manualTracking: false, alchemyOnly: false },
   manualHero: { STR: "", DEX: "", perception: "", pickLocks: "" }, // typed numbers the Actions tools use when no hero is picked (Manual tracking)
   roomEvent: null, // current room's Dungeon Event (optional rule), persisted across tab switches
   newBeginning: { seed: "", quests: {} }, // A New Beginning expansion tracker: seed 1-12 and per-quest { name, settlement, note }
@@ -4234,6 +4234,15 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.76.0",
+    date: "2026-10-23",
+    sections: {
+      Added: [
+        "Alchemy only (lite mode): a new Party > Optional Rules toggle hides everything except Heroes, Alchemy, Dice, Reference and Campaigns, for tables that track the rest on their own party sheet. Heroes still hold the ingredient stash, nothing in the save changes, and a Show all tabs button on the Alchemy tab switches it off again",
+      ],
+    },
+  },
   {
     version: "1.75.0",
     date: "2026-10-23",
@@ -13133,6 +13142,12 @@ function AlchemyTab({ heroes, updateHero, addLog, party, setParty }) {
 
   return (
     <div>
+      {party?.optionalRules?.alchemyOnly && (
+        <div className="flex items-center justify-between gap-2 rounded px-3 py-2 mb-3 text-xs" style={{ background: palette.panel, border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+          <span>Alchemy-only mode is on.</span>
+          <button onClick={() => setParty({ ...party, optionalRules: { ...party.optionalRules, alchemyOnly: false } })} className="px-2.5 py-1.5 rounded font-semibold shrink-0" style={{ background: palette.gold, color: palette.charcoal, fontFamily: "Cinzel, serif" }}>Show all tabs</button>
+        </div>
+      )}
       <div className="flex gap-1.5 mb-4">
         {[["recipes", "Recipe Book"], ["mix", "Mix a Potion"], ["gather", "Gather & Harvest"]].map(([key, label]) => (
           <button
@@ -15016,6 +15031,7 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
         {[["dungeonEvents", "Dungeon Events", "Roll 1d10 on entering an empty room (9–10 = event); the app then rolls the column and event from the 24-event table and resolves it. Adds a tool to the Actions tab."],
           ["simplifiedAlchemy", "Simplified Alchemy", "4/6/8 unique components for Weak/Standard/Supreme; no recipes; you choose the potion on success. Switches the Mix a Potion screen."],
           ["manualTracking", "Manual tracking (tools only roll and explain)", "The Actions tab tools stop spending AP and stop changing heroes, Threat, Morale and food. Each result is explained in text, tests use numbers you type in, and picking a hero in a tool still automates it. Switches on by itself when a campaign has no heroes."],
+          ["alchemyOnly", "Alchemy only (lite mode)", "Hides everything except Heroes, Alchemy, Dice, Reference and Campaigns, for tables that track the rest on their own party sheet. Your data is untouched; untick it (here, or from the Alchemy tab) to bring every tab back."],
           ["newBeginning", "A New Beginning (expansion)", "Adds a quest tracker to the Quests tab for the von Braus 'A New Beginning' expansion (6 starting quests, 8 follow-ups). Needs the expansion PDF; its Hunger rules are handled manually."]].map(([k, label, desc]) => (
           <label key={k} className="flex items-start gap-2 text-xs mb-1.5" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
             <input type="checkbox" checked={!!party.optionalRules?.[k]} onChange={(e) => setParty({ ...party, optionalRules: { ...party.optionalRules, [k]: e.target.checked } })} className="mt-0.5" />
@@ -20104,7 +20120,7 @@ export default function App() {
     }
   };
 
-  const tabs = [
+  const tabsAll = [
     ["party", "Party", Flame],
     ["turn", "Turn", Timer],
     ["heroes", "Heroes", Users],
@@ -20115,7 +20131,7 @@ export default function App() {
     ["dice", "Dice", Dice5],
     ["reference", "Reference", BookOpen],
   ];
-  const tabs2 = [
+  const tabs2All = [
     ["travel", "Travel", Map],
     ["settlement", "Settlement", Landmark],
     ["guilds", "Guilds", Shield],
@@ -20124,6 +20140,13 @@ export default function App() {
     ["lore", "Lore", Library],
     ["campaigns", "Campaigns", FolderOpen],
   ];
+
+  // Alchemy only (lite) mode: keep just the tabs needed for ingredients, recipes and potions.
+  const alchOnly = !!party.optionalRules?.alchemyOnly;
+  const ALCH_TABS = ["heroes", "alchemy", "dice", "reference", "campaigns"];
+  const tabs = alchOnly ? tabsAll.filter(([k]) => ALCH_TABS.includes(k)) : tabsAll;
+  const tabs2 = alchOnly ? tabs2All.filter(([k]) => ALCH_TABS.includes(k)) : tabs2All;
+  useEffect(() => { if (alchOnly && !ALCH_TABS.includes(tab)) setTab("alchemy"); }, [alchOnly, tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Combined, grouped list for the desktop sidebar nav — same tab keys/icons as the two
   // mobile tab rows, just laid out vertically with group labels instead of horizontally.

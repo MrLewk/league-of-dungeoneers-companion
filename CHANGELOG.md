@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.76.0] — 2026-10-23
+
+### Added
+- Alchemy only (lite mode): a new Party > Optional Rules toggle hides everything except Heroes, Alchemy, Dice, Reference and Campaigns, for tables that track the rest on their own party sheet. Heroes still hold the ingredient stash, nothing in the save changes, and a Show all tabs button on the Alchemy tab switches it off again
+
 ## [1.75.0] — 2026-10-23
 
 ### Added

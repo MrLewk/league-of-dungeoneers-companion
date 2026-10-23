@@ -93,6 +93,7 @@ const defaultHero = () => ({
   perks: [],
   spells: [],
   prayers: [],
+  relics: [], // Relic Slots: [{ id, god, type: "Ring" | "Necklace" }]
   specialRules: [],
   legendaryItems: [],
   conditions: [],
@@ -1059,6 +1060,83 @@ const TEMPLE_BOONS = {
   Rhidnir: { kind: "luck", amount: 1, label: "+1 Luck" },
   Ramos: { kind: "stat", stat: "STR", amount: 5, label: "+5 STR" },
 };
+
+// Relic Slots (rulebook 2.571): a Warrior Priest has two (three with Reliquary); a non-Priest needs the Pious Talent
+// for the normal two. Relics sit in these slots, not in ordinary jewellery slots. hero.relics = [{ id, god, type }].
+function relicSlotLimit(hero) {
+  const talents = hero?.talents || [];
+  if (hero?.profession !== "Warrior Priest" && !talents.includes("Pious")) return 0;
+  return talents.includes("Reliquary") ? 3 : 2;
+}
+// Worn relics (up to the slot limit) give one automatic effect on the hero, kept in sync like gear bonuses.
+function relicEffect(hero) {
+  const act = (hero?.relics || []).slice(0, relicSlotLimit(hero));
+  const parts = [];
+  const labels = [];
+  act.forEach((r) => {
+    const e = RELIC_EFFECTS[r.god];
+    if (!e) return;
+    const { label, kind, ...eff } = e;
+    if (Object.keys(eff).length) { parts.push(eff); labels.push(`${r.god} ${label}`); }
+  });
+  return parts.length ? { label: `Relics: ${labels.join(", ")}`, effect: { multi: parts } } : null;
+}
+// Old saves kept relics as backpack items with the effect applied once, permanently. Move them into Relic Slots and
+// take the old one-off bonus back off so the automatic effect doesn't double it.
+function migrateRelics(h) {
+  const re = /^Religious Relic of (\w+) \((Ring|Necklace|Amulet)\)/i;
+  const items = (h.backpack || []).filter((it) => re.test(it?.name || ""));
+  if (!items.length) return h;
+  let cur = h;
+  const relics = [...(h.relics || [])];
+  const moved = [];
+  items.forEach((it) => {
+    const m = it.name.match(re);
+    const god = Object.keys(RELIC_EFFECTS).find((g) => g.toLowerCase() === m[1].toLowerCase());
+    if (!god) return;
+    moved.push(it);
+    relics.push({ id: uid(), god, type: /ring/i.test(m[2]) ? "Ring" : "Necklace" });
+    const { label, kind, ...eff } = RELIC_EFFECTS[god];
+    if (Object.keys(eff).length) cur = { ...cur, ...applyEffectDelta(cur, eff, -1) };
+  });
+  if (!moved.length) return h;
+  return { ...cur, relics, backpack: cur.backpack.filter((it) => !moved.includes(it)) };
+}
+
+// Prayer auras: while a priest's prayer is active its numbers apply to the whole party automatically (ended by praying
+// another prayer, the End button, or End Battle on the Turn tab). Effects handled elsewhere are noted in PRAYER_NOTES.
+const PRAYER_AURAS = {
+  "Warriors of Ramos": { effects: [{ skill: "cs", amount: 10 }], label: "+10 CS" },
+  "Power of the Gods": { effects: [{ skill: "arcaneArts", amount: 10 }], label: "+10 AA", casters: true },
+  "We Shall Not Falter": { effects: [{ hp: 5 }], label: "+5 HP" },
+};
+const PRAYER_NOTES = {
+  "Strength of Ohlnir": "+1 DMG with close combat weapons is added in the damage roller.",
+  "The Power of Iphy": "+10 RES is added to Fear/Terror tests in the Fear / Terror panel.",
+  "Power of Faith": "The Fear / Terror panel treats the party as immune to Fear and Terror as Fear.",
+  "Metheia's Ward": "The priest regains 1 HP at the start of every turn (Start of Turn).",
+  "Litany of Metheia": "Each hero rolls a RES test at the start of every turn and regains 1 HP (Start of Turn).",
+  "Bringer of Light": "Undead attacking the priest suffer -10 CS (apply to the enemy).",
+  "Charus, Walk with Us": "Heroes other than the priest regain Energy on 01-10 instead of 01-05 on a skill roll.",
+  "Smite the Heretics!": "At the start of each turn enemies within 4 squares of the priest must pass a RES test or lose 1 HP.",
+  "Stay Thy Hand!": "Enemies within 4 squares of the priest must pass a RES test at the start of each turn or lose 1 AP.",
+  "Be Gone!": "Ethereal creatures within 4 squares must pass a RES test at the start of their turn or lose 1d3 HP.",
+  "Providence of Metheia": "Heroes get +10 CON when resisting disease or poison.",
+  "Shield of the Gods": "The chosen hero in the priest's LOS has +2 Natural Armour while the prayer lasts.",
+};
+function prayerAuraEffect(hero, all) {
+  const active = [...new Set((all || []).map((x) => x.activePrayer).filter(Boolean))];
+  const parts = [];
+  const labels = [];
+  active.forEach((name) => {
+    const a = PRAYER_AURAS[name];
+    if (!a) return;
+    if (a.casters && !(Number(hero.skills?.arcaneArts) > 0)) return;
+    parts.push(...a.effects);
+    labels.push(`${name} ${a.label}`);
+  });
+  return parts.length ? { label: `Prayer: ${labels.join("; ")}`, effect: { multi: parts } } : null;
+}
 
 // Table of Relics (p194) — permanent Warrior-Priest-only magic items, one per god, distinct
 // from the Temple boons above. Only 2 may be worn at once unless the Reliquary talent is
@@ -4153,6 +4231,21 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.72.0",
+    date: "2026-10-23",
+    sections: {
+      Added: [
+        "Prayer auras: an active prayer now applies to the whole party automatically. Warriors of Ramos (+10 CS), Power of the Gods (+10 Arcane Arts for casters) and We Shall Not Falter (+5 HP) appear as automatic effects on every hero; Strength of Ohlnir adds +1 close combat damage in the damage roller; Power of Iphy (+10) and Power of Faith (Fear immunity, Terror counts as Fear) apply in the Fear / Terror panel",
+        "Metheia's Ward and Litany of Metheia heal at Start of Turn (Litany rolls each hero's RES test); Metheia's Balm heals a chosen hero 1d6+1 and Verse of the Sane restores 1d3 Sanity, each with a target picker; other prayers show their effect as a reminder",
+        "End Battle button on the Turn tab ends all active prayers",
+        "Relic Slots on the hero card: two for a Warrior Priest (three with Reliquary), two for a non-Priest with Pious. Pick a god and Ring or Necklace; the relic's effect applies and is removed automatically. Relics bought at the Inner Sanctum can be attuned to a god",
+      ],
+      Changed: [
+        "Starting Equipment places the Warrior Priest's relic in a Relic Slot instead of the backpack (Amulet is now Necklace). Old saves migrate automatically without doubling the bonus",
+      ],
+    },
+  },
+  {
     version: "1.71.0",
     date: "2026-10-23",
     sections: {
@@ -6426,7 +6519,7 @@ function migratePsychology(h) {
   return { ...cur, mentalConditions: next };
 }
 function normalizeHero(h) {
-  return migratePsychology(normalizeHeroBase(h));
+  return migrateRelics(migratePsychology(normalizeHeroBase(h)));
 }
 function normalizeHeroBase(h) {
   const base = defaultHero();
@@ -6731,13 +6824,9 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
     }
     const newBackpackItems = (startingCfg.backpackItems || []).filter((it) => !(it.bowOnly && weaponName === "Sling")).map((it) => ({ id: uid(), name: it.name, value: it.value ?? "", enc: it.enc ?? "", dur: "" }));
     if (startingCfg.relicChoice) {
-      const relicEffect = RELIC_EFFECTS[startRelicGod];
-      newBackpackItems.push({ id: uid(), name: `Religious Relic of ${startRelicGod} (${startRelicType})`, value: "", enc: 0, dur: "" });
-      if (relicEffect) {
-        const relicPatch = applyEffectDelta(hero, relicEffect, 1);
-        patch = { ...patch, ...relicPatch };
-      }
-      lines.push(`Religious Relic of ${startRelicGod} (${startRelicType}) — ${relicEffect ? relicEffect.label : ""}`);
+      const relicEffect = RELIC_EFFECTS[startRelicGod]; // eslint-disable-line
+      patch.relics = [...(hero.relics || []), { id: uid(), god: startRelicGod, type: startRelicType }];
+      lines.push(`Religious Relic of ${startRelicGod} (${startRelicType}) in a Relic Slot — ${relicEffect ? relicEffect.label : ""} (applied automatically)`);
     }
     patch.backpack = [...hero.backpack, ...newBackpackItems];
     lines.push(...newBackpackItems.filter((it) => !it.name.startsWith("Religious Relic")).map((it) => it.name));
@@ -7892,7 +7981,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                       style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
                     >
                       <option value="Ring">Ring</option>
-                      <option value="Amulet">Amulet</option>
+                      <option value="Necklace">Necklace</option>
                     </select>
                   </div>
                 </>
@@ -8166,6 +8255,8 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
             onChange={(v) => set({ mana: { ...hero.mana, cur: v } })} onMaxChange={(v) => set({ mana: { ...hero.mana, max: v } })} />
           <StatBar label="Luck" icon={Dice5} cur={hero.luck.cur} max={hero.luck.max} color={palette.gold}
             onChange={(v) => set({ luck: { ...hero.luck, cur: v } })} onMaxChange={(v) => set({ luck: { ...hero.luck, max: v } })} />
+
+          <RelicSlots hero={hero} set={set} addLog={addLog} />
 
           {/* Temporary Effects — Temple boons and Curses that last "until next dungeon exit" */}
           {hero.tempEffects && hero.tempEffects.length > 0 && (
@@ -13548,7 +13639,13 @@ function FearTerrorPanel({ heroes, updateHero, party, setParty, addLog, pushToas
     if (isSpider && conds.includes("Arachnophobia")) { k = "terror"; notes.push("Arachnophobia: spiders cause Terror"); }
     if (k === "terror" && talents.includes("Fearless")) { k = "fear"; notes.push("Fearless: Terror counts as Fear"); }
     if (k === "fear" && talents.includes("Fearless")) return { immune: true, k, notes: ["Fearless: immune to Fear"] };
+    const prayers = heroes.map((x) => x.activePrayer);
+    if (prayers.includes("Power of Faith")) {
+      if (k === "terror") { k = "fear"; notes.push("Power of Faith: Terror counts as Fear"); }
+      if (k === "fear") return { immune: true, k, notes: [...notes, "Power of Faith: immune to Fear"] };
+    }
     const parts = [{ label: "RES", v: Number(h.stats.RES) || 0 }];
+    if (prayers.includes("The Power of Iphy")) parts.push({ label: "Power of Iphy", v: 10 });
     if (lit) parts.push({ label: "light", v: 5 });
     if (talents.includes("Braveheart")) parts.push({ label: "Braveheart", v: 10 });
     const mgf = magicTotals(h).fear;
@@ -13824,11 +13921,25 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
     // this also advances the round counter, resets every hero's AP to 2, and ticks down
     // (lights now burn on Threat Rolls instead) — the same mechanics "Next Round" used to require a separate tap for.
     const lines = [];
-    heroes.forEach((h) => updateHero(h.id, { ...h, ap: Math.max(0, 2 - (h.apPenalty || 0)), apPenalty: 0 }));
+    const prayerLines = [];
+    const litany = heroes.some((x) => x.activePrayer === "Litany of Metheia");
+    heroes.forEach((h) => {
+      let hpCur = h.hp.cur;
+      if (h.activePrayer === "Metheia's Ward" && hpCur > 0 && hpCur < h.hp.max) { hpCur += 1; prayerLines.push(`${h.name}: Metheia's Ward heals 1 HP.`); }
+      if (litany && hpCur > 0 && hpCur < h.hp.max) {
+        const r = rollPercent();
+        const res = Number(h.stats.RES) || 0;
+        if (r <= res && r <= 90) { hpCur += 1; prayerLines.push(`${h.name}: Litany of Metheia — RES ${r} vs ${res}, heals 1 HP.`); }
+        else prayerLines.push(`${h.name}: Litany of Metheia — RES ${r} vs ${res}, no healing.`);
+      }
+      updateHero(h.id, { ...h, ap: Math.max(0, 2 - (h.apPenalty || 0)), apPenalty: 0, hp: { ...h.hp, cur: hpCur } });
+    });
     let surviving = party.lightSources || [];
     const nextRoundNum = party.round + 1;
 
     lines.push(`Round ${nextRoundNum} begins — AP reset for all heroes.`);
+    lines.push(...prayerLines);
+    heroes.filter((x) => x.activePrayer && PRAYER_NOTES[x.activePrayer] && !["Metheia's Ward", "Litany of Metheia", "Strength of Ohlnir", "The Power of Iphy", "Power of Faith"].includes(x.activePrayer)).forEach((x) => lines.push(`${x.name}'s prayer, ${x.activePrayer}: ${PRAYER_NOTES[x.activePrayer]}`));
     if (SIMP.scenario) {
       // Simplified Game: no Scenario die, Threat roll, Wandering Monsters or burning lights.
       setParty((prev) => ({ ...prev, round: nextRoundNum }));
@@ -14234,6 +14345,15 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
         >
           Roll Start of Turn (advances round)
         </button>
+        {heroes.some((h) => h.activePrayer) && (
+          <button
+            onClick={() => { heroes.filter((h) => h.activePrayer).forEach((h) => updateHero(h.id, { ...h, activePrayer: "", prayerTarget: "" })); addLog("Battle over: all active prayers have ended."); }}
+            className="w-full mb-2 text-xs px-3 py-2 rounded font-semibold"
+            style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}
+          >
+            End Battle: end active prayers ({heroes.filter((h) => h.activePrayer).map((h) => h.activePrayer).join(", ")})
+          </button>
+        )}
         {turnResult && (
           <div className="rounded p-2" style={{ background: "#00000010" }}>
             {turnResult.lines.map((line, i) => (
@@ -15006,7 +15126,7 @@ function PerfectResultPrompt({ hero, keyName, updateHero, addLog, setParty }) {
 }
 
 // Hero damage roller (rulebook 2.571 p65): weapon type effects (E/P/C), Bleed, Stun.
-function HeroDamageRoller({ hero, perfect, addLog }) {
+function HeroDamageRoller({ hero, perfect, addLog, heroes }) {
   const [naIn, setNaIn] = useState(0);
   const [armIn, setArmIn] = useState(0);
   const [wornArmour, setWornArmour] = useState(false);
@@ -15037,6 +15157,7 @@ function HeroDamageRoller({ hero, perfect, addLog }) {
     if (wtype === "P" && justBones) { weaponDmg -= 2; notes.push("Piercing vs Just Bones: −2 DMG"); }
     if (stones) notes.push("Superior Sling Stones: +1 DMG, +5 RS (applied)");
     if (knuckle) notes.push("Knuckle-duster: +1 DMG unarmed (applied)");
+    if ((heroes || []).some((x) => x.activePrayer === "Strength of Ohlnir") && (unarmed || !weaponIsRanged(w.name))) { weaponDmg += 1; notes.push("Strength of Ohlnir: +1 DMG with close combat weapons (applied)"); }
     if (unarmed) notes.push("Unarmed attack uses CS");
     const raw = Math.max(0, weaponDmg + db);
     // Fire Damage (magic weapon) ignores Natural Armour and worn Armour.
@@ -15448,6 +15569,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
   const [prayHeroPick, setPrayHeroPick] = useState("");
   const [prayPick, setPrayPick] = useState("");
   const [prayResult, setPrayResult] = useState(null);
+  const [prayTarget, setPrayTarget] = useState("");
   const prayHero = heroes.find((h) => h.id === prayHeroPick);
   const chosenPrayer = PRAYERS.find((p) => p.name === prayPick);
   const sayPrayer = () => {
@@ -15461,12 +15583,36 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
     const skill = prayHero.skills.battlePrayers || 0;
     const success = impeccable || (r <= skill && r <= 90);
     const cur = impeccable ? prayHero.energy.cur : clamp(prayHero.energy.cur - 1, 0, prayHero.energy.max);
-    const replaced = prayHero.activePrayer && success && prayHero.activePrayer !== chosenPrayer.name ? ` (ends ${prayHero.activePrayer})` : "";
-    updateHero({ ...prayHero, energy: { ...prayHero.energy, cur }, activePrayer: success ? chosenPrayer.name : prayHero.activePrayer || "" });
+    const instant = chosenPrayer.name === "Metheia's Balm" || chosenPrayer.name === "Verse of the Sane";
+    const replaced = !instant && prayHero.activePrayer && success && prayHero.activePrayer !== chosenPrayer.name ? ` (ends ${prayHero.activePrayer})` : "";
+    const target = heroes.find((h) => h.id === prayTarget) || prayHero;
+    let extra = "";
+    let priestPatch = { energy: { ...prayHero.energy, cur }, activePrayer: success && !instant ? chosenPrayer.name : prayHero.activePrayer || "" };
+    if (success && chosenPrayer.name === "Shield of the Gods") priestPatch.prayerTarget = target.name;
+    if (success && chosenPrayer.name === "Metheia's Balm") {
+      const heal = rollDie(6) + 1;
+      const hp = Math.min(target.hp.max, target.hp.cur + heal);
+      if (target.id === prayHero.id) priestPatch.hp = { ...prayHero.hp, cur: hp };
+      else updateHero({ ...target, hp: { ...target.hp, cur: hp } });
+      extra = ` ${target.name} is healed for ${heal} HP (${target.hp.cur} → ${hp}/${target.hp.max}). The prayer ends once resolved.`;
+    }
+    if (success && chosenPrayer.name === "Verse of the Sane") {
+      if (SIMP.sanity) extra = " Sanity is removed in your game: no effect.";
+      else {
+        const gain = rollDie(3);
+        const san = Math.min(target.sanity.max, target.sanity.cur + gain);
+        if (target.id === prayHero.id) priestPatch.sanity = { ...prayHero.sanity, cur: san };
+        else updateHero({ ...target, sanity: { ...target.sanity, cur: san } });
+        extra = ` ${target.name} regains ${gain} Sanity (${target.sanity.cur} → ${san}/${target.sanity.max}). Once per hero per quest.`;
+      }
+    }
+    if (success && PRAYER_AURAS[chosenPrayer.name]) extra += ` Applied automatically to the party: ${PRAYER_AURAS[chosenPrayer.name].label}.`;
+    else if (success && PRAYER_NOTES[chosenPrayer.name]) extra += ` ${PRAYER_NOTES[chosenPrayer.name]}`;
+    updateHero({ ...prayHero, ...priestPatch });
     const msg = impeccable
-      ? `Rolled ${r}: Impeccable Prayer! ${chosenPrayer.name} succeeds and costs no Energy${replaced}.`
+      ? `Rolled ${r}: Impeccable Prayer! ${chosenPrayer.name} succeeds and costs no Energy${replaced}.${extra}`
       : success
-        ? `Rolled ${r} vs ${skill}: ${chosenPrayer.name} answered (−1 Energy → ${cur}/${prayHero.energy.max})${replaced}.`
+        ? `Rolled ${r} vs ${skill}: ${chosenPrayer.name} answered (−1 Energy → ${cur}/${prayHero.energy.max})${replaced}.${extra}`
         : `Rolled ${r} vs ${skill}: the prayer fails (−1 Energy → ${cur}/${prayHero.energy.max}).`;
     setPrayResult({ ok: success, msg, perfect: impeccable, r });
     addLog && addLog(`${prayHero.name}: ${msg}`);
@@ -15658,7 +15804,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
             <PerfectResultPrompt key={result.r + mode} hero={heroes.find((h) => h.id === heroPick)} keyName={mode === "cc" ? "cs" : "rs"} updateHero={updateHero} addLog={addLog} setParty={setParty} />
           )}
           {result && result.outcome !== "FAILURE" && heroes.find((h) => h.id === heroPick) && (
-            <HeroDamageRoller hero={heroes.find((h) => h.id === heroPick)} perfect={result.isBloodlust} addLog={addLog} />
+            <HeroDamageRoller hero={heroes.find((h) => h.id === heroPick)} perfect={result.isBloodlust} addLog={addLog} heroes={heroes} />
           )}
           {result && result.outcome !== "FAILURE" && (
             <div className="mt-2 rounded p-2.5" style={{ background: "#00000008" }}>
@@ -16305,6 +16451,15 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
                   <p className="text-xs mt-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>{chosenPrayer.effect}</p>
                 </div>
               )}
+              {chosenPrayer && ["Metheia's Balm", "Verse of the Sane", "Shield of the Gods"].includes(chosenPrayer.name) && (
+                <label className="text-xs block mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                  Target hero
+                  <select value={prayTarget} onChange={(e) => setPrayTarget(e.target.value)} className="w-full text-xs rounded px-2 py-1.5 mt-0.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                    <option value="">The priest</option>
+                    {heroes.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                  </select>
+                </label>
+              )}
               <button
                 onClick={sayPrayer}
                 disabled={!prayHero || !chosenPrayer}
@@ -16321,8 +16476,8 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
               )}
               {prayHero && prayHero.activePrayer && (
                 <div className="mt-2 flex items-center justify-between text-xs rounded p-2" style={{ background: "#00000008", color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
-                  <span>Active prayer: <b>{prayHero.activePrayer}</b> (one at a time; ends if Stunned, Prone, at 0 HP, unconscious, Silenced or a Terror Test fails)</span>
-                  <button onClick={() => updateHero({ ...prayHero, activePrayer: "" })} className="ml-2 px-2 py-1 rounded font-bold" style={{ background: palette.crimsonDark, color: palette.parchment }}>End</button>
+                  <span>Active prayer: <b>{prayHero.activePrayer}</b>{prayHero.prayerTarget ? ` on ${prayHero.prayerTarget}` : ""}{PRAYER_AURAS[prayHero.activePrayer] ? ` — ${PRAYER_AURAS[prayHero.activePrayer].label} applied to the party automatically` : ""}{PRAYER_NOTES[prayHero.activePrayer] ? `. ${PRAYER_NOTES[prayHero.activePrayer]}` : ""} (one at a time; ends if Stunned, Prone, at 0 HP, unconscious, Silenced or a Terror Test fails)</span>
+                  <button onClick={() => updateHero({ ...prayHero, activePrayer: "", prayerTarget: "" })} className="ml-2 px-2 py-1 rounded font-bold" style={{ background: palette.crimsonDark, color: palette.parchment }}>End</button>
                 </div>
               )}
             </>
@@ -17896,6 +18051,63 @@ function NewBeginningPanel({ party, setParty, addLog }) {
   );
 }
 
+function RelicSlots({ hero, set, addLog }) {
+  const limit = relicSlotLimit(hero);
+  const relics = hero.relics || [];
+  const unattuned = (hero.backpack || []).filter((it) => /^Religious Relic \((Ring|Necklace)\)/i.test(it?.name || ""));
+  const [god, setGod] = useState("");
+  const [type, setType] = useState("Ring");
+  if (!limit && !relics.length && !unattuned.length) return null;
+  const sel = { background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" };
+  const add = (g, t, fromItem) => {
+    if (!g) return;
+    if (relics.length >= limit) return;
+    const patch = { relics: [...relics, { id: uid(), god: g, type: t }] };
+    if (fromItem) patch.backpack = hero.backpack.filter((it) => it.id !== fromItem.id);
+    set(patch);
+    addLog && addLog(`${hero.name}: Relic of ${g} (${t}) placed in a Relic Slot — ${RELIC_EFFECTS[g].label}.`);
+  };
+  const remove = (r) => {
+    set({ relics: relics.filter((x) => x.id !== r.id) });
+    addLog && addLog(`${hero.name}: Relic of ${r.god} removed from its Relic Slot.`);
+  };
+  return (
+    <div className="rounded p-2 mb-3" style={{ background: "#00000008", border: `1px solid ${palette.line}` }}>
+      <p className="uppercase font-bold mb-1" style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.crimson }}>
+        Relic Slots ({Math.min(relics.length, limit)}/{limit})
+      </p>
+      {!limit && <p className="text-[10px] mb-1" style={{ color: palette.crimson }}>This hero needs the Pious Talent for Relic Slots, so these relics give no bonus.</p>}
+      {relics.map((r, i) => (
+        <div key={r.id} className="flex items-center justify-between gap-2 text-xs py-0.5" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink, opacity: i >= limit ? 0.5 : 1 }}>
+          <span>Relic of {r.god} ({r.type}) — {RELIC_EFFECTS[r.god]?.label}{i >= limit ? " (no free slot: no effect)" : ""}</span>
+          <button onClick={() => remove(r)} className="text-[10px] px-2 py-1 rounded font-semibold shrink-0" style={{ background: "#00000015", color: palette.inkSoft }}>Remove</button>
+        </div>
+      ))}
+      {limit > 0 && relics.length < limit && (
+        <div className="mt-1.5">
+          <div className="flex gap-1.5">
+            <select value={god} onChange={(e) => setGod(e.target.value)} className="flex-1 text-xs rounded px-2 py-1" style={sel}>
+              <option value="">Choose a god…</option>
+              {Object.keys(RELIC_EFFECTS).map((g) => <option key={g} value={g}>{g} ({RELIC_EFFECTS[g].label})</option>)}
+            </select>
+            <select value={type} onChange={(e) => setType(e.target.value)} className="text-xs rounded px-2 py-1" style={sel}>
+              <option value="Ring">Ring</option>
+              <option value="Necklace">Necklace</option>
+            </select>
+          </div>
+          <button onClick={() => add(god, type)} disabled={!god} className="w-full text-xs px-3 py-1.5 rounded font-bold mt-1.5" style={{ background: palette.crimsonDark, color: palette.parchment, opacity: god ? 1 : 0.45 }}>Place a relic in a slot</button>
+          {unattuned.map((it) => (
+            <button key={it.id} onClick={() => add(god, /ring/i.test(it.name) ? "Ring" : "Necklace", it)} disabled={!god} className="w-full text-xs px-3 py-1.5 rounded font-bold mt-1.5" style={{ background: palette.gold, color: palette.charcoal, opacity: god ? 1 : 0.45 }}>
+              Attune the bought {it.name} to the chosen god
+            </button>
+          ))}
+        </div>
+      )}
+      {limit > 0 && relics.length >= limit && <p className="text-[10px] mt-1" style={{ color: palette.inkSoft }}>All Relic Slots are full. Remove one to swap.</p>}
+    </div>
+  );
+}
+
 function QuestChecklistRow({ label, sub, checked, onToggle }) {
   return (
     <label className="flex items-start gap-2 py-1.5 text-sm" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
@@ -19424,6 +19636,8 @@ export default function App() {
           darkness: darknessEffect(h, party),
           lightPer: lightPerEffect(h, party),
           gear: gearEffect(h),
+          prayer: prayerAuraEffect(h, prev),
+          relic: relicEffect(h),
         };
         Object.entries(wants).forEach(([key, want]) => {
           const has = (cur.tempEffects || []).find((e) => e.auto === key);

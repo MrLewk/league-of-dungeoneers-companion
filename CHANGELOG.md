@@ -3,6 +3,17 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.72.0] — 2026-10-23
+
+### Added
+- Prayer auras: an active prayer now applies to the whole party automatically. Warriors of Ramos (+10 CS), Power of the Gods (+10 Arcane Arts for casters) and We Shall Not Falter (+5 HP) appear as automatic effects on every hero; Strength of Ohlnir adds +1 close combat damage in the damage roller; Power of Iphy (+10) and Power of Faith (Fear immunity, Terror counts as Fear) apply in the Fear / Terror panel
+- Metheia's Ward and Litany of Metheia heal at Start of Turn (Litany rolls each hero's RES test); Metheia's Balm heals a chosen hero 1d6+1 and Verse of the Sane restores 1d3 Sanity, each with a target picker; other prayers show their effect as a reminder
+- End Battle button on the Turn tab ends all active prayers
+- Relic Slots on the hero card: two for a Warrior Priest (three with Reliquary), two for a non-Priest with Pious. Pick a god and Ring or Necklace; the relic's effect applies and is removed automatically. Relics bought at the Inner Sanctum can be attuned to a god
+
+### Changed
+- Starting Equipment places the Warrior Priest's relic in a Relic Slot instead of the backpack (Amulet is now Necklace). Old saves migrate automatically without doubling the bonus
+
 ## [1.71.0] — 2026-10-23
 
 ### Added

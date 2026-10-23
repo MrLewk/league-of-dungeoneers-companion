@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.67.1] — 2026-10-23
+
+### Changed
+- Maps: cleaned-up Known World, Silver City Area and Silver City (Detailed) images (book creases and spine marks removed), now smaller WebP files that are also cached for offline use
+
 ## [1.67.0] — 2026-10-23
 
 ### Added

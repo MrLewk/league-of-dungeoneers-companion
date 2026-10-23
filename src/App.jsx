@@ -3921,6 +3921,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.67.1",
+    date: "2026-10-23",
+    sections: {
+      Changed: [
+        "Maps tab: the Known World, Silver City Area and Silver City (Detailed) maps replaced with cleaned-up versions (book creases and spine marks removed), now in the smaller WebP format",
+      ],
+    },
+  },
+  {
     version: "1.67.0",
     date: "2026-10-23",
     sections: {
@@ -9176,9 +9185,9 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
 
 // ---------- Party Panel (Threat / Morale / Food / Coins) ----------
 const MAPS = [
-  { key: "known-world", title: "The Known World", src: "/maps/known-world.jpg" },
-  { key: "silver-city-area", title: "Silver City Area", src: "/maps/silver-city-area.jpg" },
-  { key: "silver-city-detailed", title: "Silver City (Detailed)", src: "/maps/silver-city-detailed.jpg" },
+  { key: "known-world", title: "The Known World", src: "/maps/known-world.webp" },
+  { key: "silver-city-area", title: "Silver City Area", src: "/maps/silver-city-area.webp" },
+  { key: "silver-city-detailed", title: "Silver City (Detailed)", src: "/maps/silver-city-detailed.webp" },
 ];
 
 // Full-screen map viewer. Native pinch-zoom works here (the app's viewport meta doesn't

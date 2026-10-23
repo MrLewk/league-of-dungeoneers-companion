@@ -655,37 +655,51 @@ const SANITY_EVENTS = [
   { label: "Drinking & carousing (costs 1d3×100 coins)", delta: "1d6", positive: true },
 ];
 
-// Mental Conditions (p55) — rolled once a hero's Sanity hits 0. Re-roll on a duplicate.
-// Once diagnosed, max Sanity becomes 8 minus the hero's current condition count (not a
-// flat 8), and it stays that way until the condition is cured (Treat Mental Conditions).
-// `effect` (where present) uses the same shape as TALENT_EFFECTS/tempEffects and is
-// applied via applyEffectDelta on diagnosis, reversed on cure. Conditions with only a
-// situational/behavioural effect (Hate, Arachnophobia, Jumpy, Irrational Fear,
-// Claustrophobia's corridor-only penalty, Lingering Trauma) have no `effect` — they're
-// tracked and shown as a reminder instead, since there's nothing safe to automate.
+// Psychological Conditions (rulebook 2.571 pp72-75) — rolled on 1d20 once a hero's Sanity hits 0
+// (re-roll a duplicate). Afterwards current and maximum Sanity are reset to 8 minus the number of
+// active conditions (temporary ones count while they last). `effect` uses the same shape as
+// TALENT_EFFECTS/tempEffects and is applied via applyEffectDelta on diagnosis, reversed on cure.
+// `temporary` conditions are removed automatically when the party leaves the dungeon.
+// `dungeonRes` marks Fear of the Dark (-20 RES while in a dungeon — applied by the auto-sync).
+// Conditions with only a situational/behavioural effect are tracked and shown as a reminder.
+// NB: the printed table says "1-16" for Despairing; that must be 15-16 (14 Confused, 17 Hallucinating).
 const MENTAL_CONDITIONS_TABLE = [
-  { roll: [1, 1], name: "Hate", text: "Gains the Hate Talent against the type of enemy last fought (it must appear in the Bestiary's Monster List).", needsDetail: "enemy" },
-  { roll: [2, 3], name: "Acute Stress", text: "RES −10 for the rest of the quest. The hero screams during every battle, alerting everyone — Threat +1 per battle for the rest of the quest.", effect: { stat: "RES", amount: -10 } },
-  { roll: [4, 4], name: "Lingering Trauma", text: "Dormant until triggered by a specific situation next dungeon (roll below). Once triggered: all Resolve Tests and CS at −10 until the dungeon is left.", needsDetail: "trauma" },
-  { roll: [5, 5], name: "Fear of the Dark", text: "All Resolve Tests at −10.", effect: { stat: "RES", amount: -10 } },
-  { roll: [6, 6], name: "Arachnophobia", text: "Treats all encounters as causing Terror." },
-  { roll: [7, 7], name: "Jumpy", text: "A Scenario roll of 10 spooks the hero — the scream raises Threat by 2." },
-  { roll: [8, 8], name: "Irrational Fear", text: "Irrationally afraid of a random monster faction — all monsters of that faction now cause Fear.", needsDetail: "faction" },
-  { roll: [9, 9], name: "Claustrophobia", text: "All skills and stats at −10 while in corridors." },
-  { roll: [10, 10], name: "Depression", text: "Energy pool reduced by 2.", effect: { energy: -2 } },
+  { roll: [1, 1], name: "Hate", text: "Gains the Hate Talent against the type of enemy last fought.", needsDetail: "enemy" },
+  { roll: [2, 3], name: "Acute Stress", temporary: true, text: "All skills −5 for the rest of the quest. Temporary: ends automatically when the party leaves the dungeon.", effect: { allSkills: -5 } },
+  { roll: [4, 4], name: "Lingering Trauma", text: "Dormant until the next dungeon. The first time its trigger happens there: −10 to all RES Tests and −10 CS until the party leaves the dungeon.", needsDetail: "trauma" },
+  { roll: [5, 6], name: "Fear of the Dark", dungeonRes: true, text: "−20 to all RES Tests while in a dungeon, regardless of light sources. Applied automatically while the party is in a dungeon." },
+  { roll: [7, 8], name: "Jumpy", text: "Whenever the Scenario die shows 10, the hero screams and Threat rises by 2 (applied automatically at Start of Turn and Short Rest)." },
+  { roll: [9, 9], name: "Irrational Fear", text: "All monsters of this faction automatically cause Fear for this hero (no roll to place).", needsDetail: "faction" },
+  { roll: [10, 10], name: "Claustrophobia", text: "−10 to all Basic Stat and Skill Tests (CS, RS and AA included, Movement not) while standing in a corridor." },
+  { roll: [11, 11], name: "Depression", text: "Maximum Energy reduced by 2 (minimum 0).", effect: { energy: -2 } },
+  { roll: [12, 13], name: "Agitated", temporary: true, text: "−10 to Arcane Arts, Battle Prayers and Pick Locks. Regains only half the normal HP, Mana and Energy when resting (round down). Temporary.", effect: { multi: [{ skill: "pickLocks", amount: -10 }, { skill: "arcaneArts", amount: -10 }, { skill: "battlePrayers", amount: -10 }] } },
+  { roll: [14, 14], name: "Confused", temporary: true, text: "At the start of each activation in battle: WIS Test; on a failure roll 1d4 — 1 act normally, 2 Move only, 3 must Move towards the nearest visible model, 4 lose 1 AP. Temporary." },
+  { roll: [15, 16], name: "Despairing", text: "Cannot spend Luck and does not contribute RES to Party Morale. −10 RES.", effect: { stat: "RES", amount: -10 } },
+  { roll: [17, 17], name: "Hallucinating", temporary: true, text: "−20 Perception. Before a ranged attack, a spell needing LOS or interacting with an object: WIS Test — on a failure the AP is spent but nothing happens. Temporary.", effect: { skill: "perception", amount: -20 } },
+  { roll: [18, 18], name: "Paranoid", text: "Cannot benefit from other models' Talents or abilities and cannot provide benefits to others (healing and similar effects on an unconscious hero still work)." },
+  { roll: [19, 20], name: "Withdrawn", text: "Does not contribute RES to Party Morale. Cannot use Barter, Battle Prayers, or any Talent or Perk with the Leadership category." },
 ];
+// Not on the table: gained automatically if spiders were on the table when the last Sanity point was lost.
+const ARACHNOPHOBIA_CONDITION = { name: "Arachnophobia", text: "All encounters with spiders cause Terror for this hero." };
+const MENTAL_CONDITION_INFO = [...MENTAL_CONDITIONS_TABLE, ARACHNOPHOBIA_CONDITION];
 function rollMentalCondition() {
-  const r = rollDie(10);
-  return MENTAL_CONDITIONS_TABLE.find((c) => r >= c.roll[0] && r <= c.roll[1]);
+  const roll = rollDie(20);
+  return { roll, entry: MENTAL_CONDITIONS_TABLE.find((c) => roll >= c.roll[0] && roll <= c.roll[1]) };
 }
 const LINGERING_TRAUMA_TABLE = [
-  { roll: 1, text: "A trap is sprung by the party." },
-  { roll: 2, text: "A portcullis falls down." },
-  { roll: 3, text: "A companion is reduced to 0 Hit Points." },
-  { roll: 4, text: "A miscast in the party." },
-  { roll: 5, text: "Party takes a short break." },
+  { roll: 1, text: "The party springs a trap." },
+  { roll: 2, text: "A portcullis falls." },
+  { roll: 3, text: "A companion is reduced to 0 HP." },
+  { roll: 4, text: "A party member suffers a Miscast." },
+  { roll: 5, text: "The party takes a short rest." },
   { roll: 6, text: "The party opens a chest." },
 ];
+// If the situation that took the hero's last Sanity point matches a trigger, that trigger is used.
+function traumaTriggerFor(cause) {
+  if (/trap/i.test(cause || "")) return 1;
+  if (/miscast/i.test(cause || "")) return 4;
+  return null;
+}
 const IRRATIONAL_FEAR_FACTIONS = ["Orcs and Goblins", "Beasts", "Undead", "Reptiles", "Dark Elves"];
 
 // Values per QRS v2.24 (a couple differ slightly from the core rulebook — QRS is the current reference)
@@ -3190,6 +3204,9 @@ const TALENTS = [
   { name: "Mechanical Genius", type: "Sneaky", effect: "+10 when disarming traps." },
   { name: "Messiah", type: "Faith", effect: "The Priest and all other heroes on the same tile gain +5 RES. Multiple Messiah Talents do not stack. An unconscious, Bleeding-Out or dead Priest provides no bonus." },
   { name: "Mighty Blow", type: "Combat", effect: "+1 Damage once per successful hit with a melee weapon." },
+  { name: "Skinning", type: "Guild", effect: "Rangers only (learned at the Rangers' Guild for 250c, one such Talent per Level). When the Ranger succeeds on a Foraging Test to provide rations, they must also attempt to skin it, provided they carry a Skinning Knife: a second Foraging Test, and on a success they obtain one Pelt (ENC 2, sells at a General Store for 30c, no Sale Roll)." },
+  { name: "Butcher", type: "Guild", effect: "Rangers only (learned at the Rangers' Guild for 200c, one such Talent per Level). Whenever the Ranger successfully obtains a ration by Foraging, if the unmodified roll is equal to or less than half their Foraging Skill (rounded down) they obtain 2 rations instead of 1." },
+  { name: "Taxidermist", type: "Guild", effect: "Rangers only (learned at the Rangers' Guild for 350c, one such Talent per Level). Whenever the party kills a Large creature, the Ranger may make a Foraging Test; on a success they obtain one Trophy (ENC 15, at most one per quest)." },
   { name: "Miner", type: "Common", effect: "May re-roll the STR test when extracting valuables." },
   { name: "Mithril Smith", type: "Common", effect: "Learned in a dwarven settlement (level up, pay 400c) — may forge mithril using the crafting rules." },
   { name: "Mounted Combat", type: "Common", effect: "Allows fighting while mounted on a steed." },
@@ -3290,9 +3307,20 @@ function adjustCurMax(cm, amount, sign) {
 // Talents auto-apply feature and the Temporary Effects tracker (Temple boons, Curses).
 function applyEffectDelta(hero, eff, sign) {
   if (!eff) return {};
+  // `multi` bundles several descriptors into one effect (applied/reversed in order).
+  if (eff.multi) {
+    let patch = {};
+    let cur = hero;
+    eff.multi.forEach((e) => { const p = applyEffectDelta(cur, e, sign); patch = { ...patch, ...p }; cur = { ...cur, ...p }; });
+    return patch;
+  }
   const patch = {};
+  // Arcane Arts / Battle Prayers sit at 0 for heroes who can't use them — penalties skip those so
+  // that reversing the effect later can't hand them a phantom skill.
+  const isNaSkill = (k) => (k === "arcaneArts" || k === "battlePrayers") && !(Number(hero.skills?.[k]) || 0);
+  if (eff.allSkills) patch.skills = Object.fromEntries(Object.entries(hero.skills).map(([k, v]) => [k, isNaSkill(k) ? v : Math.max(0, (Number(v) || 0) + sign * eff.allSkills)]));
   if (eff.stat) patch.stats = { ...hero.stats, [eff.stat]: Math.max(0, (Number(hero.stats[eff.stat]) || 0) + sign * eff.amount) };
-  if (eff.skill) patch.skills = { ...hero.skills, [eff.skill]: Math.max(0, (Number(hero.skills[eff.skill]) || 0) + sign * eff.amount) };
+  if (eff.skill && !isNaSkill(eff.skill)) patch.skills = { ...hero.skills, [eff.skill]: Math.max(0, (Number(hero.skills[eff.skill]) || 0) + sign * eff.amount) };
   if (eff.hp) patch.hp = adjustCurMax(hero.hp, eff.hp, sign);
   if (eff.mana) patch.mana = adjustCurMax(hero.mana, eff.mana, sign);
   if (eff.sanity) patch.sanity = adjustCurMax(hero.sanity, eff.sanity, sign);
@@ -3826,6 +3854,26 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.66.0",
+    date: "2026-10-23",
+    sections: {
+      Added: [
+        "Psychology rewritten to rulebook 2.571 (pp72-76): when a hero's Sanity hits 0 the card offers \"Roll Psychology (1d20)\". All 14 conditions are on the new table (Hate, Acute Stress, Lingering Trauma, Fear of the Dark, Jumpy, Irrational Fear, Claustrophobia, Depression, Agitated, Confused, Despairing, Hallucinating, Paranoid, Withdrawn). Duplicates re-roll, Sanity resets to 8 minus conditions, effects apply automatically, and a log entry + toast explain what happened. Tick \"spiders were on the table\" for automatic Arachnophobia",
+        "Fear / Terror Test panel on the Turn tab: rolls a RES Test for every hero (lit light +5, Braveheart +10, Fearless and Arachnophobia handled, plus an extra modifier box) and applies failures automatically — Fear: −10 CS/RS/AA, −1 Sanity, −1 Party Morale; Terror: Stunned, −10 CS/RS/AA/RES, −2 Sanity, −2 Party Morale. Penalties don't stack (the worst applies). One tap clears them when the battle is over",
+        "Half Morale: when Party Morale drops below half of Starting PM, every hero automatically gets −20 RES, removed as soon as it recovers (it was only a text hint, and the old value was −10)",
+        "Fear of the Dark: −20 RES applied automatically while the party is in a dungeon. Jumpy: a Scenario die of 10 adds +2 Threat per Jumpy hero at Start of Turn and Short Rest. Confused: \"Roll Confusion\" button (WIS Test + 1d4). Agitated halves HP/Energy/Mana regained on a Short Rest. Lingering Trauma activates in the next dungeon (button to apply the penalties; a Short Rest trigger applies automatically)",
+        "Skinning, Butcher and Taxidermist Ranger Talents. With Skinning and a Skinning Knife, a successful Foraging Test now makes the second Foraging Test for a Pelt automatically (Elven Skinning Knife +10); Butcher gives a second ration on a low roll. New \"Sell Pelts\" panel on the Settlement tab pays 30c each with no Sale Roll",
+      ],
+      Changed: [
+        "Temporary conditions (Acute Stress, Agitated, Confused, Hallucinating) now end automatically when you exit the dungeon; maximum Sanity rises but current Sanity doesn't",
+        "Party Morale now resets to Starting Morale when the party exits a dungeon. Despairing and Withdrawn heroes no longer count towards Starting Party Morale",
+        "Heroes with conditions from the old 1d10 table are converted automatically (Acute Stress becomes −5 to all skills; Fear of the Dark becomes the dungeon-only −20 RES)",
+        "Settlement tab: \"Resolve an Activity\" now sits directly below the Activities box",
+        "Note: the printed condition table says \"1-16\" for Despairing — the app treats it as 15-16",
+      ],
+    },
+  },
   {
     version: "1.65.1",
     date: "2026-10-23",
@@ -5958,7 +6006,33 @@ function StatBar({ label, icon: Icon, cur, max, color, onChange, onMaxChange }) 
 }
 
 // Fills in any fields missing from heroes saved before this update (new skills, weapon, armour)
+// Converts conditions diagnosed under the old 1d10 table to the 2.571 rules (once; flagged v2):
+// Acute Stress (-10 RES) becomes "all skills -5", temporary; Fear of the Dark (-10 RES) becomes
+// -20 RES applied automatically while in a dungeon.
+function migratePsychology(h) {
+  const conds = h.mentalConditions || [];
+  if (!conds.some((c) => !c.v2)) return h;
+  let cur = h;
+  const next = conds.map((c) => {
+    if (c.v2) return c;
+    if (c.name === "Acute Stress") {
+      if (c.effect) cur = { ...cur, ...applyEffectDelta(cur, c.effect, -1) };
+      const eff = { allSkills: -5 };
+      cur = { ...cur, ...applyEffectDelta(cur, eff, 1) };
+      return { ...c, effect: eff, temporary: true, v2: true };
+    }
+    if (c.name === "Fear of the Dark") {
+      if (c.effect) cur = { ...cur, ...applyEffectDelta(cur, c.effect, -1) };
+      return { ...c, effect: null, dungeonRes: true, v2: true };
+    }
+    return { ...c, v2: true, temporary: !!c.temporary, armed: false, triggered: false };
+  });
+  return { ...cur, mentalConditions: next };
+}
 function normalizeHero(h) {
+  return migratePsychology(normalizeHeroBase(h));
+}
+function normalizeHeroBase(h) {
   const base = defaultHero();
   const mergeDur = (a, b) => ({ ...base.weapon.dur, ...(a || {}), ...(b || {}) });
   const armourPiece = (key) => ({
@@ -6159,6 +6233,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
   const [sanityEvent, setSanityEvent] = useState(SANITY_EVENTS[0].label);
   const [pendingCondition, setPendingCondition] = useState(null);
   const [hateEnemyInput, setHateEnemyInput] = useState("");
+  const [spidersPresent, setSpidersPresent] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [stackPickerOpen, setStackPickerOpen] = useState({}); // loc -> bool, toggles the "Stack with…" picker
   const [pouchAction, setPouchAction] = useState(null); // "pool" | "take" | "lend" | null — only one panel open at a time
@@ -6484,14 +6559,17 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
       d = neg ? -rolled : rolled;
     }
     const cur = clamp(hero.sanity.cur + d, 0, hero.sanity.max);
-    set({ sanity: { ...hero.sanity, cur } });
+    set({ sanity: { ...hero.sanity, cur }, ...(d < 0 ? { lastSanityCause: ev.label } : {}) });
   };
 
-  // Mental Conditions — rolled once Sanity hits 0. Re-rolls on a duplicate. Confirming a
-  // condition applies its stat/energy effect (if any) immediately, records the diagnosis,
-  // and drops max Sanity to 8 minus the hero's current condition count.
-  const confirmMentalCondition = (entry, detail) => {
-    const newConditions = [...hero.mentalConditions, { id: uid(), name: entry.name, detail, effect: entry.effect || null }];
+  // Psychological Conditions — rolled once Sanity hits 0 (button on the hero card). Re-rolls a
+  // duplicate. Confirming a condition applies its effect immediately, records it, resets
+  // Sanity to 8 minus the number of conditions, and logs + toasts what happened.
+  const confirmMentalCondition = (entry, detail, rolled) => {
+    const newConditions = [...hero.mentalConditions, {
+      id: uid(), name: entry.name, detail, effect: entry.effect || null,
+      temporary: !!entry.temporary, dungeonRes: !!entry.dungeonRes, armed: false, triggered: false, v2: true,
+    }];
     const patch = entry.effect ? applyEffectDelta(hero, entry.effect, 1) : {};
     const newMax = sanityMaxFor({ ...hero, mentalConditions: newConditions });
     update({
@@ -6500,33 +6578,72 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
       mentalConditions: newConditions,
       sanity: { cur: newMax, max: newMax },
     });
-    addLog && addLog(`${hero.name} develops a mental condition: ${entry.name}.${detail ? ` (${detail})` : ""} Sanity resets to ${newMax}/${newMax}.`);
+    const head = rolled ? `${hero.name} rolls ${rolled} on the Psychology table: ${entry.name}.` : `${hero.name} develops ${entry.name}.`;
+    addLog && addLog(`${head}${detail ? ` (${detail})` : ""} ${entry.text} Sanity resets to ${newMax}/${newMax}.`);
+    pushToast && pushToast(`${hero.name}: ${entry.name}`, `${entry.text} Sanity resets to ${newMax}.`);
     setPendingCondition(null);
     setHateEnemyInput("");
+    setSpidersPresent(false);
   };
   const rollMentalConditionForHero = () => {
     const have = hero.mentalConditions.map((c) => c.name);
-    if (have.length >= MENTAL_CONDITIONS_TABLE.length) {
-      addLog && addLog(`${hero.name} already has every mental condition — nothing new to roll.`);
-      return;
+    let entry = null;
+    let rolled = null;
+    if (spidersPresent && !have.includes("Arachnophobia")) {
+      entry = ARACHNOPHOBIA_CONDITION; // spiders on the table when the last Sanity point went: automatic
+    } else {
+      if (MENTAL_CONDITIONS_TABLE.every((c) => have.includes(c.name))) {
+        addLog && addLog(`${hero.name} already has every psychological condition — nothing new to roll.`);
+        return;
+      }
+      let res;
+      do { res = rollMentalCondition(); } while (have.includes(res.entry.name));
+      entry = res.entry;
+      rolled = res.roll;
     }
-    let entry;
-    do { entry = rollMentalCondition(); } while (have.includes(entry.name));
     if (entry.needsDetail === "enemy") {
-      setPendingCondition(entry);
+      setPendingCondition({ ...entry, rolledAs: rolled });
       return;
     }
     let detail = "";
     if (entry.needsDetail === "trauma") {
-      detail = `Triggers on: ${LINGERING_TRAUMA_TABLE[rollDie(6) - 1].text}`;
+      const fromCause = traumaTriggerFor(hero.lastSanityCause);
+      const idx = fromCause || rollDie(6);
+      detail = `Trigger: ${LINGERING_TRAUMA_TABLE[idx - 1].text}${fromCause ? " (matches how the last Sanity point was lost)" : ""}`;
     } else if (entry.needsDetail === "faction") {
       detail = `Faction: ${IRRATIONAL_FEAR_FACTIONS[Math.floor(Math.random() * IRRATIONAL_FEAR_FACTIONS.length)]}`;
+    } else if (entry === ARACHNOPHOBIA_CONDITION) {
+      detail = "automatic — spiders were present";
     }
-    confirmMentalCondition(entry, detail);
+    confirmMentalCondition(entry, detail, rolled);
   };
   const confirmHate = () => {
     if (!pendingCondition) return;
-    confirmMentalCondition(pendingCondition, hateEnemyInput.trim() || "an unspecified enemy");
+    confirmMentalCondition(pendingCondition, hateEnemyInput.trim() || "an unspecified enemy", pendingCondition.rolledAs);
+  };
+  // Lingering Trauma: tap when its trigger happens during a dungeon (the short-rest trigger is automatic).
+  const triggerTrauma = (cond) => {
+    const withFx = { ...hero, ...addTempEffect(hero, "Lingering Trauma: −10 RES, −10 CS", { multi: [{ stat: "RES", amount: -10 }, { skill: "cs", amount: -10 }] }) };
+    update({ ...withFx, mentalConditions: hero.mentalConditions.map((c) => (c.id === cond.id ? { ...c, triggered: true } : c)) });
+    addLog && addLog(`${hero.name}'s Lingering Trauma is triggered: −10 RES and −10 CS until the party leaves the dungeon.`);
+    pushToast && pushToast(`${hero.name}: Lingering Trauma`, "Triggered! −10 RES and −10 CS until the party leaves the dungeon.");
+  };
+  // Confused: WIS Test at the start of each battle activation; a failure randomises one effect.
+  const rollConfusion = () => {
+    const wis = Number(hero.stats.WIS) || 0;
+    const r = rollPercent();
+    const ok = r <= wis && r <= 90;
+    const CONF = ["acts normally", "may only Move this activation", "must Move towards the nearest visible model", "loses 1 AP"];
+    let line = `${hero.name} (Confused) WIS Test: rolled ${r} vs ${wis} — ${ok ? "passed, acts normally." : ""}`;
+    let apLoss = false;
+    if (!ok) {
+      const d = rollDie(4);
+      line += `FAILED. 1d4 = ${d}: ${hero.name} ${CONF[d - 1]}.`;
+      apLoss = d === 4;
+    }
+    if (apLoss) set({ ap: Math.max(0, (hero.ap ?? 2) - 1) });
+    addLog && addLog(line + (apLoss ? " (AP reduced by 1.)" : ""));
+    pushToast && pushToast(`${hero.name}: Confusion`, line.replace(/^.*?\) /, ""));
   };
   const cureMentalCondition = (id) => {
     const cond = hero.mentalConditions.find((c) => c.id === id);
@@ -7646,10 +7763,12 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               <div className="space-y-1">
                 {hero.tempEffects.map((eff) => (
                   <div key={eff.id} className="flex items-center justify-between text-xs rounded px-2 py-1" style={{ background: "#fff", fontFamily: "Crimson Pro, serif" }}>
-                    <span style={{ color: palette.ink }}>{eff.label}</span>
-                    <button onClick={() => set(removeTempEffect(hero, eff.id))} style={{ color: palette.crimson }} title="Clear this effect">
-                      <X size={13} />
-                    </button>
+                    <span style={{ color: palette.ink }}>{eff.label}{eff.auto ? " (automatic)" : ""}</span>
+                    {!eff.auto && (
+                      <button onClick={() => set(removeTempEffect(hero, eff.id))} style={{ color: palette.crimson }} title="Clear this effect">
+                        <X size={13} />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -7671,15 +7790,32 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               </span>
               <div className="space-y-1 mt-1">
                 {hero.mentalConditions.map((c) => {
-                  const ruleText = MENTAL_CONDITIONS_TABLE.find((m) => m.name === c.name)?.text;
+                  const ruleText = MENTAL_CONDITION_INFO.find((m) => m.name === c.name)?.text;
                   return (
                     <div key={c.id} className="flex items-start justify-between gap-2 text-xs rounded px-2 py-1.5" style={{ background: "#fff", fontFamily: "Crimson Pro, serif" }}>
                       <div className="flex-1 min-w-0">
                         <div>
                           <span className="font-bold" style={{ color: palette.ink }}>{c.name}</span>
+                          {c.temporary && <span className="ml-1 text-[9px] uppercase px-1 rounded" style={{ background: "#6B4FA022", color: "#6B4FA0" }}>temporary</span>}
                           {c.detail && <span style={{ color: palette.inkSoft }}> — {c.detail}</span>}
                         </div>
                         {ruleText && <p className="text-[10px] mt-0.5" style={{ color: palette.inkSoft }}>{ruleText}</p>}
+                        {c.name === "Confused" && (
+                          <button onClick={rollConfusion} className="mt-1 text-[10px] px-2 py-1 rounded font-bold" style={{ background: "#6B4FA0", color: "#fff", fontFamily: "Cinzel, serif" }}>
+                            Roll Confusion (start of activation)
+                          </button>
+                        )}
+                        {c.name === "Lingering Trauma" && (
+                          c.triggered ? (
+                            <p className="text-[10px] mt-0.5 font-bold" style={{ color: palette.crimson }}>Triggered this dungeon — penalties active until the party leaves.</p>
+                          ) : c.armed ? (
+                            <button onClick={() => triggerTrauma(c)} className="mt-1 text-[10px] px-2 py-1 rounded font-bold" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+                              Trigger happened — apply penalties
+                            </button>
+                          ) : (
+                            <p className="text-[10px] mt-0.5 italic" style={{ color: palette.inkSoft }}>Dormant — becomes active when the party enters a dungeon.</p>
+                          )
+                        )}
                       </div>
                       <button onClick={() => cureMentalCondition(c.id)} className="shrink-0 text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: "#00000015", color: palette.inkSoft }} title="Manual override — the proper way to cure a condition is Treat Mental Conditions at the Asylum (Settlement tab), 1000c, 1-5 on 1d6">
                         Clear
@@ -7691,18 +7827,24 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
             </div>
           )}
           {hero.sanity.cur <= 0 && !pendingCondition && (
-            <button
-              onClick={rollMentalConditionForHero}
-              className="w-full mb-3 text-xs px-2 py-2 rounded font-bold active:scale-95 transition-transform"
-              style={{ background: "#6B4FA0", color: "#fff", fontFamily: "Cinzel, serif" }}
-            >
-              Sanity at 0 — Roll a Mental Condition
-            </button>
+            <div className="mb-3">
+              <label className="flex items-center gap-2 text-xs mb-1.5" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+                <input type="checkbox" checked={spidersPresent} onChange={(e) => setSpidersPresent(e.target.checked)} />
+                Spiders were on the table when the last Sanity point was lost (automatic Arachnophobia)
+              </label>
+              <button
+                onClick={rollMentalConditionForHero}
+                className="w-full text-xs px-2 py-2 rounded font-bold active:scale-95 transition-transform"
+                style={{ background: "#6B4FA0", color: "#fff", fontFamily: "Cinzel, serif" }}
+              >
+                Sanity at 0 — Roll Psychology (1d20)
+              </button>
+            </div>
           )}
           {pendingCondition && (
             <div className="rounded p-2 mb-3" style={{ background: "#3B2F5E11", border: `1px solid #6B4FA0` }}>
               <p className="text-xs mb-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
-                Rolled <b>Hate</b> — which enemy did {hero.name} last fight?
+                Rolled <b>Hate</b>{pendingCondition.rolledAs ? ` (${pendingCondition.rolledAs})` : ""} — which enemy did {hero.name} last fight?
               </p>
               <input
                 value={hateEnemyInput}
@@ -8978,6 +9120,15 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
   const toggleBuySection = (key) => setOpenBuySection(openBuySection === key ? null : key);
   const [resolverActivity, setResolverActivity] = useState("Pray");
   const resolvePanelRef = useRef(null);
+  const peltCount = heroes.reduce((n, h) => n + (h.backpack || []).filter((it) => it.name === "Pelt").length, 0);
+  const sellPelts = () => {
+    if (peltCount === 0) return;
+    heroes.forEach((h) => {
+      if ((h.backpack || []).some((it) => it.name === "Pelt")) updateHero({ ...h, backpack: h.backpack.filter((it) => it.name !== "Pelt") });
+    });
+    setParty((prev) => ({ ...prev, coins: prev.coins + peltCount * 30 }));
+    addLog(`Sold ${peltCount} Pelt${peltCount === 1 ? "" : "s"} at the General Store for ${peltCount * 30}c (30c each, no Sale Roll). The coins go to the Party Pot.`);
+  };
   const jumpToResolver = (name) => {
     setResolverActivity(name);
     setResolverResult(null);
@@ -10525,7 +10676,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
             className="w-full text-xs px-2 py-2 rounded font-semibold mb-2 active:scale-95 transition-transform"
             style={{ background: "#00000010", color: palette.ink, fontFamily: "Crimson Pro, serif", border: `1px dashed ${palette.line}` }}
           >
-            Logging this doesn't roll anything — jump to Resolve an Activity below to actually do it ↓
+            Logging this doesn't roll anything — jump to Resolve an Activity just below to actually do it ↓
           </button>
         )}
         <button
@@ -10566,141 +10717,6 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
         <button onClick={clearVisit} className="text-xs px-2 py-1 rounded font-semibold flex items-center gap-1" style={{ background: palette.inkSoft, color: palette.parchment }}>
           <RotateCcw size={11} /> Clear AP ledger (new visit)
         </button>
-      </Panel>
-
-      <Panel className="mb-4">
-        <SectionTitle icon={Coins}>Sell & Repair</SectionTitle>
-        <p className="text-xs mb-3" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-          Blacksmith only, settlements only. Sell value = purchase price × 70% at full durability, dropping 10% per point lost (min 20% at 5+ lost). Repair costs the same 20%-of-price rate per point. Both work on items the party actually has — selling removes the item, so it can't be sold twice.
-        </p>
-
-        <div className="rounded p-2 mb-3" style={{ background: "#00000008" }}>
-          <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1.5">Sell an Item</div>
-          <select
-            value={sellKey}
-            onChange={(e) => pickSellItem(e.target.value)}
-            className="w-full text-xs rounded px-2 py-1.5 mb-2"
-            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-          >
-            <option value="">{sellableItems.length === 0 ? "No weapons, armour, or named backpack items to sell" : "Pick an item the party has…"}</option>
-            {sellableItems.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
-          </select>
-          {selectedSellItem && (
-            <>
-              <div className="grid grid-cols-3 gap-2 mb-2">
-                <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-                  Price
-                  <input type="number" value={sellPrice} onChange={(e) => setSellPrice(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-                </label>
-                <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-                  Lost Dur.
-                  <input type="number" value={sellLostDur} onChange={(e) => setSellLostDur(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-                </label>
-                <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-                  Max Dur.
-                  <input type="number" value={sellMaxDur} onChange={(e) => setSellMaxDur(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-                </label>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-                  Sells for <b style={{ color: palette.ink }}>{sellValue(sellPrice, sellLostDur)}c</b>
-                </span>
-                <button onClick={doSell} className="text-xs px-3 py-1.5 rounded font-semibold" style={{ background: palette.forestDark, color: palette.parchment }}>
-                  Sell
-                </button>
-              </div>
-            </>
-          )}
-          {sellResult && (
-            <p className="text-xs mt-1.5 font-semibold" style={{ color: sellResult.ok ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif" }}>
-              {sellResult.line}
-            </p>
-          )}
-        </div>
-
-        <div className="rounded p-2" style={{ background: "#00000008" }}>
-          <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1.5">Repair an Item</div>
-          <p className="text-[10px] mb-1.5 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-            Weapons and worn armour only — backpack items don't track current/max durability separately, so there's nothing structured to restore there yet.
-          </p>
-          <select
-            value={repairKey}
-            onChange={(e) => pickRepairItem(e.target.value)}
-            className="w-full text-xs rounded px-2 py-1.5 mb-2"
-            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
-          >
-            <option value="">{repairableItems.length === 0 ? "No damaged weapons or armour to repair" : "Pick a damaged item…"}</option>
-            {repairableItems.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
-          </select>
-          {selectedRepairItem && (
-            <>
-              <div className="grid grid-cols-2 gap-2 mb-2">
-                <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-                  Price
-                  <input type="number" value={repairPrice} onChange={(e) => setRepairPrice(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-                </label>
-                <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-                  Points (max {selectedRepairItem.maxPoints})
-                  <input type="number" value={repairPoints} onChange={(e) => setRepairPoints(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
-                </label>
-              </div>
-              <PayFromSelect value={repairPaySource} onChange={setRepairPaySource} party={party} heroes={heroes} />
-              <div className="flex items-center justify-between">
-                <span className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-                  Costs <b style={{ color: palette.ink }}>{repairCostPerPoint(repairPrice) * Math.min(repairPoints, selectedRepairItem.maxPoints)}c</b> ({repairCostPerPoint(repairPrice)}c/point)
-                </span>
-                <button onClick={doRepair} className="text-xs px-3 py-1.5 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>
-                  Repair
-                </button>
-              </div>
-            </>
-          )}
-          {repairResult && (
-            <p className="text-xs mt-1.5 font-semibold" style={{ color: repairResult.ok ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif" }}>
-              {repairResult.line}
-            </p>
-          )}
-        </div>
-      </Panel>
-
-      <Panel className="mb-4">
-        <SectionTitle icon={ShoppingCart}>Buy Gear</SectionTitle>
-        <p className="text-xs mb-3" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
-          Blacksmith (Weapons & Armour) and General Store / Magic Brewery (Equipment). Rolls Availability just like the Guild shops — 1d6 at or under the listed Avail means it's in stock. Cost is deducted and the item drops straight into the chosen hero's backpack at full Durability.
-        </p>
-        <CollapsibleShopSection label="Weapons (Blacksmith)" icon="⚔️" isOpen={openBuySection === "weapons"} onToggle={() => toggleBuySection("weapons")}>
-          <GuildShopList
-            items={BUYABLE_WEAPONS}
-            heroes={heroes}
-            party={party}
-            setParty={setParty}
-            updateHero={updateHero}
-            addLog={addLog}
-            sourceLabel="Blacksmith"
-          />
-        </CollapsibleShopSection>
-        <CollapsibleShopSection label="Armour & Shields (Blacksmith)" icon="🛡️" isOpen={openBuySection === "armour"} onToggle={() => toggleBuySection("armour")}>
-          <GuildShopList
-            items={BUYABLE_ARMOUR}
-            heroes={heroes}
-            party={party}
-            setParty={setParty}
-            updateHero={updateHero}
-            addLog={addLog}
-            sourceLabel="Blacksmith"
-          />
-        </CollapsibleShopSection>
-        <CollapsibleShopSection label="General Equipment (General Store / Magic Brewery)" icon="🎒" isOpen={openBuySection === "equipment"} onToggle={() => toggleBuySection("equipment")}>
-          <GuildShopList
-            items={GENERAL_EQUIPMENT}
-            heroes={heroes}
-            party={party}
-            setParty={setParty}
-            updateHero={updateHero}
-            addLog={addLog}
-            sourceLabel="General Store"
-          />
-        </CollapsibleShopSection>
       </Panel>
 
       <div ref={resolvePanelRef}>
@@ -10866,6 +10882,153 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
             ))}
           </div>
         )}
+      </Panel>
+
+      <Panel className="mb-4">
+        <SectionTitle icon={Coins}>Sell & Repair</SectionTitle>
+        <p className="text-xs mb-3" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+          Blacksmith only, settlements only. Sell value = purchase price × 70% at full durability, dropping 10% per point lost (min 20% at 5+ lost). Repair costs the same 20%-of-price rate per point. Both work on items the party actually has — selling removes the item, so it can't be sold twice.
+        </p>
+
+        <div className="rounded p-2 mb-3" style={{ background: "#00000008" }}>
+          <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1.5">Sell an Item</div>
+          <select
+            value={sellKey}
+            onChange={(e) => pickSellItem(e.target.value)}
+            className="w-full text-xs rounded px-2 py-1.5 mb-2"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            <option value="">{sellableItems.length === 0 ? "No weapons, armour, or named backpack items to sell" : "Pick an item the party has…"}</option>
+            {sellableItems.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
+          </select>
+          {selectedSellItem && (
+            <>
+              <div className="grid grid-cols-3 gap-2 mb-2">
+                <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                  Price
+                  <input type="number" value={sellPrice} onChange={(e) => setSellPrice(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                </label>
+                <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                  Lost Dur.
+                  <input type="number" value={sellLostDur} onChange={(e) => setSellLostDur(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                </label>
+                <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                  Max Dur.
+                  <input type="number" value={sellMaxDur} onChange={(e) => setSellMaxDur(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                </label>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+                  Sells for <b style={{ color: palette.ink }}>{sellValue(sellPrice, sellLostDur)}c</b>
+                </span>
+                <button onClick={doSell} className="text-xs px-3 py-1.5 rounded font-semibold" style={{ background: palette.forestDark, color: palette.parchment }}>
+                  Sell
+                </button>
+              </div>
+            </>
+          )}
+          {sellResult && (
+            <p className="text-xs mt-1.5 font-semibold" style={{ color: sellResult.ok ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif" }}>
+              {sellResult.line}
+            </p>
+          )}
+        </div>
+
+        <div className="rounded p-2" style={{ background: "#00000008" }}>
+          <div style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase mb-1.5">Repair an Item</div>
+          <p className="text-[10px] mb-1.5 italic" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+            Weapons and worn armour only — backpack items don't track current/max durability separately, so there's nothing structured to restore there yet.
+          </p>
+          <select
+            value={repairKey}
+            onChange={(e) => pickRepairItem(e.target.value)}
+            className="w-full text-xs rounded px-2 py-1.5 mb-2"
+            style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}
+          >
+            <option value="">{repairableItems.length === 0 ? "No damaged weapons or armour to repair" : "Pick a damaged item…"}</option>
+            {repairableItems.map((i) => <option key={i.key} value={i.key}>{i.label}</option>)}
+          </select>
+          {selectedRepairItem && (
+            <>
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                  Price
+                  <input type="number" value={repairPrice} onChange={(e) => setRepairPrice(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                </label>
+                <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
+                  Points (max {selectedRepairItem.maxPoints})
+                  <input type="number" value={repairPoints} onChange={(e) => setRepairPoints(Number(e.target.value) || 0)} className="w-full rounded px-2 py-1 mt-0.5 font-bold" style={{ border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+                </label>
+              </div>
+              <PayFromSelect value={repairPaySource} onChange={setRepairPaySource} party={party} heroes={heroes} />
+              <div className="flex items-center justify-between">
+                <span className="text-xs" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
+                  Costs <b style={{ color: palette.ink }}>{repairCostPerPoint(repairPrice) * Math.min(repairPoints, selectedRepairItem.maxPoints)}c</b> ({repairCostPerPoint(repairPrice)}c/point)
+                </span>
+                <button onClick={doRepair} className="text-xs px-3 py-1.5 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>
+                  Repair
+                </button>
+              </div>
+            </>
+          )}
+          {repairResult && (
+            <p className="text-xs mt-1.5 font-semibold" style={{ color: repairResult.ok ? palette.forestDark : palette.crimson, fontFamily: "Crimson Pro, serif" }}>
+              {repairResult.line}
+            </p>
+          )}
+        </div>
+      </Panel>
+
+      {peltCount > 0 && (
+        <Panel className="mb-4">
+          <SectionTitle icon={ShoppingCart}>Sell Pelts (General Store)</SectionTitle>
+          <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+            Each Pelt sells at a General Store for 30c — no Sale Roll. The party carries {peltCount} Pelt{peltCount === 1 ? "" : "s"} ({peltCount * 30}c).
+          </p>
+          <button onClick={sellPelts} className="w-full text-xs px-2 py-2.5 rounded font-bold active:scale-95 transition-transform" style={{ background: palette.forestDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+            Sell all {peltCount} Pelt{peltCount === 1 ? "" : "s"} for {peltCount * 30}c
+          </button>
+        </Panel>
+      )}
+
+      <Panel className="mb-4">
+        <SectionTitle icon={ShoppingCart}>Buy Gear</SectionTitle>
+        <p className="text-xs mb-3" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+          Blacksmith (Weapons & Armour) and General Store / Magic Brewery (Equipment). Rolls Availability just like the Guild shops — 1d6 at or under the listed Avail means it's in stock. Cost is deducted and the item drops straight into the chosen hero's backpack at full Durability.
+        </p>
+        <CollapsibleShopSection label="Weapons (Blacksmith)" icon="⚔️" isOpen={openBuySection === "weapons"} onToggle={() => toggleBuySection("weapons")}>
+          <GuildShopList
+            items={BUYABLE_WEAPONS}
+            heroes={heroes}
+            party={party}
+            setParty={setParty}
+            updateHero={updateHero}
+            addLog={addLog}
+            sourceLabel="Blacksmith"
+          />
+        </CollapsibleShopSection>
+        <CollapsibleShopSection label="Armour & Shields (Blacksmith)" icon="🛡️" isOpen={openBuySection === "armour"} onToggle={() => toggleBuySection("armour")}>
+          <GuildShopList
+            items={BUYABLE_ARMOUR}
+            heroes={heroes}
+            party={party}
+            setParty={setParty}
+            updateHero={updateHero}
+            addLog={addLog}
+            sourceLabel="Blacksmith"
+          />
+        </CollapsibleShopSection>
+        <CollapsibleShopSection label="General Equipment (General Store / Magic Brewery)" icon="🎒" isOpen={openBuySection === "equipment"} onToggle={() => toggleBuySection("equipment")}>
+          <GuildShopList
+            items={GENERAL_EQUIPMENT}
+            heroes={heroes}
+            party={party}
+            setParty={setParty}
+            updateHero={updateHero}
+            addLog={addLog}
+            sourceLabel="General Store"
+          />
+        </CollapsibleShopSection>
       </Panel>
       </div>
 
@@ -12797,6 +12960,155 @@ function BehaviourWalker() {
   );
 }
 
+// Fear & Terror Tests (rulebook 2.571 p72): every affected hero makes a RES Test when the source is
+// placed. Fear failure: -10 CS/RS/AA vs the source for the battle, -1 Sanity, -1 PM. Terror failure:
+// Stunned and -10 CS/RS/AA/RES until the source is dead, -2 Sanity, -2 PM. Penalties from different
+// sources don't stack (the single worst applies); Sanity and PM losses always do.
+function FearTerrorPanel({ heroes, updateHero, party, setParty, addLog, pushToast }) {
+  const [kind, setKind] = useState("fear");
+  const [source, setSource] = useState("");
+  const [isSpider, setIsSpider] = useState(false);
+  const [extraMod, setExtraMod] = useState(0);
+  const [skip, setSkip] = useState({});
+  const [results, setResults] = useState(null);
+
+  const lit = (party.lightSources || []).some((l) => (l.remaining ?? 1) > 0);
+  const hasFx = (h) => (h.tempEffects || []).some((e) => e.auto === "fear" || e.auto === "terror");
+  const anyActive = heroes.some(hasFx);
+
+  const buildTest = (h) => {
+    const conds = (h.mentalConditions || []).map((c) => c.name);
+    const talents = h.talents || [];
+    let k = kind;
+    const notes = [];
+    if (isSpider && conds.includes("Arachnophobia")) { k = "terror"; notes.push("Arachnophobia: spiders cause Terror"); }
+    if (k === "terror" && talents.includes("Fearless")) { k = "fear"; notes.push("Fearless: Terror counts as Fear"); }
+    if (k === "fear" && talents.includes("Fearless")) return { immune: true, k, notes: ["Fearless: immune to Fear"] };
+    const parts = [{ label: "RES", v: Number(h.stats.RES) || 0 }];
+    if (lit) parts.push({ label: "light", v: 5 });
+    if (talents.includes("Braveheart")) parts.push({ label: "Braveheart", v: 10 });
+    if (k === "fear" && getBackgroundData(h)?.id === "afraid-of-heights") parts.push({ label: "background", v: 10 });
+    const em = Number(extraMod) || 0;
+    if (em) parts.push({ label: "other", v: em });
+    return { immune: false, k, notes, parts, target: parts.reduce((a, p) => a + p.v, 0) };
+  };
+
+  const run = () => {
+    const src = source.trim();
+    const lines = [];
+    let pmLoss = 0;
+    heroes.filter((h) => !skip[h.id]).forEach((h) => {
+      const t = buildTest(h);
+      if (t.immune) { lines.push({ name: h.name, text: `${t.notes.join("; ")} — no test needed.`, ok: true }); return; }
+      const r = rollPercent();
+      const ok = r <= t.target && r <= 90;
+      const how = `${t.parts.map((p) => `${p.v}${p.label === "RES" ? "" : ` ${p.label}`}`).join(" + ")} = ${t.target}`;
+      if (ok) {
+        lines.push({ name: h.name, text: `${t.k === "terror" ? "Terror" : "Fear"} Test: rolled ${r} vs ${t.target} (${how}) — PASSED, no further effect this battle.`, ok: true });
+        return;
+      }
+      let cur = h;
+      const existing = (cur.tempEffects || []).filter((e) => e.auto === "fear" || e.auto === "terror");
+      const hasTerror = existing.some((e) => e.auto === "terror");
+      const hasFear = existing.some((e) => e.auto === "fear");
+      let penalty;
+      const srcTag = src ? ` (${src})` : "";
+      if (t.k === "terror") {
+        if (hasTerror) penalty = "already under a Terror penalty (penalties don't stack)";
+        else {
+          existing.forEach((e) => { cur = { ...cur, ...removeTempEffect(cur, e.id) }; });
+          const eff = { multi: [{ skill: "cs", amount: -10 }, { skill: "rs", amount: -10 }, { skill: "arcaneArts", amount: -10 }, { stat: "RES", amount: -10 }] };
+          cur = { ...cur, ...applyEffectDelta(cur, eff, 1), tempEffects: [...(cur.tempEffects || []), { id: uid(), label: `Terror${srcTag}: −10 CS/RS/AA/RES, Stunned`, effect: eff, auto: "terror" }] };
+          if (!(cur.conditions || []).includes("Stunned")) cur = { ...cur, conditions: [...(cur.conditions || []), "Stunned"] };
+          penalty = "STUNNED and −10 CS, RS, AA and RES until the source is dead";
+        }
+      } else if (hasTerror || hasFear) {
+        penalty = "already under a Fear/Terror penalty (penalties don't stack)";
+      } else {
+        const eff = { multi: [{ skill: "cs", amount: -10 }, { skill: "rs", amount: -10 }, { skill: "arcaneArts", amount: -10 }] };
+        cur = { ...cur, ...applyEffectDelta(cur, eff, 1), tempEffects: [...(cur.tempEffects || []), { id: uid(), label: `Fear${srcTag}: −10 CS/RS/AA vs the source`, effect: eff, auto: "fear" }] };
+        penalty = "−10 CS, RS and AA against the source for the rest of the battle";
+      }
+      const sLoss = t.k === "terror" ? 2 : 1;
+      const newSan = Math.max(0, cur.sanity.cur - sLoss);
+      cur = { ...cur, sanity: { ...cur.sanity, cur: newSan }, lastSanityCause: t.k === "terror" ? "Failed a terror test" : "Failed a fear test" };
+      updateHero(h.id, cur);
+      pmLoss += sLoss;
+      lines.push({ name: h.name, ok: false, text: `${t.k === "terror" ? "Terror" : "Fear"} Test: rolled ${r} vs ${t.target} (${how}) — FAILED: ${penalty}; −${sLoss} Sanity (${newSan}/${cur.sanity.max})${newSan <= 0 ? " — Sanity is 0, roll Psychology on the hero card" : ""}.` });
+    });
+    if (pmLoss > 0) setParty((prev) => ({ ...prev, morale: Math.max(0, prev.morale - pmLoss) }));
+    const summary = `${kind === "terror" ? "Terror" : "Fear"} Test${source.trim() ? ` vs ${source.trim()}` : ""}: ${lines.filter((l) => !l.ok).length} failed, ${lines.filter((l) => l.ok).length} passed.${pmLoss ? ` Party Morale −${pmLoss}.` : ""}`;
+    setResults({ lines, pmLoss, summary });
+    addLog(`${summary} ${lines.map((l) => `${l.name}: ${l.text}`).join(" ")}`);
+    pushToast && pushToast(kind === "terror" ? "Terror Test" : "Fear Test", summary);
+  };
+
+  const clearAll = () => {
+    let n = 0;
+    heroes.forEach((h) => {
+      const fx = (h.tempEffects || []).filter((e) => e.auto === "fear" || e.auto === "terror");
+      if (!fx.length) return;
+      let cur = h;
+      fx.forEach((e) => { cur = { ...cur, ...removeTempEffect(cur, e.id) }; });
+      if (fx.some((e) => e.auto === "terror")) cur = { ...cur, conditions: (cur.conditions || []).filter((c) => c !== "Stunned") };
+      updateHero(h.id, cur);
+      n++;
+    });
+    setResults(null);
+    addLog(`Battle over / source defeated: Fear and Terror penalties cleared${n ? ` on ${n} hero${n === 1 ? "" : "es"}` : ""}.`);
+  };
+
+  return (
+    <Panel className="mb-4">
+      <SectionTitle icon={Brain}>Fear / Terror Test</SectionTitle>
+      <p className="text-xs mb-2" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic" }}>
+        When a Fear- or Terror-causing enemy is placed. Rolls a RES Test for each hero (lit light +5, Braveheart +10, Fearless handled) and applies the penalties, Sanity loss and Party Morale loss automatically.
+      </p>
+      <div className="flex gap-1.5 mb-2">
+        {[["fear", "Fear"], ["terror", "Terror"]].map(([k, label]) => (
+          <button key={k} onClick={() => setKind(k)} className="flex-1 text-xs px-2 py-2 rounded font-bold"
+            style={{ background: kind === k ? palette.forestDark : "#00000010", color: kind === k ? palette.parchment : palette.ink, fontFamily: "Cinzel, serif" }}>{label}</button>
+        ))}
+      </div>
+      <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Source (e.g. Troll) — optional" className="w-full text-xs rounded px-2 py-1.5 mb-1.5"
+        style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }} />
+      <div className="flex items-center gap-2 mb-1.5">
+        <label className="text-xs flex-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>Extra modifier (prayers, Encouragement, Cause Fear…)</label>
+        <input type="number" value={extraMod} onChange={(e) => setExtraMod(e.target.value)} className="w-16 text-xs rounded px-2 py-1.5 text-right"
+          style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "JetBrains Mono, monospace" }} />
+      </div>
+      <label className="flex items-center gap-2 text-xs mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+        <input type="checkbox" checked={isSpider} onChange={(e) => setIsSpider(e.target.checked)} /> The source is a spider (Arachnophobia heroes test for Terror)
+      </label>
+      <div className="flex flex-wrap gap-1 mb-2">
+        {heroes.map((h) => (
+          <button key={h.id} onClick={() => setSkip((p) => ({ ...p, [h.id]: !p[h.id] }))} className="text-[11px] px-2 py-1 rounded-full font-semibold"
+            style={{ background: skip[h.id] ? "#00000010" : palette.forest, color: skip[h.id] ? palette.inkSoft : palette.parchment, textDecoration: skip[h.id] ? "line-through" : "none" }}>{h.name}</button>
+        ))}
+      </div>
+      <button onClick={run} className="w-full text-xs px-2 py-2.5 rounded font-bold active:scale-95 transition-transform mb-1.5"
+        style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
+        Roll {kind === "terror" ? "Terror" : "Fear"} Test for {heroes.filter((h) => !skip[h.id]).length} hero{heroes.filter((h) => !skip[h.id]).length === 1 ? "" : "es"}
+      </button>
+      {results && (
+        <div className="space-y-1 mb-1.5">
+          {results.lines.map((l, i) => (
+            <div key={i} className="text-xs rounded px-2 py-1.5" style={{ background: l.ok ? "#2D5A2D18" : "#7A1F2B14", fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+              <b>{l.name}:</b> {l.text}
+            </div>
+          ))}
+          {results.pmLoss > 0 && <div className="text-xs font-bold" style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif" }}>Party Morale −{results.pmLoss} applied.</div>}
+        </div>
+      )}
+      {(anyActive || results) && (
+        <button onClick={clearAll} className="w-full text-xs px-2 py-2 rounded font-semibold" style={{ background: "#00000012", color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
+          Battle over / source dead — clear Fear &amp; Terror penalties
+        </button>
+      )}
+    </Panel>
+  );
+}
+
 function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
   // Start of Turn resolver (moved here from the Party tab — it's step 1 of the Turn
   // Sequence, not persistent party state).
@@ -12850,6 +13162,11 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
       newThreat = clamp(party.threat + entry.decrease, party.threatFloor, 999);
       lines.push(`At/below Threat — Not-in-Battle table (${tableRoll}): ${entry.title}. ${entry.text}`);
       lines.push(`Threat ${entry.decrease} (now ${newThreat}).`);
+    }
+    const jumpy = scenarioRoll === 10 ? heroes.filter((h) => (h.mentalConditions || []).some((c) => c.name === "Jumpy")) : [];
+    if (jumpy.length) {
+      newThreat = clamp(newThreat + 2 * jumpy.length, party.threatFloor, 999);
+      lines.push(`${jumpy.map((h) => h.name).join(", ")} (Jumpy) scream${jumpy.length === 1 ? "s" : ""} at the 10 — Threat +${2 * jumpy.length} (now ${newThreat}).`);
     }
     setParty((prev) => ({ ...prev, round: nextRoundNum, lightSources: surviving, threat: newThreat }));
     setTurnResult({ lines });
@@ -12949,6 +13266,11 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
         lines.push({ text: `Threat roll ${tr} vs ${party.threat}: Not-in-Battle table (${tableRoll}): ${entry.title}. ${entry.text} Threat ${entry.decrease} (now ${restThreat}).`, warn: true });
       }
     }
+    const jumpyRest = scen === 10 ? heroes.filter((h) => (h.mentalConditions || []).some((c) => c.name === "Jumpy")) : [];
+    if (jumpyRest.length) {
+      restThreat = clamp(restThreat + 2 * jumpyRest.length, party.threatFloor, 999);
+      lines.push({ text: `${jumpyRest.map((h) => h.name).join(", ")} (Jumpy) scream${jumpyRest.length === 1 ? "s" : ""} at the 10 — Threat +${2 * jumpyRest.length}.` });
+    }
     restThreat = clamp(restThreat - 5, party.threatFloor, 999);
     lines.push({ text: `Rest: Threat −5 (now ${restThreat}).` });
     const torchesOut = (party.lightSources || []).filter((l) => /torch/i.test(l.name));
@@ -12973,29 +13295,43 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
     const masterCook = heroes.some((h) => (h.talents || []).includes("Master Cook"));
     if (masterCook) lines.push({ text: "Master Cook: each hero regains +2 HP from the ration (does not stack)." });
     heroes.forEach((h) => {
+      const agitated = (h.mentalConditions || []).some((c) => c.name === "Agitated"); // regains only half (rounded down)
+      const half = (n) => (agitated ? Math.floor(n / 2) : n);
       const hpRoll = rollDie(6);
-      const newHp = Math.min(h.hp.max, h.hp.cur + hpRoll + (masterCook ? 2 : 0));
+      const hpGain = half(hpRoll + (masterCook ? 2 : 0));
+      const newHp = Math.min(h.hp.max, h.hp.cur + hpGain);
       const hasBedroll = (h.backpack || []).some((it) => it.name === "Bed Roll");
       let newEnergyCur = h.energy.cur;
       let energyLine;
       if (hasBedroll) {
-        newEnergyCur = h.energy.max;
-        energyLine = "Energy fully regained (Bed Roll).";
+        const missing = h.energy.max - h.energy.cur;
+        newEnergyCur = Math.min(h.energy.max, h.energy.cur + half(missing));
+        energyLine = agitated ? "Energy: Bed Roll, but Agitated halves what is regained." : "Energy fully regained (Bed Roll).";
       } else {
         const missing = h.energy.max - h.energy.cur;
         let regained = 0;
         for (let i = 0; i < missing; i++) if (rollDie(6) <= 3) regained++;
+        regained = half(regained);
         newEnergyCur = Math.min(h.energy.max, h.energy.cur + regained);
         energyLine = missing > 0 ? `+${regained}/${missing} Energy.` : "Energy already full.";
       }
       const isCaster = h.mana.max > 0;
-      updateHero(h.id, {
+      const newMana = isCaster ? Math.min(h.mana.max, h.mana.cur + half(h.mana.max - h.mana.cur)) : h.mana.cur;
+      let nextHero = {
         ...h,
         hp: { ...h.hp, cur: newHp },
         energy: { ...h.energy, cur: newEnergyCur },
-        mana: isCaster ? { ...h.mana, cur: h.mana.max } : h.mana,
-      });
-      lines.push({ text: `${h.name}: +${hpRoll} HP (${newHp}/${h.hp.max}). ${energyLine}${isCaster ? " Mana fully regained." : ""}` });
+        mana: isCaster ? { ...h.mana, cur: newMana } : h.mana,
+      };
+      let trauma = "";
+      const lt = (h.mentalConditions || []).find((c) => c.name === "Lingering Trauma" && c.armed && !c.triggered && /short rest/i.test(c.detail || ""));
+      if (lt) {
+        nextHero = { ...nextHero, ...addTempEffect(nextHero, "Lingering Trauma: −10 RES, −10 CS", { multi: [{ stat: "RES", amount: -10 }, { skill: "cs", amount: -10 }] }) };
+        nextHero.mentalConditions = nextHero.mentalConditions.map((c) => (c.id === lt.id ? { ...c, triggered: true } : c));
+        trauma = ` Lingering Trauma is triggered by the rest: −10 RES and −10 CS until the party leaves the dungeon.`;
+      }
+      updateHero(h.id, nextHero);
+      lines.push({ text: `${h.name}: +${hpGain} HP (${newHp}/${h.hp.max}).${agitated ? " (Agitated: half recovery.)" : ""} ${energyLine}${isCaster ? (agitated ? " Mana: half regained." : " Mana fully regained.") : ""}${trauma}` });
     });
 
     const restNumber = (party.dungeonRestCount || 0) + 1;
@@ -13237,6 +13573,8 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
       </Panel>
 
       <EncounterRoller heroes={heroes} addLog={addLog} />
+
+      <FearTerrorPanel heroes={heroes} updateHero={updateHero} party={party} setParty={setParty} addLog={addLog} pushToast={pushToast} />
 
       <BehaviourWalker />
 
@@ -13562,12 +13900,14 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
   };
 
   const setStartingMorale = () => {
-    const base = heroes.reduce((s, h) => s + Math.floor((Number(h.stats.RES) || 0) / 10), 0);
+    // Despairing and Withdrawn heroes don't contribute their RES to Party Morale (rulebook 2.571 p74).
+    const noPM = (h) => (h.mentalConditions || []).some((c) => c.name === "Despairing" || c.name === "Withdrawn");
+    const base = heroes.reduce((s, h) => s + (noPM(h) ? 0 : Math.floor((Number(h.stats.RES) || 0) / 10)), 0);
     // Natural Leader: +2 Starting and maximum PM (does not stack), capped at 20 (rulebook 2.571).
     const leader = heroes.some((h) => (h.talents || []).includes("Natural Leader"));
     const pm = leader ? Math.min(20, base + 2) : base;
     setParty({ ...party, morale: pm, startingMorale: pm });
-    addLog(`Starting Party Morale set to ${pm} (sum of floor(RES/10) across ${heroes.length} hero${heroes.length === 1 ? "" : "es"}${leader ? ", +2 Natural Leader" : ""}).`);
+    addLog(`Starting Party Morale set to ${pm} (sum of floor(RES/10) across ${heroes.length} hero${heroes.length === 1 ? "" : "es"}${heroes.some(noPM) ? ", Despairing/Withdrawn heroes excluded" : ""}${leader ? ", +2 Natural Leader" : ""}).`);
   };
 
   const awardXP = () => {
@@ -16776,15 +17116,23 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
   const enterDungeon = () => {
     const notes = [];
     heroes.forEach((h) => {
+      let next = h;
       const kit = (h.backpack || []).find((it) => /^tobacco/i.test(it.name));
       if (kit) {
         const base = { ...h, backpack: h.backpack.filter((it) => it.id !== kit.id) };
-        updateHero(h.id, { ...base, ...addTempEffect(base, "Tobacco: +10 RES this quest", { stat: "RES", amount: 10 }), tobaccoUsed: true });
+        next = { ...base, ...addTempEffect(base, "Tobacco: +10 RES this quest", { stat: "RES", amount: 10 }), tobaccoUsed: true };
         notes.push(`${h.name} uses a Tobacco Kit (+10 RES).`);
       } else if (h.addicted) {
-        updateHero(h.id, { ...h, ...addTempEffect(h, "Tobacco withdrawal: −10 RES this quest", { stat: "RES", amount: -10 }), tobaccoUsed: false });
+        next = { ...h, ...addTempEffect(h, "Tobacco withdrawal: −10 RES this quest", { stat: "RES", amount: -10 }), tobaccoUsed: false };
         notes.push(`${h.name} is addicted and has no Tobacco Kit: −10 RES this quest.`);
       }
+      // Lingering Trauma becomes active in the next dungeon (rulebook p75).
+      if ((next.mentalConditions || []).some((c) => c.name === "Lingering Trauma")) {
+        next = { ...next, mentalConditions: next.mentalConditions.map((c) => (c.name === "Lingering Trauma" ? { ...c, armed: true, triggered: false } : c)) };
+        notes.push(`${h.name}'s Lingering Trauma is now active — watch for its trigger.`);
+      }
+      if ((next.mentalConditions || []).some((c) => c.dungeonRes)) notes.push(`${h.name} has Fear of the Dark: −20 RES while in the dungeon (applied automatically).`);
+      if (next !== h) updateHero(h.id, next);
     });
     setParty((prev) => ({ ...prev, bottleOfExperienceMade: false }));
     setDungeonState("dungeon");
@@ -16795,12 +17143,28 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
     let clearedCount = 0;
     let heroesAffected = 0;
     heroes.forEach((h) => {
-      const n = (h.tempEffects || []).length;
+      const n = (h.tempEffects || []).filter((e) => !e.auto).length;
       let next = h;
       if (n > 0) {
         heroesAffected += 1;
         clearedCount += n;
         next = { ...h, ...clearAllTempEffects(h) };
+      } else if ((h.tempEffects || []).length > 0) {
+        next = { ...h, ...clearAllTempEffects(h) };
+      }
+      // Temporary psychological conditions (Acute Stress, Agitated, Confused, Hallucinating) end with the quest;
+      // maximum Sanity rises accordingly but current Sanity does not (rulebook p73).
+      const tempConds = (next.mentalConditions || []).filter((c) => c.temporary);
+      if (tempConds.length > 0) {
+        let hh = next;
+        tempConds.forEach((c) => { if (c.effect) hh = { ...hh, ...applyEffectDelta(hh, c.effect, -1) }; });
+        const remaining = next.mentalConditions.filter((c) => !c.temporary);
+        const newMax = sanityMaxFor({ ...hh, mentalConditions: remaining });
+        next = { ...hh, mentalConditions: remaining, sanity: { cur: Math.min(hh.sanity.cur, newMax), max: newMax } };
+        addLog(`${h.name}: ${tempConds.map((c) => c.name).join(", ")} ${tempConds.length === 1 ? "ends" : "end"} with the quest. Max Sanity is now ${newMax}.`);
+      }
+      if ((next.mentalConditions || []).some((c) => c.name === "Lingering Trauma")) {
+        next = { ...next, mentalConditions: next.mentalConditions.map((c) => (c.name === "Lingering Trauma" ? { ...c, armed: false, triggered: false } : c)) };
       }
       // Tobacco aftermath: RES Test without the bonus (effects already cleared above).
       if (h.tobaccoUsed) {
@@ -16817,7 +17181,8 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
       if (next !== h) updateHero(h.id, next);
     });
     setDungeonState("travel");
-    setParty((prev) => ({ ...prev, dungeonRestCount: 0, wmTriggerFired: false, encounter: { empty: 0, eventBonus: 0, mod: 0 } }));
+    // Party Morale resets to Starting Morale when the party leaves the dungeon (rulebook 2.571 p76).
+    setParty((prev) => ({ ...prev, dungeonRestCount: 0, wmTriggerFired: false, encounter: { empty: 0, eventBonus: 0, mod: 0 }, ...((Number(prev.startingMorale) || 0) > 0 ? { morale: Math.min(20, prev.startingMorale) } : {}) }));
     setShowExitConfirm(false);
     const line = clearedCount > 0
       ? `Exited dungeon — cleared ${clearedCount} temporary effect${clearedCount === 1 ? "" : "s"} across ${heroesAffected} hero${heroesAffected === 1 ? "" : "es"}.`
@@ -16870,7 +17235,37 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
     const detail = `rolled ${roll} vs target ${target} (Foraging ${hero.skills.foraging}${mod !== 0 ? `, ${mod > 0 ? "+" : ""}${mod} terrain` : ""})`;
     if (success) {
       feedParty();
-      const line = `${hero.name} forages — ${detail} — Success! Party fed for the day, no ration used.`;
+      let extra = "";
+      let nextHero = hero;
+      const hasT = (n) => (hero.talents || []).includes(n);
+      // Butcher (rulebook p148): unmodified roll <= half Foraging Skill gives 2 rations instead of 1.
+      if (hasT("Butcher") && roll <= Math.floor((Number(hero.skills.foraging) || 0) / 2)) {
+        setParty((prev) => ({ ...prev, food: (prev.food || 0) + 1 }));
+        extra += " Butcher: a lucky roll yields a second ration (+1 ration stored).";
+      }
+      // Skinning (rulebook p148): a second Foraging Test, with a Skinning Knife, yields a Pelt.
+      if (hasT("Skinning")) {
+        const knife = (hero.backpack || []).find((it) => /skinning knife/i.test(it.name));
+        if (!knife) {
+          extra += " Skinning needs a Skinning Knife in the backpack — no Pelt attempt.";
+        } else {
+          const t2 = target + (/elven/i.test(knife.name) ? 10 : 0);
+          const r2 = rollDie(100);
+          if (r2 <= t2) {
+            nextHero = { ...hero, backpack: [...(hero.backpack || []), { id: uid(), name: "Pelt", value: 30, enc: 2, dur: "", slot: "backpack" }] };
+            extra += ` Skinning: second Foraging Test ${r2} vs ${t2} — success, one Pelt (ENC 2, sells for 30c at a General Store).`;
+          } else {
+            extra += ` Skinning: second Foraging Test ${r2} vs ${t2} — failed, no Pelt.`;
+          }
+        }
+        if (nextHero !== hero) {
+          // feedParty() has just restored this hero's hunger CON penalty — carry that into this update.
+          const conDelta = (party.hungerConDeltas || {})[hero.id];
+          if (conDelta) nextHero = { ...nextHero, stats: { ...nextHero.stats, CON: nextHero.stats.CON + conDelta } };
+          updateHero(hero.id, nextHero);
+        }
+      }
+      const line = `${hero.name} forages — ${detail} — Success! Party fed for the day, no ration used.${extra}`;
       setForageResult({ ok: true, line });
       addLog(`Foraging: ${line}`);
     } else {
@@ -17756,6 +18151,37 @@ export default function App() {
       pushToast("Wandering Monster", "The quest's Wandering Monster trigger has been reached. Place it now (this happens only once per quest).");
     }
   }, [party.threat, party.maxThreat, party.wmTriggerAt, party.wmTriggerFired, party.threatFloor, campaignId]);
+  // Situational psychology penalties, kept in sync automatically (rulebook 2.571 pp72-76):
+  // Half Morale (-20 RES for everyone while PM is below half of Starting PM) and Fear of the Dark
+  // (-20 RES while the party is in a dungeon). Stored as tempEffects flagged `auto`.
+  useEffect(() => {
+    if (!campaignId) return;
+    const inDungeon = party.dungeonState === "dungeon";
+    const startPM = Number(party.startingMorale) || 0;
+    const halfMorale = startPM > 0 && (Number(party.morale) || 0) < Math.floor(startPM / 2);
+    setHeroes((prev) => {
+      let changed = false;
+      const out = prev.map((h) => {
+        let cur = h;
+        const wants = {
+          halfMorale: halfMorale ? { label: "Half Morale: −20 RES", effect: { stat: "RES", amount: -20 } } : null,
+          fearDark: inDungeon && (h.mentalConditions || []).some((c) => c.dungeonRes) ? { label: "Fear of the Dark: −20 RES (in a dungeon)", effect: { stat: "RES", amount: -20 } } : null,
+        };
+        Object.entries(wants).forEach(([key, want]) => {
+          const has = (cur.tempEffects || []).find((e) => e.auto === key);
+          if (want && !has) {
+            cur = { ...cur, ...applyEffectDelta(cur, want.effect, 1), tempEffects: [...(cur.tempEffects || []), { id: uid(), label: want.label, effect: want.effect, auto: key }] };
+            changed = true;
+          } else if (!want && has) {
+            cur = { ...cur, ...removeTempEffect(cur, has.id) };
+            changed = true;
+          }
+        });
+        return cur;
+      });
+      return changed ? out : prev;
+    });
+  }, [heroes, party.morale, party.startingMorale, party.dungeonState, campaignId]);
   const dismissToast = useCallback((id) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);

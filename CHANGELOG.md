@@ -3,6 +3,20 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.66.0] — 2026-10-23
+
+### Added
+- Psychology rewritten to rulebook 2.571: "Roll Psychology (1d20)" at 0 Sanity with all 14 conditions, automatic effects, Sanity reset to 8 minus conditions, automatic Arachnophobia when spiders are present, log + toast of the result
+- Fear / Terror Test panel (Turn tab): RES Test per hero with light/Braveheart/Fearless modifiers; automatic CS/RS/AA(/RES) penalties, Stunned, Sanity and Party Morale loss; no stacking; one-tap clear
+- Half Morale: automatic −20 RES for all heroes below half Starting PM
+- Fear of the Dark (−20 RES in dungeons), Jumpy (+2 Threat on a Scenario 10), Confused roll button, Agitated half rest recovery, Lingering Trauma trigger handling
+- Skinning, Butcher and Taxidermist Talents; Pelts from a second Foraging Test; Sell Pelts panel (30c each)
+
+### Changed
+- Temporary conditions end when the dungeon is exited; Party Morale resets to Starting Morale on exit; Despairing/Withdrawn heroes excluded from Starting PM
+- Old-table conditions converted automatically
+- Settlement tab: Resolve an Activity moved directly below Activities
+
 ## [1.65.1] — 2026-10-23
 
 ### Changed

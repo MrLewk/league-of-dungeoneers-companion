@@ -70,6 +70,7 @@ const defaultHero = () => ({
   diseaseExposure: [], // diseased-token reminders: [{ key, from }] — a CON test at the next rest
   lastingWounds: [], // Lasting Wounds (The False Prophet): [{ id, key, name, text, questsLeft, effect, hpLost }]
   permWounds: [], // Permanent Wounds: [{ key, count }]
+  specialisation: "", specTaken: [], cantrips: [], cantripUsed: 0, invValues: {}, // Class Specialisation (The False Prophet)
   beastforms: [], beastActive: null, groveOwed: { inv: 0, form: 0 }, // Druid (The False Prophet)
   squire: null, // Knight's Squire (The False Prophet): { name, cost, hiredCycle, paidCycle }
   squireGrace: false, squireEnergyPen: false, squireTended: false, squireDead: [],
@@ -429,10 +430,18 @@ function applyOneLevelUp(hero) {
   const perkCat = LEVEL_PERK_CATEGORY[hero.profession]?.[nextLevel];
   if (talentCat) { patch.pendingTalent = talentCat; notes.push(`choose a ${talentCat} Talent`); }
   if (perkCat) { patch.pendingPerk = perkCat; notes.push(`choose a ${perkCat} Perk`); }
+  if (EXP.spec && hero.specialisation && SPEC_DATA[hero.specialisation]) {
+    const sd = SPEC_DATA[hero.specialisation];
+    if (sd.kind === "pool") notes.push(`take one ${hero.specialisation} Talent or Perk (Class Specialisation panel)`);
+    else if (sd.kind === "cantrips") notes.push("learn a new cantrip (Class Specialisation panel)");
+    else if (sd.kind === "prayers") notes.push("learn a new Templar prayer at an inn (Class Specialisation panel)");
+    else if (sd.kind === "prayers-cleric") notes.push("learn the Cleric prayers of your new level at the Inner Sanctum");
+    if (sd.kind === "pool" && hero.specialisation === "Battlewizard") notes.push("Combat Prowess: you may take a Combat Talent or Perk instead of the indicated one");
+  }
   if (EXP.druid && hero.profession === "Druid") {
     const owed = hero.groveOwed || { inv: 0, form: 0 };
     const form = [3, 5, 7, 9].includes(nextLevel) ? 1 : 0;
-    patch.groveOwed = { inv: owed.inv + 1, form: owed.form + form };
+    patch.groveOwed = { inv: owed.inv + (EXP.spec && hero.specialisation === "Hexmaster" ? 2 : 1), form: owed.form + form };
     notes.push(`visit your Sacred Grove to learn a new invocation${form ? " and a new beastform" : ""}`);
   }
   if (entry) {
@@ -488,7 +497,7 @@ const IP_DOUBLE_COST_THRESHOLD = 70; // each point from 70 upwards costs double
 const IP_FREE_SKILL_MAX_COST = 2; // the Free Skill never costs more than 2 IP (before the doubling above 70)
 
 function ipCostFor(hero, key) {
-  const table = IMPROVEMENT_COSTS[hero.profession];
+  const table = specCosts(hero) || IMPROVEMENT_COSTS[hero.profession];
   if (!table || table[key] == null) return null;
   let base = table[key];
   if (key === "hp") return base;
@@ -575,7 +584,7 @@ function alchemistBeltSlots(hero) {
 }
 
 // ---- Expansions: The False Prophet — Expanded Diseases (replaces the core Disease rule while switched on) ----
-const EXP = { on: false, diseases: false, lasting: false, squire: false, druid: false }; // refreshed each App render from party.expansions
+const EXP = { on: false, diseases: false, lasting: false, squire: false, druid: false, spec: false }; // refreshed each App render from party.expansions
 const HIT_ZONES = ["Head", "Arms", "Torso", "Legs"];
 const DISEASES = [
   { key: "withering", name: "Withering Plague", contagious: true, mod: -35, short: "Max HP −1 every rest; only 1d3 HP regained when resting.", text: "Also known as the red pox. Every time the hero rests, max HP drops by 1, and the hero only regains 1d3 HP when resting (anywhere). When cured the max HP is restored; lost HP must still be healed normally." },
@@ -924,7 +933,8 @@ function squireRest(h, ctx) {
 }
 function diseaseRestStep(h0, all, ctx) {
   const r = diseaseRestStepCore(h0, all);
-  const sq = squireRest(r.hero, ctx);
+  const sq0 = squireRest(r.hero, ctx);
+  const sq = EXP.spec && (sq0.hero.cantripUsed || 0) > 0 ? { hero: { ...sq0.hero, cantripUsed: 0 }, lines: [...sq0.lines, `${sq0.hero.name}'s cantrip tokens are refreshed.`] } : sq0;
   return sq.hero === r.hero && sq.lines.length === 0 ? r : { ...r, hero: sq.hero, lines: [...r.lines, ...sq.lines] };
 }
 
@@ -944,8 +954,10 @@ const INVOCATIONS = [
 ].map((i) => ({ ...i, lvl: 0, school: "Druidic" }));
 const invocationByName = (n) => INVOCATIONS.find((i) => i.name === n);
 // The spell the Cast tool uses: invocations take the CV for where they are cast (outside / inside a dungeon).
-function castableSpell(name, dungeonState) {
-  const inv = invocationByName(name);
+function castableSpell(name, dungeonState, hero) {
+  const inv0 = invocationByName(name);
+  // Hexmaster-only invocations: the CV and Mana are printed on the card, so the player enters them once.
+  const inv = inv0 && inv0.hex ? { ...inv0, ...(hero?.invValues?.[name] || {}) } : inv0;
   if (inv) return { ...inv, cv: dungeonState === "dungeon" ? inv.cvInside : inv.cv };
   return SPELLS.find((s) => s.name === name);
 }
@@ -993,6 +1005,124 @@ function druidDungeonMana(h) {
   return { cur: Math.min(h.mana.max, h.mana.cur + gain), line: `Druid Mana: RES test ${roll} vs ${res} - ${ok ? "passed, Mana fully regained" : `failed, half the Mana pool refilled (+${gain})`}.` };
 }
 
+// ---------- The False Prophet: Class Specialisation (pp 27-52) ----------
+const sc = (st, sk) => ({ STR: st[0], DEX: st[1], CON: st[2], WIS: st[3], RES: st[4], ...sk });
+// kind: "pool" = pick one Talent/Perk from `pool` each level from 5; other kinds are handled by their own panel.
+const SPEC_DATA = {
+  Witch: { base: "Alchemist", kind: "cantrips", costs: sc([5, 4, 4, 1, 2], { cs: 3, rs: 3, dodge: 4, pickLocks: 4, perception: 2, heal: 2, arcaneArts: 2, foraging: 4, barter: 3, alchemy: 1, hp: 10 }),
+    desc: "Gets Arcane Arts (WIS +10) but no Mana, and casts cantrips instead. Shunned: inns cost 20 c more and Availability rolls get -1. Cat and Dog: with a Witch Hunter in the party, Party Morale suffers -5.", grants: [], pool: [] },
+  Artificer: { base: "Alchemist", kind: "pool", costs: sc([5, 3, 4, 2, 3], { cs: 3, rs: 2, dodge: 4, pickLocks: 1, perception: 1, heal: 3, foraging: 4, barter: 3, alchemy: 1, hp: 10 }),
+    desc: "Crafts small items with a Crafting Kit (one per short rest, from Iron or Silver nuggets) and intricate designs at a forge. See the crafting reference below.", grants: [], pool: [] },
+  Slayer: { base: "Barbarian", kind: "pool", costs: sc([1, 2, 2, 5, 2], { cs: 1, rs: 3, dodge: 2, pickLocks: 5, perception: 4, heal: 3, foraging: 3, barter: 5, alchemy: 5, hp: 5 }),
+    desc: "Hunter of Large and X-Large monsters.", grants: [], pool: ["Slayer", "Monster Knowledge", "Felling Attack", "Power Charge"] },
+  Zealot: { base: "Barbarian", kind: "pool", costs: sc([2, 2, 1, 5, 2], { cs: 1, rs: 3, dodge: 3, pickLocks: 5, perception: 3, heal: 3, foraging: 3, barter: 5, alchemy: 5, hp: 5 }),
+    desc: "A fanatic who pushes through pain. Dual Wield needs only STR 55 for a Zealot.", grants: [], pool: ["Flagellant", "Dual Wield", "Arc Attack", "Battle Cry"] },
+  Monk: { base: "Druid", kind: "pool", costs: sc([3, 2, 3, 3, 2], { cs: 1, rs: 2, dodge: 1, pickLocks: 5, perception: 2, heal: 1, arcaneArts: 2, foraging: 2, barter: 5, alchemy: 2, hp: 5 }),
+    desc: "Unarmed fighter.", grants: [], pool: ["Unarmed Fighter", "Disarming Attack", "Lightning Fists", "Broom Sweep", "Arrow Strike", "Arrow Catch", "Iron Body"] },
+  Hexmaster: { base: "Druid", kind: "invocations", costs: sc([4, 3, 3, 1, 2], { cs: 3, rs: 3, dodge: 3, pickLocks: 5, perception: 2, heal: 1, arcaneArts: 1, foraging: 2, barter: 5, alchemy: 1, hp: 5 }),
+    desc: "Learns two invocations per level from Level 5, including nine invocations only a Hexmaster can learn.", grants: ["In Tune with Nature"], pool: [] },
+  Templar: { base: "Knight", kind: "prayers", costs: sc([2, 3, 3, 3, 1], { cs: 1, dodge: 3, pickLocks: 5, perception: 3, heal: 4, foraging: 5, barter: 2, alchemy: 5, hp: 5 }),
+    desc: "Prays in silence to a deity (1 Energy and 2 AP, kneeling, no enemy within 2 squares) and learns one prayer per level from Level 5, free at an inn.", grants: [], pool: [] },
+  Champion: { base: "Knight", kind: "pool", costs: sc([1, 2, 3, 3, 2], { cs: 1, dodge: 2, pickLocks: 5, perception: 3, heal: 4, foraging: 5, barter: 2, alchemy: 5, hp: 5 }),
+    desc: "A dazzling duellist.", grants: [], pool: ["Battledancer", "Piercing Strike", "Bleed", "Renowned", "Feint"] },
+  "Master Hunter": { base: "Ranger", kind: "pool", costs: sc([3, 1, 1, 3, 3], { cs: 2, rs: 1, dodge: 1, pickLocks: 5, perception: 1, heal: 2, foraging: 1, barter: 2, alchemy: 4, hp: 5 }),
+    desc: "Knows the strengths and weaknesses of beasts. Starts with Sworn Enemy and Fast.", grants: ["Sworn Enemy", "Fast"], pool: ["Close Range", "Flanked Shot", "Nimble", "Trickshooter", "Skilled Skinner"] },
+  Tracker: { base: "Ranger", kind: "pool", costs: sc([2, 2, 1, 3, 3], { cs: 2, rs: 1, dodge: 3, pickLocks: 5, perception: 1, heal: 2, foraging: 1, barter: 3, alchemy: 2, hp: 5 }),
+    desc: "Starts with Navigator and Tracker.", grants: ["Navigator", "Tracker"], pool: ["I Know Where Those Grow", "Dhalah's Luck", "Expeditious Dodge", "Follower of Kredelia", "Falconer"] },
+  Sellsword: { base: "Rogue", kind: "pool", costs: sc([2, 2, 3, 2, 3], { cs: 2, rs: 2, dodge: 3, pickLocks: 3, perception: 3, heal: 2, foraging: 2, barter: 3, alchemy: 4, hp: 10 }),
+    desc: "Shines when fighting in a group.", grants: [], pool: ["Guardian", "Brother in Arms", "Armour Training", "Gambler", "Split Vision"] },
+  "Tomb Robber": { base: "Rogue", kind: "pool", costs: sc([3, 3, 2, 2, 2], { cs: 3, rs: 3, dodge: 2, pickLocks: 2, perception: 1, heal: 3, foraging: 3, barter: 2, alchemy: 4, hp: 10 }),
+    desc: "Predicts traps and is hardened against the undead.", grants: [], pool: ["Trap Master", "Sense for Traps", "Looter", "Sharp-Eyed", "Lucky", "Die and Stay Dead", "Magic Sense", "Lightning Reflexes"] },
+  Assassin: { base: "Thief", kind: "pool", costs: sc([4, 2, 4, 2, 2], { cs: 2, rs: 2, dodge: 1, pickLocks: 1, perception: 1, heal: 3, foraging: 3, barter: 2, alchemy: 4, hp: 10 }),
+    desc: "Gains the Assassin Talent (if not already chosen), may always pick from the Sneaky Talents and Perks, and can buy poisons in the restricted areas of the Dark Guild.", grants: ["Assassin"], pool: ["Deadly Dual Wield", "Bleed", "Opportunist", "Coup de Grace"] },
+  Acrobat: { base: "Thief", kind: "pool", costs: sc([3, 1, 2, 3, 3], { cs: 3, rs: 2, dodge: 1, pickLocks: 1, perception: 1, heal: 3, foraging: 3, barter: 2, alchemy: 4, hp: 5 }),
+    desc: "Catlike: starts with Fast, and may always reroll a result where the hero falls prone or into a pit.", grants: ["Fast"], pool: ["Quick Feet", "Expert Climber", "Tumble", "Slippery"] },
+  Captain: { base: "Warrior", kind: "pool", costs: sc([2, 2, 2, 3, 1], { cs: 1, rs: 1, dodge: 3, pickLocks: 3, perception: 2, heal: 3, foraging: 4, barter: 3, alchemy: 5, hp: 5 }),
+    desc: "An informal leader who steadies the party.", grants: [], pool: ["Rallying Call", "Command", "Natural Leader", "Strong-Minded", "Split Vision", "Situational Awareness"] },
+  "Weapons Master": { base: "Warrior", kind: "pool", costs: sc([1, 2, 2, 5, 3], { cs: 1, rs: 2, dodge: 2, pickLocks: 5, perception: 3, heal: 4, foraging: 4, barter: 4, alchemy: 5, hp: 5 }),
+    desc: "A professional fighter.", grants: [], pool: ["Specialist", "Battle Fury", "Combat Awareness", "Avoid Armour", "Cripple"] },
+  "Witch Hunter": { base: "Warrior Priest", kind: "pool", costs: sc([2, 2, 3, 3, 2], { cs: 2, rs: 2, dodge: 2, pickLocks: 5, perception: 4, heal: 2, battlePrayers: 1, foraging: 4, barter: 3, alchemy: 4, hp: 5 }),
+    desc: "+2 DMG against undead, demons and spell casters, and ignores any fear or terror they cause. An empty bottle filled with water and blessed before a dungeon works as holy water. Despise Magic: cannot benefit from spells cast by friendly casters. Cat and Dog: with a Witch or Wizard in the party, Party Morale suffers -5.", grants: [], pool: ["Resistance to Magic", "Iron Body", "Strong-Minded", "Divine Strike", "Divine Shot", "Hate"] },
+  Cleric: { base: "Warrior Priest", kind: "prayers-cleric", costs: sc([3, 3, 3, 3, 1], { cs: 2, rs: 2, dodge: 3, pickLocks: 5, perception: 3, heal: 2, battlePrayers: 1, foraging: 4, barter: 2, alchemy: 2, hp: 10 }),
+    desc: "Learns the Cleric-only prayers of levels 5 to 8 (find them in the Inner Sanctum).", grants: [], pool: [] },
+  Battlewizard: { base: "Wizard", kind: "pool", costs: sc([3, 3, 3, 2, 3], { cs: 3, rs: 3, dodge: 2, pickLocks: 4, perception: 2, heal: 2, arcaneArts: 1, foraging: 5, barter: 1, alchemy: 3, hp: 10 }),
+    desc: "May wear up to chainmail, but any chainmail gives -25 Arcane Arts to cast or dispel (mithril -15). When levelling up, may take a Talent or Perk from the Combat list instead of the one indicated.", grants: [], pool: ["Battlewizard", "Armoured Casting", "Magic Strike", "Cast on the Run", "Imbue Weapon", "Tough Mind", "Unconventional", "Quick Casting"] },
+  Archmage: { base: "Wizard", kind: "pool", costs: sc([5, 4, 4, 1, 3], { cs: 5, rs: 4, dodge: 3, pickLocks: 4, perception: 1, heal: 1, arcaneArts: 1, foraging: 5, barter: 1, alchemy: 2, hp: 15 }),
+    desc: "Starts with Scholar: pays half price (rounded down) to learn spells.", grants: ["Scholar"], pool: ["Void Channeling", "Academic Knowledge", "Puppet Master", "Create Infusion", "Quick Casting", "Enchanter"] },
+};
+const SPEC_BY_BASE = Object.entries(SPEC_DATA).reduce((m, [k, v]) => { (m[v.base] = m[v.base] || []).push(k); return m; }, {});
+const specCosts = (hero) => (EXP.spec && hero.specialisation && SPEC_DATA[hero.specialisation]?.costs) || null;
+// How many pool picks a specialised hero is owed: one per level from Level 5.
+const specPicksOwed = (hero) => Math.max(0, (hero.level || 1) - 4 - (hero.specTaken || []).length);
+
+const CANTRIPS = [
+  { name: "Call of the Abyss", text: "1d6 holes open in the floor of the witch's tile (not her square). Any enemy or friend standing in one, if not Large or X-Large, is swallowed: an enemy is removed with no loot or XP, a friend follows the catacomb rules." },
+  { name: "Confuse", text: "One enemy in LOS must pass a RES test or the Stupid rule applies to it for the rest of the battle." },
+  { name: "Curse", text: "Move 1 Luck from one hero to another, both in the witch's LOS. Party Morale -1d3. The curse is lifted when the heroes rest at an inn." },
+  { name: "Damnation", text: "One enemy in LOS gets -10 CS for 1d4+2 turns." },
+  { name: "Deflection", text: "Negates one attack that would make the witch lose HP. Battle only, lasts a number of turns equal to the witch's level." },
+  { name: "Leech", text: "Move HP between two heroes in LOS. Each HP gained costs the other hero 1 HP, and for every 3 HP gained they lose 1 more (3 gained = 4 lost)." },
+  { name: "Mend", text: "Heals HP equal to the witch's level on herself or an adjacent character." },
+  { name: "Power Blast", text: "Everyone within 2 squares is shoved 1 square away, passes a DEX test or falls prone, and loses 1d3 HP (no NA or armour). The witch loses 1d3 Sanity." },
+  { name: "Spark", text: "1d4+2 DMG with no Armour or NA to an enemy adjacent or within 2 squares, in LOS." },
+  { name: "Summon Lesser Demon", text: "A Lesser Plague Demon appears in a random free square and acts as part of the hero's next turn. The witch makes a Resolve test at the start of each turn or the demon escapes. Add 1 Hero Initiative Token to the bag while it is on the table." },
+  { name: "Veil", text: "On the witch or a friend within 2 squares: if the witch casts no other cantrip and the veiled character does not attack, enemies ignore them (they push through in a doorway, no attack)." },
+  { name: "Voodoo", text: "Sacrifice HP: roll 1d6 for each HP given. On 1-3 an enemy loses 4 HP (no armour or NA). Not on undead." },
+];
+const CANTRIP_TABLE = { 5: [2, 3], 6: [3, 5], 7: [4, 6], 8: [5, 6], 9: [6, 7], 10: [7, 7] };
+const cantripAllow = (hero) => CANTRIP_TABLE[Math.min(10, Math.max(5, hero.level || 5))] || [2, 3];
+const cantripByName = (n) => CANTRIPS.find((c) => c.name === n);
+
+// Templar prayers: auto-successful, 1 Energy each (plus 2 AP kneeling).
+const TEMPLAR_PRAYERS = [
+  { name: "Light of Metheia", effect: "Demons and undead pay 3 Movement to enter squares adjacent to the Templar, for 10 turns." },
+  { name: "Kredelia's Boon", effect: "Movement 6 for 10 turns." },
+  { name: "Metheia's Blessing (Templar)", effect: "Regain 1d8+1 lost HP." },
+  { name: "Ohlnir's Strength", effect: "+10 STR for 10 turns. Can be combined with a temple prayer." },
+  { name: "Rhidnir's Whim", effect: "Roll 1d6: 1-4 gain +1 Luck until the next settlement, 5-6 lose 1 Luck until the next settlement (if already at 0 Luck, -10 CS modifier)." },
+  { name: "Shield of Ramos", effect: "+1 DEF for 10 turns." },
+].map((x) => ({ ...x, lvl: 0, templar: true }));
+const CLERIC_PRAYERS = [
+  [5, "Metheia's Blessing", "All heroes in LOS regain +3 HP."],
+  [5, "Speed of Ramos", "All heroes in LOS get +20 Dodge for the rest of the battle."],
+  [5, "Godly Power", "One character in LOS gets +20 STR."],
+  [6, "Metheia's Resilience", "One hero in LOS gets +20 CON when rolling to resist poison."],
+  [6, "Metheia's Protection", "All heroes in LOS get +2 NA for the entire battle."],
+  [6, "Godly Serenity", "One hero in LOS gets +20 to Pick Locks."],
+  [7, "Rhidnir's Boon", "Usable any time in the turn sequence if the Cleric has no active prayer. Roll 1d6: 1-4 a friendly character in LOS gets +1 Luck (up to their maximum), 5 nothing, 6 the target loses 1d3 Sanity."],
+  [7, "Wrath of Ramos", "One enemy in LOS takes 1d10 DMG, and every character adjacent to it takes 1d6."],
+  [7, "Banish the Wicked", "One demon in LOS must pass a RES test or be removed from the table (no XP). A Large demon instead takes 1d10 DMG with no armour or NA."],
+  [8, "Blessing of Ramos", "Before entering a dungeon: one party weapon gets AP (2), cumulative with any AP (X), for the whole dungeon. Costs 2 Energy."],
+  [8, "Purging Light", "All enemies in LOS must pass a RES test or be stunned."],
+  [8, "Holy Crusaders", "Every turn the party may add one Initiative Token to the bag."],
+].map(([lvl, name, effect]) => ({ lvl, name, effect, cleric: true }));
+
+// Hexmaster-only invocations. The card shows their CV and Mana: enter them on the Druid panel.
+const HEX_INVOCATIONS = [
+  { name: "Bark Skin", effect: "+2 NA until the end of the battle (10 turns outside battle)." },
+  { name: "Calm Animal", effect: "Targets a Cave Bear, Dire Wolf, Wolf, Giant Toad, Snake, Spider, Scorpion, Centipede or Rat, or a Raptor: RES test or it does nothing on its next activation." },
+  { name: "Banish Elemental", effect: "An elemental in LOS must pass a RES test or take 1d10 DMG (no NA)." },
+  { name: "Web", effect: "Webs 1d6 random squares on a tile in LOS. Anyone entering needs a DEX test or is entangled. Spiders are immune." },
+  { name: "Cure Disease", effect: "An adjacent hero is cured of disease." },
+  { name: "Cure Poison", effect: "An adjacent hero is cured of poison." },
+  { name: "Create Food", effect: "Creates one ration. Only during a rest, needs enough Mana at the start of the rest, once per rest." },
+  { name: "Break Darkness", effect: "Demons and undead within LOS and 3 squares must pass a RES test on activation or lose 1 HP (no armour or NA) while it is active." },
+  { name: "Poison Ivy Dart", effect: "A 1d6 DMG missile. The target must pass a RES test or is poisoned. Undead are immune." },
+].map((i) => ({ ...i, cv: null, cvInside: null, mana: null, upkeep: 0, special: "", hex: true, lvl: 0, school: "Druidic" }));
+INVOCATIONS.push(...HEX_INVOCATIONS);
+
+const ARTIFICER_REF = [
+  "Crafting Kit (250 c at the Alchemist Guild, availability 5): melts Iron or Silver nuggets only. Makes small items during a short rest (dungeon, travel or inn), one item per rest.",
+  "Forge: the Bergmeister Estate smithy, or rent one from any blacksmith for 200 c. Mithril: a non-dwarf must rent a dwarven smith in Durburim or Birnheim for 400 c. Any forge job takes a whole day.",
+  "Small items (Crafting Kit): Caltrops (1 Iron), Bear Trap (2 Iron), Lock Picks x5 (1 Iron, +5 lockpicking), Silver Arrows or Bolts x5 (2 Silver), Superior Slingstones x5 (1 Iron), Arquebus Shots x5 (1 Iron).",
+  "Intricate designs (forge): Prosthetic Hand (4 Mithril: two-handed use again, -5 CS/RS), Prosthetic Leg (4 Mithril: -10 DEX instead of -25), Vial Launcher (6 Mithril or Silver: thrown bottles +20 RS, ENC 10), Arquebus (8 Silver or Mithril: 2D8, AP 3, ENC 15 mithril / 20 silver, Class 4; reload with a Liquid Fire or Firebomb bottle = 5 shots; projectile 2 AP, propellant 2 AP from a Quick Slot or 4 AP from the backpack), Armour-Piercing shots (1 Mithril: five shots AP 4), Lock Pick Automaton (4 Mithril: Artificer only, +30 lock picking, ENC 5).",
+];
+const ASSASSIN_POISONS = [
+  ["Hag's Taint", "75 c", 5, "1 DMG per turn until it dies."], ["Fiery Blight", "150 c", 3, "2 DMG per turn until it dies."],
+  ["Stravith", "100 c", 4, "Enemy NA -1 (no effect if it has no NA)."], ["Agophix", "50 c", 4, "Slows the enemy by 2 M."],
+  ["Chimera Poison", "80 c", 3, "Enemy gets -10 CS and -20 RS."],
+];
+
 const defaultParty = () => ({
   threat: 2, threatFloor: 2, morale: 0, food: 4,
   coins: 0, // Party Pot — shared coins, built up via "Pool to Party" from a hero's personal pouch; starts empty since new heroes now start with their own 150c
@@ -1003,7 +1133,7 @@ const defaultParty = () => ({
   dungeonRestCount: 0, // completed (uninterrupted) Short Rests taken since entering the current dungeon — drives the Ambush risk escalation; resets to 0 on Exit Dungeon, never per level
   simplified: { encumbrance: false, morale: false, durability: false, sanity: false, scenario: false }, // Simplified Game (p21): true = system removed
   optionalRules: { lootMode: "hardcore", dungeonEvents: false, simplifiedAlchemy: false, newBeginning: false, manualTracking: false, alchemyOnly: false },
-  expansions: { falseProphet: false, fpDiseases: true, fpLasting: false, fpSquire: true, fpDruid: true }, // Expansions tab: The False Prophet master switch + its parts
+  expansions: { falseProphet: false, fpDiseases: true, fpLasting: false, fpSquire: true, fpDruid: true, fpSpec: true }, // Expansions tab: The False Prophet master switch + its parts
   manualHero: { STR: "", DEX: "", perception: "", pickLocks: "" }, // typed numbers the Actions tools use when no hero is picked (Manual tracking)
   roomEvent: null, // current room's Dungeon Event (optional rule), persisted across tab switches
   newBeginning: { seed: "", quests: {} }, // A New Beginning expansion tracker: seed 1-12 and per-quest { name, settlement, note }
@@ -3013,6 +3143,7 @@ const PRAYERS = [
   { name: "We Shall Not Falter", lvl: 4, effect: "Party gains +5 HP, temporarily above current max. Reverts to normal max after the battle." },
   { name: "God's Champion", lvl: 4, effect: "Priest's CS +20, +2 DMG modifier, but loses an extra Energy point after the battle. If not enough Energy, CON is halved (RDD) until the next short rest or leaving the dungeon." },
 ];
+PRAYERS.push(...TEMPLAR_PRAYERS, ...CLERIC_PRAYERS.filter((c) => !PRAYERS.some((p) => p.name === c.name)));
 
 const SPELLS = [
   { name: "Fake Death", lvl: 1, cv: 7, mana: 8, upkeep: 0, special: "", school: "Necromancy", effect: "Causes the caster to fall to the ground, appearing dead to all around. Enemies will not target the caster for the rest of the battle. The caster may do nothing until the end of the battle." },
@@ -4237,6 +4368,83 @@ const PERKS = [
   { name: "Taunt", type: "Common", effect: "Choose one enemy within LOS that is not locked in close combat. On its next activation, it treats the taunting hero as its target and follows its normal Behaviour and movement rules. If it cannot legally reach or attack the hero, it returns to normal targeting. Use during the hero's activation. Expires after that enemy's next activation." },
 ];
 
+TALENTS.push(
+  { name: "Slayer", type: "Specialisation", effect: "+2 DMG against Large and X-Large monsters, and immune to the fear and terror they cause.", spec: true },
+  { name: "Monster Knowledge", type: "Specialisation", effect: "When the party defeats a Large or X-Large monster, make a WIS test. On a success you learn its weak spot: ignore 2 NA against that kind. Each Large keyword enemy is its own kind, except that all Ogres count as one.", spec: true },
+  { name: "Flagellant", type: "Specialisation", effect: "Never 'wounded': at the wounded threshold become Frenzied instead (no AP, costs 1 Energy; with no Energy lose 1d4 HP, then Frenzied). In this mode an attack roll of 90+ hits an adjacent friend (no dodge or parry) or the floor or wall (-2 weapon DUR) and ends the turn.", spec: true },
+  { name: "Unarmed Fighter", type: "Specialisation", effect: "Unarmed attacks ignore the enemy's To Hit modifier. Strike 1d6+2 DMG, kick 1d8+2 (2 AP), both ignoring NA.", spec: true },
+  { name: "Disarming Attack", type: "Specialisation", effect: "2 AP, -25 to hit. On a success the enemy drops its weapon (or falls prone if it has none). Not on Large or X-Large.", spec: true },
+  { name: "Arrow Strike", type: "Specialisation", effect: "Works like a Dodge against arrows and bolts only, with no limit on uses.", spec: true },
+  { name: "Arrow Catch", type: "Specialisation", effect: "Needs Arrow Strike. A successful Dodge catches the projectile and puts it in your inventory.", spec: true },
+  { name: "Iron Body", type: "Specialisation", effect: "+1 NA.", spec: true },
+  { name: "In Tune with Nature", type: "Specialisation", effect: "A Hexmaster may learn two invocations per level from Level 5.", spec: true },
+  { name: "Battledancer", type: "Specialisation", effect: "Any armour that has lost 0 Durability gives +1 DEF. Armour only loses DUR if the strike's DMG is 2 above its DEF. An edged weapon that has lost no DUR does +1 DMG.", spec: true },
+  { name: "Piercing Strike", type: "Specialisation", effect: "Edged weapons gain AP (1); existing AP is raised by 1, to a maximum of 2.", spec: true },
+  { name: "Renowned", type: "Specialisation", effect: "Each hero gets +50 c on top of a quest's promised reward.", spec: true },
+  { name: "Navigator", type: "Specialisation", effect: "The party moves one extra hex per day on the Overland Map if the hex is not a road.", spec: true },
+  { name: "Tracker", type: "Specialisation", effect: "May add +1 to the travel Event Roll each day.", spec: true },
+  { name: "I Know Where Those Grow", type: "Specialisation", effect: "An alchemist may re-roll found ingredients if a Tracker is in the party.", spec: true },
+  { name: "Dhalah's Luck", type: "Specialisation", effect: "Once per quest, +10 to Dodge, Parry, PER or DEX before a test.", spec: true },
+  { name: "Expeditious Dodge", type: "Specialisation", effect: "If you moved 4 or more squares last turn, +10 Dodge.", spec: true },
+  { name: "Falconer", type: "Specialisation", effect: "Buy a falcon at Alberta's Magnificent Animals, Whiteport (200 c, availability 4), one at a time. +1 to the Travel Event chance (cumulative with Tracker) and the party always gets +1 Initiative Token on the first turn of a skirmish (not in settlements). In a fight spend 1 Energy to distract an enemy: its To Hit is +5. When it activates roll 1d6: 1 the falcon hurts it (-1 HP), 6 it kills the falcon.", spec: true },
+  { name: "Sworn Enemy", type: "Specialisation", effect: "Choose 3 enemies within a beast faction per level from Level 5. Against them ignore up to 2 NA, or +1 DMG to all attacks if they have no NA. All gnolls are one type; all beastmen are one type.", spec: true },
+  { name: "Close Range", type: "Specialisation", effect: "Use ranged weapons on adjacent opponents. While an enemy is adjacent you cannot target one further away.", spec: true },
+  { name: "Flanked Shot", type: "Specialisation", effect: "A shot from a square not in line in front of or behind the enemy gets +10 RS.", spec: true },
+  { name: "Skilled Skinner", type: "Specialisation", effect: "60 c per pelt instead of 50 c.", spec: true },
+  { name: "Guardian", type: "Specialisation", effect: "A hero fighting next to you may add +5 CS when parrying or attacking.", spec: true },
+  { name: "Brother in Arms", type: "Specialisation", effect: "May visit both the Dark Guild and the Fighters' Guild and use all their services.", spec: true },
+  { name: "Armour Training", type: "Specialisation", effect: "Ignore the limit on armour kind (torso only).", spec: true },
+  { name: "Gambler", type: "Specialisation", effect: "When gambling you may add -1 to the roll, and a natural 10 always counts as 10.", spec: true },
+  { name: "Trap Master", type: "Specialisation", effect: "+10 PER to detect traps and +15 Pick Locks to disarm them (cumulative).", spec: true },
+  { name: "Sense for Traps", type: "Specialisation", effect: "Always make a WIS or PER roll (the higher) to avoid the effects of a triggered trap, whoever triggered it.", spec: true },
+  { name: "Looter", type: "Specialisation", effect: "Draw two Treasure Cards and choose one (combinable with Sense for Gold; if a card says to draw from a higher tier, only one card from that pile).", spec: true },
+  { name: "Die and Stay Dead", type: "Specialisation", effect: "+10 CS/RS and +1 DMG against the undead.", spec: true },
+  { name: "Magic Sense", type: "Specialisation", effect: "Use WIS to identify a Magic Item.", spec: true },
+  { name: "Lightning Reflexes", type: "Specialisation", effect: "Always make a DEX roll to avoid the effects of a trap, regardless of who triggered it.", spec: true },
+  { name: "Deadly Dual Wield", type: "Specialisation", effect: "Normally needs DEX 60, an Assassin can take it at DEX 50. Use a Dual Wield weapon in the off hand: any hit adds +2X DMG (X from the weapon table). Parrying with two weapons gives +5.", spec: true },
+  { name: "Opportunist", type: "Specialisation", effect: "+5 CS when attacking an enemy already adjacent to another hero.", spec: true },
+  { name: "Quick Feet", type: "Specialisation", effect: "Never pay more than 1 Movement in any square, even when climbing.", spec: true },
+  { name: "Expert Climber", type: "Specialisation", effect: "Climb out of a pit without a rope.", spec: true },
+  { name: "Situational Awareness", type: "Specialisation", effect: "Go into overwatch without spending an Energy.", spec: true },
+  { name: "Specialist", type: "Specialisation", effect: "+5% To Hit and +1 DMG with one chosen weapon kind (e.g. Longsword), including silver, magical and mithril versions.", spec: true },
+  { name: "Resistance to Magic", type: "Specialisation", effect: "RES test when targeted by a spell. On a success, ignore its effect.", spec: true },
+  { name: "Scholar", type: "Specialisation", effect: "Pay half price (rounded down) to learn a new spell.", spec: true },
+  { name: "Academic Knowledge", type: "Specialisation", effect: "+15 when identifying magic items and potions.", spec: true },
+  { name: "Puppet Master", type: "Specialisation", effect: "Requires the Necromancer talent. Raise Dead has only 2 upkeep.", spec: true },
+  { name: "Enchanter", type: "Specialisation", effect: "+15 Arcane Arts when enchanting.", spec: true },
+  { name: "Battlewizard", type: "Specialisation", effect: "No to-hit roll for Touch spells: a successful Arcane Arts test is enough.", spec: true },
+  { name: "Armoured Casting", type: "Specialisation", effect: "The Arcane Arts penalty for chainmail is -15 (mithril -5) instead of -25 (-15).", spec: true },
+  { name: "Imbue Weapon", type: "Specialisation", effect: "During a rest, charge a weapon with an 'Offensive Touch' spell via an Enchant Item roll. The first hit releases the spell and its effect is added to the weapon's damage. One-time, and spends 15 Mana not regained that rest.", spec: true },
+);
+PERKS.push(
+  { name: "Felling Attack", type: "Specialisation", effect: "1 AP, -20 against a 'Large' enemy. On a success the enemy must pass a DEX test or fall, and takes half damage (RDD). Against an X-Large it permanently loses 1 M (no DEX test, never below 1 M).", spec: true },
+  { name: "Power Charge", type: "Specialisation", effect: "Charge a Large enemy. On success it is pushed back; a normal-sized model is shoved back and falls prone. No effect on X-Large.", spec: true },
+  { name: "Arc Attack", type: "Specialisation", effect: "Up to 5 mutually adjacent enemies next to you: one To Hit roll using each enemy's modifiers, damage rolled once then halved (RDD). 2 AP and 1 Energy.", spec: true },
+  { name: "Battle Cry", type: "Specialisation", effect: "Not while Frenzied. Every enemy within 4 squares and LOS makes a RES test; failing means stunned.", spec: true },
+  { name: "Lightning Fists", type: "Specialisation", effect: "Unarmed attacks get one free Standard Attack (3 Standard Attacks, or 1 Standard and 1 Power Attack, per turn).", spec: true },
+  { name: "Broom Sweep", type: "Specialisation", effect: "A successful CS roll (2 AP) sweeps all adjacent enemies: one roll using each enemy's To Hit modifier, hit enemies make a DEX test or fall prone. Not on Large or X-Large.", spec: true },
+  { name: "Bleed", type: "Specialisation", effect: "A non-bludgeoning attack: roll 1d6 + the enemy's NA. On 1-3 it bleeds 2 HP per turn for 1d3 turns, from its next activation. Undead are immune.", spec: true },
+  { name: "Feint", type: "Specialisation", effect: "A successful DEX check gives an additional Standard Attack.", spec: true },
+  { name: "Trickshooter", type: "Specialisation", effect: "Ignore the negative modifiers from intervening obstacles (including characters) for one shot.", spec: true },
+  { name: "Follower of Kredelia", type: "Specialisation", effect: "+2 M for the rest of the battle (or 10 turns).", spec: true },
+  { name: "Split Vision", type: "Specialisation", effect: "If you have not activated this turn, warn a friend about an incoming blow or projectile for 1 Energy. When another hero tries to dodge, they get a one-time +20 Dodge.", spec: true },
+  { name: "Tumble", type: "Specialisation", effect: "Change places with or move through a friend's square. You may try to move through a non-Large enemy's square with a DEX test; failure ends your turn prone in the square you came from. Not through two enemies in a turn, and you can't end in an occupied square. 1 Energy for the whole turn.", spec: true },
+  { name: "Slippery", type: "Specialisation", effect: "1 Energy for an automatically successful Dodge.", spec: true },
+  { name: "Coup de Grace", type: "Specialisation", effect: "Behind an enemy that is Wounded and has 8 HP or less: a hit kills it with no DMG roll. Works on Large, not X-Large.", spec: true },
+  { name: "Rallying Call", type: "Specialisation", effect: "All party members may re-roll Fear and Terror rolls.", spec: true },
+  { name: "Command", type: "Specialisation", effect: "Give an AP to a party member in LOS (they may reach 3 AP that turn). Not on stunned, wounded or frenzied heroes, and no hero gets the extra AP two turns in a row.", spec: true },
+  { name: "Combat Awareness", type: "Specialisation", effect: "If attacked from behind you may change facing before the attack (once per turn).", spec: true },
+  { name: "Avoid Armour", type: "Specialisation", effect: "Re-roll one DMG die (the second result stands).", spec: true },
+  { name: "Cripple", type: "Specialisation", effect: "A -20 CS special attack. On a success reduce the enemy's Movement by 2 (stacking, minimum 1), but DMG is halved (RDD).", spec: true },
+  { name: "Divine Strike", type: "Specialisation", effect: "On a hit, re-roll the damage and take the higher. If Bloodlust triggered on the to-hit, roll DMG three times.", spec: true },
+  { name: "Divine Shot", type: "Specialisation", effect: "As Divine Strike, with a ranged attack.", spec: true },
+  { name: "Magic Strike", type: "Specialisation", effect: "Spend up to 20 Mana to raise CS by 1 each for a single strike.", spec: true },
+  { name: "Cast on the Run", type: "Specialisation", effect: "Cast one Quick spell during a Movement action.", spec: true },
+  { name: "Quick Casting", type: "Specialisation", effect: "A 2 AP spell can be cast with 1 AP + 1 Energy; miscast on 85-00.", spec: true },
+  { name: "Void Channeling", type: "Specialisation", effect: "2 AP + 1 Energy: refill Mana to half its maximum (rounded up). Lose 1d6 Sanity.", spec: true },
+  { name: "Create Infusion", type: "Specialisation", effect: "During a rest, store spells in a Blue Coneflower or Dragon Stalk (no Mana or test). Eat the herb (1 AP) to cast it with no Mana; upkeep as normal.", spec: true },
+);
+
 // Returns a hero's attached Talents/Perks of type "Combat", for the Combat tab's quick
 // reference panel — so players don't have to flip back to the hero sheet mid-fight.
 function combatTalentsAndPerks(hero) {
@@ -4679,6 +4887,20 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.81.0",
+    date: "2026-10-24",
+    sections: {
+      Added: [
+        "Class Specialisation (The False Prophet): at Level 5 a hero's card offers all 20 specialisations. Choosing one is permanent, gives +15 IP at once and switches the Improvement Points list to the specialisation's own cost table. Its own tick in the Expansions tab",
+        "Extra Talent or Perk every level from Level 5, picked from each specialisation's list on the hero card (about 80 new Talent and Perk entries, also listed in the Compendium). Starting Talents (Sworn Enemy, Fast, Navigator, Tracker, Assassin, Scholar, In Tune with Nature) are added for you",
+        "Witch: Arcane Arts set to WIS + 10 with no Mana; pick cantrips and cast them with a real Arcane Arts roll; cantrip tokens refresh on every rest. Inn nights cost +20c, and Set Starting Morale takes -5 when a Witch and Witch Hunter share the party (Cat and Dog)",
+        "Templar: always-answered prayers (1 Energy) in the Prayers tool, learned free while in a settlement. Cleric: the Level 5 to 8 Cleric-only prayers appear in the Inner Sanctum",
+        "Hexmaster: two invocations owed per level and nine Hexmaster-only invocations; their CV and Mana are typed in from the cards and then Cast uses them",
+        "Archmage pays half price for new spells (Scholar). Artificer crafting and Assassin poison tables are on the hero card",
+      ],
+    },
+  },
   {
     version: "1.80.1",
     date: "2026-10-24",
@@ -9066,6 +9288,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
           <HeroDiseasePanel hero={hero} update={update} otherHeroes={otherHeroes} allHeroes={[hero, ...(otherHeroes || [])]} addLog={addLog} pushToast={pushToast} />
           <HeroWoundsPanel hero={hero} update={update} addLog={addLog} pushToast={pushToast} />
           <HeroDruidPanel hero={hero} update={update} party={party} setParty={setParty} addLog={addLog} pushToast={pushToast} />
+          <HeroSpecPanel hero={hero} update={update} party={party} addLog={addLog} pushToast={pushToast} otherHeroes={otherHeroes} />
           <HeroSquirePanel hero={hero} update={update} party={party} setParty={setParty} otherHeroes={otherHeroes} updateHero={updateHero} addLog={addLog} pushToast={pushToast} />
 
           {/* Basic stats */}
@@ -9314,14 +9537,14 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
             </div>
           </div>
 
-          {IMPROVEMENT_COSTS[hero.profession] ? (
+          {(specCosts(hero) || IMPROVEMENT_COSTS[hero.profession]) ? (
             <div className="rounded p-2 mb-3" style={{ background: "#00000008" }}>
               <div className="flex items-center justify-between mb-1.5">
                 <span style={{ fontFamily: "Cinzel, serif", fontSize: 10, color: palette.inkSoft }} className="uppercase">Spend Improvement Points</span>
                 <span className="text-xs font-bold" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.ink }}>{hero.improvementPoints} IP</span>
               </div>
               <div className="grid grid-cols-2 gap-1">
-                {Object.keys(IMPROVEMENT_COSTS[hero.profession]).map((key) => {
+                {Object.keys(specCosts(hero) || IMPROVEMENT_COSTS[hero.profession]).map((key) => {
                   const cost = ipCostFor(hero, key);
                   const cap = key === "hp" ? IP_HP_CAP_PER_LEVEL : IP_STAT_SKILL_CAP_PER_LEVEL;
                   const spent = hero.ipSpentThisLevel?.[key] || 0;
@@ -10577,7 +10800,9 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
     const selected = heroes.filter((h) => !restExcluded.has(h.id));
     if (selected.length === 0) return;
     const freeStay = isSilverCity && party.estate?.owned;
-    const canAfford = freeStay || party.innCostPerNight <= party.coins;
+    const witchShunned = EXP.spec && heroes.some((h) => h.specialisation === "Witch");
+    const innNight = party.innCostPerNight + (witchShunned ? 20 : 0);
+    const canAfford = freeStay || innNight <= party.coins;
     const summary = [];
     selected.forEach((hero0) => {
       const dz = diseaseRestStep(hero0, heroes, { inn: true });
@@ -10614,13 +10839,13 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
     if (freeStay) {
       summary.push(`Stayed at the Estate — no fee (the party owns the Key to the House).`);
       addLog(`Party stays at the Estate for free — no inn fee owed.`);
-    } else if (canAfford && party.innCostPerNight > 0) {
-      setParty((prev) => ({ ...prev, coins: prev.coins - prev.innCostPerNight }));
-      summary.push(`Paid ${party.innCostPerNight}c for the inn.`);
-      addLog(`Paid ${party.innCostPerNight}c for the inn (whole party).`);
+    } else if (canAfford && innNight > 0) {
+      setParty((prev) => ({ ...prev, coins: prev.coins - innNight }));
+      summary.push(`Paid ${innNight}c for the inn${witchShunned ? " (includes the +20c Shunned surcharge for a Witch)" : ""}.`);
+      addLog(`Paid ${innNight}c for the inn (whole party${witchShunned ? ", +20c Witch surcharge" : ""}).`);
     } else if (!canAfford) {
-      summary.push(`Couldn't afford the ${party.innCostPerNight}c inn cost — the party must leave the settlement in the morning.`);
-      addLog(`Party couldn't afford the ${party.innCostPerNight}c inn cost — must leave the settlement in the morning.`);
+      summary.push(`Couldn't afford the ${innNight}c inn cost — the party must leave the settlement in the morning.`);
+      addLog(`Party couldn't afford the ${innNight}c inn cost — must leave the settlement in the morning.`);
     }
     setRestResult({ ok: true, lines: summary });
   };
@@ -12556,7 +12781,8 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
     const spell = SPELLS.find((s) => s.name === learnSpellName);
     if (!hero || !spell) { setLearnSpellResult({ ok: false, line: "Pick a hero and a spell first." }); return; }
     if ((hero.spells || []).includes(spell.name)) { setLearnSpellResult({ ok: false, line: `${hero.name} already knows ${spell.name}.` }); return; }
-    const cost = learnSpellGrimoire ? 0 : learnCost(spell.lvl);
+    const scholar = EXP.spec && (heroes.find((h) => h.id === learnSpellHero)?.talents || []).includes("Scholar");
+    const cost = learnSpellGrimoire ? 0 : scholar ? Math.floor(learnCost(spell.lvl) / 2) : learnCost(spell.lvl);
     const source = learnSpellPaySource || learnSpellHero;
     if (cost > 0 && !canAffordFrom(cost, source, party, heroes)) { setLearnSpellResult({ ok: false, line: `Can't afford it: ${cost}c needed, ${payerLabel(source, party, heroes)} doesn't have enough.` }); return; }
     if (cost > 0) {
@@ -12975,7 +13201,7 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
                                 Found via Grimoire (free)
                               </label>
                               <p className="text-[11px] mb-1.5 font-semibold" style={{ color: palette.ink }}>
-                                Cost: {learnSpellGrimoire ? "Free" : `${learnCost(SPELLS.find((s) => s.name === learnSpellName).lvl)}c`}
+                                Cost: {learnSpellGrimoire ? "Free" : `${Math.floor(learnCost(SPELLS.find((s) => s.name === learnSpellName).lvl) / (EXP.spec && (heroes.find((h) => h.id === learnSpellHero)?.talents || []).includes("Scholar") ? 2 : 1))}c`}
                               </p>
                             </>
                           )}
@@ -13152,7 +13378,7 @@ function GuildsTab({ party, setParty, heroes, updateHero, addLog, initialGuildKe
                     {learnPrayerHero && <PayFromSelect value={learnPrayerPaySource || learnPrayerHero} onChange={setLearnPrayerPaySource} party={party} heroes={heroes} />}
                     {learnPrayerHero && (() => {
                       const hero = heroes.find((h) => h.id === learnPrayerHero);
-                      const available = PRAYERS.filter((p) => p.lvl <= hero.level && !(hero.prayers || []).includes(p.name));
+                      const available = PRAYERS.filter((p) => !p.templar && (!p.cleric || (EXP.spec && hero.specialisation === "Cleric")) && p.lvl <= hero.level && !(hero.prayers || []).includes(p.name));
                       return (
                         <>
                           <select
@@ -15502,9 +15728,12 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
     const leader = heroes.some((h) => (h.talents || []).includes("Natural Leader"));
     // Powerstone ring/amulet: +2 Starting PM while worn by a party member (absolute maximum 20).
     const magicPM = heroes.reduce((n, h) => n + magicTotals(h).startPM, 0);
-    const pm = leader || magicPM > 0 ? Math.min(20, base + (leader ? 2 : 0) + magicPM) : base;
+    // Cat and Dog (The False Prophet): a Witch and a Witch Hunter (or Witch and Wizard-hunting Witch Hunter) in one party: -5 Party Morale.
+    const catDog = EXP.spec && heroes.some((h) => h.specialisation === "Witch") && heroes.some((h) => h.specialisation === "Witch Hunter");
+    const pm0 = leader || magicPM > 0 ? Math.min(20, base + (leader ? 2 : 0) + magicPM) : base;
+    const pm = catDog ? Math.max(0, pm0 - 5) : pm0;
     setParty({ ...party, morale: pm, startingMorale: pm });
-    addLog(`Starting Party Morale set to ${pm} (sum of floor(RES/10) across ${heroes.length} hero${heroes.length === 1 ? "" : "es"}${heroes.some(noPM) ? ", Despairing/Withdrawn heroes excluded" : ""}${leader ? ", +2 Natural Leader" : ""}${magicPM ? `, +${magicPM} magic item${magicPM > 2 ? "s" : ""}` : ""}).`);
+    addLog(`Starting Party Morale set to ${pm} (sum of floor(RES/10) across ${heroes.length} hero${heroes.length === 1 ? "" : "es"}${heroes.some(noPM) ? ", Despairing/Withdrawn heroes excluded" : ""}${leader ? ", +2 Natural Leader" : ""}${catDog ? ", -5 Cat and Dog (Witch and Witch Hunter)" : ""}${magicPM ? `, +${magicPM} magic item${magicPM > 2 ? "s" : ""}` : ""}).`);
   };
 
   const awardXP = () => {
@@ -16137,7 +16366,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
   const [canDispel, setCanDispel] = useState(false);
   const [enemyRS, setEnemyRS] = useState(0);
   const castHero = heroes.find((h) => h.id === castHeroPick);
-  const chosenSpell = castableSpell(castSpellPick, party?.dungeonState);
+  const chosenSpell = castableSpell(castSpellPick, party?.dungeonState, castHero);
   const castIsDruid = !!castHero && castHero.profession === "Druid" && EXP.druid;
   const chosenSpellType = chosenSpell ? spellTypeOf(chosenSpell) : null;
   const powerAllowedFor = chosenSpell && (chosenSpell.school === "Restoration" || chosenSpell.school === "Destruction");
@@ -16198,6 +16427,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
   const castSpell = () => {
     if (!castHero || !chosenSpell) return;
     if (chosenSpell.outsideOnly && party?.dungeonState === "dungeon") { setCastResult({ ok: false, lines: [`${chosenSpell.name} can only be cast outside, not inside a dungeon.`] }); return; }
+    if (chosenSpell.hex && (chosenSpell.cv == null || chosenSpell.mana == null)) { setCastResult({ ok: false, lines: [`${chosenSpell.name} is a Hexmaster invocation: enter its CV and Mana from the card on ${castHero.name}'s Class Specialisation panel first.`] }); return; }
     if (castHero.beastActive) { setCastResult({ ok: false, lines: [`${castHero.name} is in beastform (${castHero.beastActive.name}) and cannot use magic. Revert first.`] }); return; }
     const fAP = castIsDruid ? 0 : focusAP;
     const intenseOn = !castIsDruid && intenseFocus && (castHero.perks || []).includes("Intense Focus");
@@ -16248,14 +16478,15 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
   const chosenPrayer = PRAYERS.find((p) => p.name === prayPick);
   const sayPrayer = () => {
     if (!prayHero || !chosenPrayer) return;
-    const r = rollPercent();
-    const impeccable = r <= 5;
+    const templar = !!chosenPrayer.templar;
+    const r = templar ? 0 : rollPercent();
+    const impeccable = !templar && r <= 5;
     if (!impeccable && prayHero.energy.cur < 1) {
       setPrayResult({ ok: false, msg: `Not enough Energy — praying costs 1, ${prayHero.name} has 0 left.` });
       return;
     }
     const skill = prayHero.skills.battlePrayers || 0;
-    const success = impeccable || (r <= skill && r <= 90);
+    const success = templar || impeccable || (r <= skill && r <= 90);
     const cur = impeccable ? prayHero.energy.cur : clamp(prayHero.energy.cur - 1, 0, prayHero.energy.max);
     const instant = chosenPrayer.name === "Metheia's Balm" || chosenPrayer.name === "Verse of the Sane";
     const replaced = !instant && prayHero.activePrayer && success && prayHero.activePrayer !== chosenPrayer.name ? ` (ends ${prayHero.activePrayer})` : "";
@@ -16283,7 +16514,9 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
     if (success && PRAYER_AURAS[chosenPrayer.name]) extra += ` Applied automatically to the party: ${PRAYER_AURAS[chosenPrayer.name].label}.`;
     else if (success && PRAYER_NOTES[chosenPrayer.name]) extra += ` ${PRAYER_NOTES[chosenPrayer.name]}`;
     updateHero({ ...prayHero, ...priestPatch });
-    const msg = impeccable
+    const msg = templar
+      ? `${chosenPrayer.name}: the Templar prays in silence (1 Energy, 2 AP, kneeling, no enemy within 2 squares) and it is answered (-1 Energy -> ${cur}/${prayHero.energy.max}). ${chosenPrayer.effect}`
+      : impeccable
       ? `Rolled ${r}: Impeccable Prayer! ${chosenPrayer.name} succeeds and costs no Energy${replaced}.${extra}`
       : success
         ? `Rolled ${r} vs ${skill}: ${chosenPrayer.name} answered (−1 Energy → ${cur}/${prayHero.energy.max})${replaced}.${extra}`
@@ -17121,7 +17354,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
               )}
               {chosenPrayer && (
                 <div className="rounded p-2.5 mb-3" style={{ background: "#00000008" }}>
-                  <p className="text-xs" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.inkSoft }}>Level {chosenPrayer.lvl}</p>
+                  <p className="text-xs" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.inkSoft }}>{chosenPrayer.templar ? "Templar prayer: always answered" : `Level ${chosenPrayer.lvl}`}</p>
                   <p className="text-xs mt-1" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>{chosenPrayer.effect}</p>
                 </div>
               )}
@@ -19347,6 +19580,249 @@ const BOTANY = [
   { name: "Salty Wyrmwood", text: "A druid who succeeds with a Heal roll can apply it to a poisoned hero, who is freed of the poison." },
   { name: "Bitterweed", text: "During a rest the druid may eat it, or let party members eat it: anyone who does regains 1d3 HP." },
 ];
+function HeroSpecPanel({ hero, update, party, addLog, pushToast, otherHeroes }) {
+  const [pick, setPick] = useState("");
+  const [poolPick, setPoolPick] = useState("");
+  const [cantripPick, setCantripPick] = useState("");
+  const [prayPick, setPrayPick] = useState("");
+  const [open, setOpen] = useState(null);
+  const [castMsg, setCastMsg] = useState("");
+  if (!EXP.spec) return null;
+  const options = SPEC_BY_BASE[hero.profession];
+  if (!options) return null;
+  const spec = hero.specialisation;
+  const sd = spec ? SPEC_DATA[spec] : null;
+  const soft = { background: "#00000010", color: palette.ink };
+  const note = { color: palette.ink, fontFamily: "Crimson Pro, serif" };
+  const inp = { border: `1px solid ${palette.line}`, background: "#fff", fontFamily: "Crimson Pro, serif" };
+  const box = { background: "#fff", border: `1px solid ${palette.line}` };
+  const head = (t) => <p className="text-xs font-bold mt-2" style={{ color: palette.crimson, fontFamily: "Cinzel, serif" }}>{t}</p>;
+  const addTP = (h, name) => {
+    const isTalent = TALENTS.some((t) => t.name === name);
+    const field = isTalent ? "talents" : "perks";
+    if ((h[field] || []).includes(name)) return h;
+    return { ...h, [field]: [...(h[field] || []), name], ...(isTalent ? talentEffectPatch(h, name, 1) : {}) };
+  };
+
+  if (!spec) {
+    if ((hero.level || 1) < 5) {
+      return (
+        <div className="mb-3 rounded p-2" style={box}>
+          <p className="text-xs font-bold mb-1" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Class Specialisation (The False Prophet)</p>
+          <p className="text-[11px]" style={{ color: palette.inkSoft }}>At Level 5 a {hero.profession} can specialise as {options.join(" or ")}. Not yet available.</p>
+        </div>
+      );
+    }
+    const choose = () => {
+      const d = SPEC_DATA[pick];
+      if (!d) return;
+      let h = { ...hero, specialisation: pick, improvementPoints: (hero.improvementPoints || 0) + 15, ipSpentThisLevel: {}, specTaken: [] };
+      const lines = [`${hero.name} specialises as a ${pick}: +15 Improvement Points to spend now at the ${pick} cost table.`];
+      (d.grants || []).forEach((g) => {
+        if ((h.talents || []).includes(g)) return;
+        h = addTP(h, g);
+        lines.push(`Gains the ${g} Talent.`);
+      });
+      if (d.kind === "cantrips") {
+        const aa = (Number(h.stats.WIS) || 0) + 10;
+        h = { ...h, skills: { ...h.skills, arcaneArts: aa }, cantrips: [], cantripUsed: 0 };
+        lines.push(`Gains Arcane Arts ${aa} (WIS + 10) but no Mana. Pick ${cantripAllow(h)[0]} cantrips below.`);
+      }
+      if (d.kind === "invocations") {
+        const owed = h.groveOwed || { inv: 0, form: 0 };
+        h = { ...h, groveOwed: { ...owed, inv: owed.inv + 2 } };
+        lines.push("Learns two invocations per level from Level 5 (2 owed now: visit your Sacred Grove).");
+      }
+      update(h);
+      lines.forEach((l) => addLog && addLog(l));
+      pushToast && pushToast(`${hero.name} is now a ${pick}`, "+15 IP and the new cost table are in effect.");
+      setPick("");
+    };
+    return (
+      <div className="mb-3 rounded p-2" style={{ background: `${palette.gold}22`, border: `1px solid ${palette.gold}` }}>
+        <p className="text-xs font-bold mb-1" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Class Specialisation (The False Prophet)</p>
+        <p className="text-[11px] mb-1.5" style={note}>{hero.name} has reached Level {hero.level} and may specialise. This is permanent. You gain 15 IP to spend straight away at the new cost table, plus an extra Talent or Perk from the specialisation each level.</p>
+        {options.map((o) => (
+          <button key={o} onClick={() => setPick(o)} className="block w-full text-left text-xs rounded px-2 py-1.5 mb-1" style={{ background: pick === o ? palette.forestDark : "#fff", color: pick === o ? palette.parchment : palette.ink, border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
+            <b>{o}</b>
+            <span className="block text-[11px]" style={{ opacity: 0.85 }}>{SPEC_DATA[o].desc}</span>
+          </button>
+        ))}
+        <button onClick={choose} disabled={!pick} className="text-[11px] px-3 py-1.5 rounded font-semibold" style={{ background: pick ? palette.crimson : "#00000020", color: palette.parchment }}>Specialise{pick ? ` as ${pick}` : ""}</button>
+      </div>
+    );
+  }
+
+  // ----- specialised -----
+  const owedPicks = specPicksOwed(hero);
+  const owned = new Set([...(hero.talents || []), ...(hero.perks || [])]);
+  const takePool = () => {
+    if (!poolPick || owedPicks <= 0) return;
+    let h = addTP(hero, poolPick);
+    h = { ...h, specTaken: [...(hero.specTaken || []), poolPick] };
+    update(h);
+    addLog && addLog(`${hero.name} (${spec}) takes ${poolPick}${TALENT_EFFECTS[poolPick] ? ` (${TALENT_EFFECTS[poolPick].label}, applied automatically)` : ""}.`);
+    setPoolPick("");
+  };
+  const poolItems = (sd.pool || []).filter((n) => !owned.has(n) || n === "Hate");
+  const defOf = (n) => TALENTS.find((t) => t.name === n) || PERKS.find((t) => t.name === n);
+
+  const [known, castable] = cantripAllow(hero);
+  const cantrips = hero.cantrips || [];
+  const tokensLeft = castable - (hero.cantripUsed || 0);
+  const learnCantrip = () => {
+    if (!cantripPick || cantrips.length >= known) return;
+    update({ ...hero, cantrips: [...cantrips, cantripPick] });
+    addLog && addLog(`${hero.name} learns the cantrip ${cantripPick}.`);
+    setCantripPick("");
+  };
+  const castCantrip = (name) => {
+    if (tokensLeft <= 0) { setCastMsg("No cantrip tokens left until the next rest."); return; }
+    const aa = Number(hero.skills.arcaneArts) || 0;
+    const r = rollPercent();
+    const ok = r <= aa && r <= 90;
+    const c = cantripByName(name);
+    update({ ...hero, cantripUsed: (hero.cantripUsed || 0) + 1 });
+    const msg = `${hero.name} casts ${name} (1 AP): rolled ${r} vs Arcane Arts ${aa} - ${ok ? "success. " + c.text : "fails."} Token used (${tokensLeft - 1} left).`;
+    setCastMsg(msg);
+    addLog && addLog(msg);
+  };
+
+  // Templar prayers
+  const templarKnown = (hero.prayers || []).filter((n) => TEMPLAR_PRAYERS.some((t) => t.name === n));
+  const inSettlement = party?.dungeonState === "settlement";
+  const learnTemplar = () => {
+    if (!prayPick || owedPicks <= 0 || !inSettlement) return;
+    update({ ...hero, prayers: [...(hero.prayers || []), prayPick], specTaken: [...(hero.specTaken || []), prayPick] });
+    addLog && addLog(`${hero.name} (Templar) learns ${prayPick} at the inn, free of charge.`);
+    setPrayPick("");
+  };
+  const clericPrayers = CLERIC_PRAYERS.filter((c) => c.lvl <= (hero.level || 1));
+
+  // Hexmaster invocation values
+  const hexKnown = (hero.spells || []).filter((n) => invocationByName(n)?.hex);
+  const setInvVal = (name, k, v) => {
+    const cur = hero.invValues?.[name] || {};
+    const val = v === "" ? null : Number(v);
+    update({ ...hero, invValues: { ...(hero.invValues || {}), [name]: { ...cur, [k]: Number.isFinite(val) ? val : null } } });
+  };
+  const catDog = (spec === "Witch" && (otherHeroes || []).some((h) => h.specialisation === "Witch Hunter")) || (spec === "Witch Hunter" && (otherHeroes || []).some((h) => h.specialisation === "Witch"));
+
+  return (
+    <div className="mb-3 rounded p-2" style={box}>
+      <p className="text-xs font-bold mb-1" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>{spec} (Class Specialisation)</p>
+      <p className="text-[11px] mb-1.5" style={note}>{sd.desc}</p>
+      <p className="text-[11px] mb-1" style={{ color: palette.inkSoft }}>Improvement costs use the {spec} table. The extra Talent or Perk comes on top of the usual level-up pick.</p>
+      {catDog && <p className="text-[11px] mb-1 font-semibold" style={{ color: palette.crimson }}>Cat and Dog: Witch and Witch Hunter in the same party, -5 Party Morale (applied when you press Set Starting Morale).</p>}
+      {spec === "Witch" && <p className="text-[11px] mb-1" style={{ color: palette.crimson }}>Shunned: inns cost +20c (added automatically) and every Availability roll gets -1.</p>}
+
+      {(sd.kind === "pool" || sd.kind === "prayers") && (
+        <p className="text-[11px] mb-1" style={note}>
+          {owedPicks > 0 ? <b>{owedPicks} specialisation pick{owedPicks === 1 ? "" : "s"} owed.</b> : "No specialisation picks owed."} One is gained per level from Level 5.
+          {(sd.grants || []).length > 0 && <> Granted at the start: {(sd.grants || []).join(", ")}.</>}
+        </p>
+      )}
+
+      {sd.kind === "pool" && (
+        <>
+          {head("Specialisation Talents and Perks")}
+          <div className="flex flex-wrap items-center gap-1.5 mb-1">
+            <select value={poolPick} onChange={(e) => setPoolPick(e.target.value)} className="text-xs rounded px-2 py-1 flex-1 min-w-[8rem]" style={inp}>
+              <option value="">Choose a Talent or Perk…</option>
+              {poolItems.map((n) => <option key={n} value={n}>{n}{PERKS.some((x) => x.name === n) ? " (Perk)" : " (Talent)"}</option>)}
+            </select>
+            <button onClick={takePool} disabled={!poolPick || owedPicks <= 0} className="text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: poolPick && owedPicks > 0 ? palette.forestDark : "#00000020", color: palette.parchment }}>Take</button>
+          </div>
+          {poolPick && defOf(poolPick) && <p className="text-[11px] mb-1" style={note}>{defOf(poolPick).effect}</p>}
+          {(sd.pool || []).filter((n) => owned.has(n)).length > 0 && <p className="text-[11px]" style={{ color: palette.inkSoft }}>Taken: {(sd.pool || []).filter((n) => owned.has(n)).join(", ")}.</p>}
+        </>
+      )}
+
+      {sd.kind === "cantrips" && (
+        <>
+          {head(`Cantrips (${cantrips.length}/${known} known)`)}
+          <p className="text-[11px] mb-1" style={note}>No Mana. Each cast needs 1 AP and a successful Arcane Arts test ({hero.skills.arcaneArts || 0}). {castable} can be cast between rests: <b>{tokensLeft} token{tokensLeft === 1 ? "" : "s"} left</b>, refreshed by a rest.</p>
+          {cantrips.map((n) => { const c = cantripByName(n); return (
+            <div key={n} className="rounded p-1.5 mb-1" style={{ background: "#00000008" }}>
+              <div className="flex items-center justify-between gap-1.5">
+                <button onClick={() => setOpen(open === n ? null : n)} className="text-xs font-semibold text-left" style={note}>{n}</button>
+                <button onClick={() => castCantrip(n)} disabled={tokensLeft <= 0} className="text-[11px] px-2 py-1 rounded font-semibold shrink-0" style={{ background: tokensLeft > 0 ? palette.crimson : "#00000020", color: palette.parchment }}>Cast</button>
+              </div>
+              {open === n && <p className="text-[11px] mt-1" style={note}>{c.text}</p>}
+            </div>
+          ); })}
+          {castMsg && <p className="text-[11px] mb-1 font-semibold" style={note}>{castMsg}</p>}
+          {cantrips.length < known && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <select value={cantripPick} onChange={(e) => setCantripPick(e.target.value)} className="text-xs rounded px-2 py-1 flex-1 min-w-[8rem]" style={inp}>
+                <option value="">Learn a cantrip ({known - cantrips.length} to pick)…</option>
+                {CANTRIPS.filter((c) => !cantrips.includes(c.name)).map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+              </select>
+              <button onClick={learnCantrip} disabled={!cantripPick} className="text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: cantripPick ? palette.forestDark : "#00000020", color: palette.parchment }}>Learn</button>
+            </div>
+          )}
+        </>
+      )}
+
+      {sd.kind === "prayers" && (
+        <>
+          {head("Power of Faith (Templar prayers)")}
+          <p className="text-[11px] mb-1" style={note}>Say them from the Actions tab, Prayers: always answered, 1 Energy and 2 AP, kneeling, no enemy within 2 squares. Prayers are learned free while staying at an inn (one per level from Level 5).</p>
+          {templarKnown.length > 0 && <p className="text-[11px] mb-1" style={note}>Known: {templarKnown.join(", ")}.</p>}
+          {templarKnown.map((n) => <p key={n} className="text-[11px]" style={{ color: palette.inkSoft }}><b>{n}:</b> {TEMPLAR_PRAYERS.find((t) => t.name === n).effect}</p>)}
+          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+            <select value={prayPick} onChange={(e) => setPrayPick(e.target.value)} className="text-xs rounded px-2 py-1 flex-1 min-w-[8rem]" style={inp}>
+              <option value="">Learn a prayer…</option>
+              {TEMPLAR_PRAYERS.filter((t) => !templarKnown.includes(t.name)).map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+            </select>
+            <button onClick={learnTemplar} disabled={!prayPick || owedPicks <= 0 || !inSettlement} className="text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: prayPick && owedPicks > 0 && inSettlement ? palette.forestDark : "#00000020", color: palette.parchment }}>Learn free</button>
+          </div>
+          {!inSettlement && <p className="text-[11px]" style={{ color: palette.inkSoft }}>Only available while the party is in a settlement.</p>}
+        </>
+      )}
+
+      {sd.kind === "prayers-cleric" && (
+        <>
+          {head("Cleric prayers")}
+          <p className="text-[11px] mb-1" style={note}>Learn these at the Inner Sanctum (Settlements tab) like other prayers; the Cleric-only prayers of Levels 5 to 8 appear there once {hero.name} is high enough. Available now: {clericPrayers.length ? clericPrayers.map((c) => `${c.name} (Lv ${c.lvl})`).join(", ") : "none yet"}.</p>
+        </>
+      )}
+
+      {sd.kind === "invocations" && (
+        <>
+          {head("Hexmaster invocations")}
+          <p className="text-[11px] mb-1" style={note}>Learn them from the Druid panel (Sacred Grove). The nine Hexmaster-only invocations have no printed values in the book text: type the CV and Mana from each card once and Cast will use them.</p>
+          {hexKnown.map((n) => { const v = hero.invValues?.[n] || {}; const i = invocationByName(n); return (
+            <div key={n} className="rounded p-1.5 mb-1" style={{ background: "#00000008" }}>
+              <p className="text-xs font-semibold" style={note}>{n}</p>
+              <p className="text-[11px]" style={{ color: palette.inkSoft }}>{i.effect}</p>
+              <div className="flex flex-wrap items-center gap-1 mt-1">
+                {[["cv", "CV outside"], ["cvInside", "CV inside"], ["mana", "Mana"], ["upkeep", "Upkeep"]].map(([k, l]) => (
+                  <input key={k} value={v[k] ?? ""} onChange={(e) => setInvVal(n, k, e.target.value)} inputMode="numeric" placeholder={l} className="text-xs rounded px-1.5 py-1 w-[4.6rem]" style={inp} />
+                ))}
+              </div>
+            </div>
+          ); })}
+          {hexKnown.length === 0 && <p className="text-[11px] italic" style={{ color: palette.inkSoft }}>No Hexmaster invocations learned yet.</p>}
+        </>
+      )}
+
+      {spec === "Artificer" && (
+        <details className="mt-1"><summary className="text-[11px] font-semibold cursor-pointer" style={{ color: palette.ink }}>Crafting reference</summary>
+          {ARTIFICER_REF.map((t, i) => <p key={i} className="text-[11px] mt-1" style={note}>{t}</p>)}
+        </details>
+      )}
+      {spec === "Assassin" && (
+        <details className="mt-1"><summary className="text-[11px] font-semibold cursor-pointer" style={{ color: palette.ink }}>Poisons (Dark Guild restricted area)</summary>
+          <p className="text-[11px] mt-1" style={note}>A bottle coats one weapon (1 AP if in a Quick Slot) and lasts until the end of the next battle; up to five arrows or bolts per bottle if it is in a Quick Slot. An enemy can only suffer one poison and doses don't stack.</p>
+          {ASSASSIN_POISONS.map(([n, c, a, e]) => <p key={n} className="text-[11px]" style={note}><b>{n}</b> ({c}, availability {a}): {e}</p>)}
+        </details>
+      )}
+      {spec === "Witch Hunter" && <p className="text-[11px] mt-1" style={note}>+2 DMG against undead, demons and spell casters. Despise Magic: spells cast by friendly casters cannot help {hero.name}.</p>}
+      {spec === "Battlewizard" && <p className="text-[11px] mt-1" style={note}>Chainmail gives -25 Arcane Arts to cast or dispel (mithril -15), or -15 / -5 with Armoured Casting.</p>}
+    </div>
+  );
+}
 function HeroDruidPanel({ hero, update, party, setParty, addLog, pushToast }) {
   const [shiftPick, setShiftPick] = useState("");
   const [learnForm, setLearnForm] = useState("");
@@ -19493,7 +19969,7 @@ function HeroDruidPanel({ hero, update, party, setParty, addLog, pushToast }) {
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           <select value={invPick} onChange={(e) => setInvPick(e.target.value)} className="text-xs rounded px-2 py-1 flex-1 min-w-[8rem]" style={inp}>
             <option value="">Choose an invocation…</option>
-            {INVOCATIONS.filter((i) => !known.includes(i.name)).map((i) => <option key={i.name} value={i.name}>{i.name}</option>)}
+            {INVOCATIONS.filter((i) => !known.includes(i.name) && (!i.hex || (EXP.spec && hero.specialisation === "Hexmaster"))).map((i) => <option key={i.name} value={i.name}>{i.name}</option>)}
           </select>
           <button onClick={learnInv} disabled={!canLearnInv || !invPick} className="text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: canLearnInv && invPick ? palette.forestDark : "#00000020", color: palette.parchment }}>Learn</button>
         </div>
@@ -19568,12 +20044,13 @@ function ExpansionsTab({ party, setParty, heroes }) {
             {toggleRow(ex.fpDiseases !== false, (v) => setEx({ fpDiseases: v }), "Expanded Diseases", "replaces the core Disease rule with 8 named diseases.")}
             {toggleRow(ex.fpLasting === true, (v) => setEx({ fpLasting: v }), "Lasting & Permanent Wounds (optional rule)", "replaces the 1d4 permanent stat loss when a hero is knocked out.")}
             {toggleRow(ex.fpDruid !== false, (v) => setEx({ fpDruid: v }), "Druid", "beastforms, invocations, Sacred Grove and botany for Druids.")}
+            {toggleRow(ex.fpSpec !== false, (v) => setEx({ fpSpec: v }), "Class Specialisation", "at Level 5 every class can specialise: new cost tables, +15 IP and extra Talents and Perks.")}
             {toggleRow(ex.fpSquire !== false, (v) => setEx({ fpSquire: v }), "Knight's Squire", "Knights hire a squire; without one they lose Energy and gear durability.")}
           </div>
         )}
         <div className="mt-2 rounded p-2 text-xs" style={{ background: "#fff", border: `1px solid ${palette.line}`, ...body }}>
           <p className="font-bold mb-1" style={{ fontFamily: "Cinzel, serif" }}>Not in the app yet</p>
-          <p>Class Specialisation at Level 5 (all the new Talents, Perks and cost tables) and the new monsters. These are planned for later updates and need to be tracked by hand until then.</p>
+          <p>The new monsters (their stat table is not readable from the photos yet). They need to be tracked by hand until then.</p>
         </div>
       </Panel>
 
@@ -19628,6 +20105,22 @@ function ExpansionsTab({ party, setParty, heroes }) {
             <li><b>Summon Swarm</b> rolls the 1d4 swarm for you, and Botany lists Wintercress, Ember Bark, Salty Wyrmwood and Bitterweed.</li>
             <li><b>Still done by hand:</b> placing and moving the swarm, Tree Spirit and thorns on the board, the five-turn timer for beastforms, Botany herb effects, rolling for the grove's village, and the Hexmaster's extra invocations (arriving with Class Specialisation).</li>
             <li><b>Book conflict:</b> page 16 says a new beastform may be learned at every level-up, page 18 says only at levels 3, 5, 7 and 9. The app follows page 18.</li>
+          </ul>
+        </Panel>
+      )}
+
+      {on && ex.fpSpec !== false && (
+        <Panel>
+          <SectionTitle icon={Sparkles}>Class Specialisation: what is new</SectionTitle>
+          <ul className="text-xs list-disc pl-4 space-y-1.5" style={body}>
+            <li><b>At Level 5</b> a hero's card offers the specialisations for their class (Alchemist: Witch or Artificer, Barbarian: Slayer or Zealot, and so on for all 20). Choosing one is permanent, gives +15 IP at once and switches the Improvement Points list to the specialisation's cost table.</li>
+            <li><b>Extra Talent or Perk</b> every level from Level 5, picked from the specialisation's own list on the hero card (in addition to the normal level-up pick). Talents given at the start (Sworn Enemy, Fast, Navigator, Tracker, Assassin, Scholar and others) are added for you, and flat bonuses like Fast apply automatically.</li>
+            <li><b>Witch:</b> Arcane Arts is set to WIS + 10 with no Mana. Pick cantrips, cast them with the real Arcane Arts roll, and the token count refreshes on every rest. Inns cost +20c automatically, and a Witch with a Witch Hunter in the party takes -5 off Starting Party Morale.</li>
+            <li><b>Templar and Cleric:</b> Templar prayers are always answered (1 Energy) from the Prayers tool and are learned free in a settlement. Cleric-only prayers of Levels 5 to 8 appear in the Inner Sanctum for Clerics.</li>
+            <li><b>Hexmaster:</b> two invocations owed per level, including nine Hexmaster-only ones. Their CV and Mana are not in the book text, so type them from the cards once and Cast uses them.</li>
+            <li><b>Archmage</b> pays half price for new spells (Scholar). <b>Artificer</b> and <b>Assassin</b> have their crafting and poison tables on the card.</li>
+            <li><b>Still done by hand:</b> most situational Talent and Perk effects in play, Availability -1 for a Witch, Battlewizard armour penalties, and Artificer crafting stock.</li>
+            <li><b>Book note:</b> the book's Cleric and Master Hunter text hints at starting a level later than Level 5; the app gives one pick per level from Level 5 for every specialisation.</li>
           </ul>
         </Panel>
       )}
@@ -20918,6 +21411,7 @@ export default function App() {
   EXP.lasting = EXP.on && party.expansions?.fpLasting === true;
   EXP.squire = EXP.on && party.expansions?.fpSquire !== false;
   EXP.druid = EXP.on && party.expansions?.fpDruid !== false;
+  EXP.spec = EXP.on && party.expansions?.fpSpec !== false;
   const [log, setLog] = useState([]);
   const [tab, setTab] = useState("party");
   const navRef = useRef(null);

@@ -3,6 +3,16 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.81.0] — 2026-10-24
+
+### Added
+- Class Specialisation (The False Prophet): at Level 5 a hero's card offers all 20 specialisations. Choosing one is permanent, gives +15 IP at once and switches the Improvement Points list to the specialisation's own cost table. Its own tick in the Expansions tab
+- Extra Talent or Perk every level from Level 5, picked from each specialisation's list on the hero card (about 80 new Talent and Perk entries, also listed in the Compendium). Starting Talents (Sworn Enemy, Fast, Navigator, Tracker, Assassin, Scholar, In Tune with Nature) are added for you
+- Witch: Arcane Arts set to WIS + 10 with no Mana; pick cantrips and cast them with a real Arcane Arts roll; cantrip tokens refresh on every rest. Inn nights cost +20c, and Set Starting Morale takes -5 when a Witch and Witch Hunter share the party (Cat and Dog)
+- Templar: always-answered prayers (1 Energy) in the Prayers tool, learned free while in a settlement. Cleric: the Level 5 to 8 Cleric-only prayers appear in the Inner Sanctum
+- Hexmaster: two invocations owed per level and nine Hexmaster-only invocations; their CV and Mana are typed in from the cards and then Cast uses them
+- Archmage pays half price for new spells (Scholar). Artificer crafting and Assassin poison tables are on the hero card
+
 ## [1.80.1] — 2026-10-24
 
 ### Fixed

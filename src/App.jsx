@@ -70,6 +70,8 @@ const defaultHero = () => ({
   diseaseExposure: [], // diseased-token reminders: [{ key, from }] — a CON test at the next rest
   lastingWounds: [], // Lasting Wounds (The False Prophet): [{ id, key, name, text, questsLeft, effect, hpLost }]
   permWounds: [], // Permanent Wounds: [{ key, count }]
+  squire: null, // Knight's Squire (The False Prophet): { name, cost, hiredCycle, paidCycle }
+  squireGrace: false, squireEnergyPen: false, squireTended: false, squireDead: [],
   koCount: 0, // knock-outs this quest (each one after the first adds +1 to wound rolls)
   diseaseImmune: [], // keys of diseases this hero was cured of while someone in the party still has them
   bleedingOutRolled: false, // has the one-time 1d4 permanent loss for this knockout been rolled?
@@ -566,7 +568,7 @@ function alchemistBeltSlots(hero) {
 }
 
 // ---- Expansions: The False Prophet — Expanded Diseases (replaces the core Disease rule while switched on) ----
-const EXP = { on: false, diseases: false, lasting: false }; // refreshed each App render from party.expansions
+const EXP = { on: false, diseases: false, lasting: false, squire: false }; // refreshed each App render from party.expansions
 const HIT_ZONES = ["Head", "Arms", "Torso", "Legs"];
 const DISEASES = [
   { key: "withering", name: "Withering Plague", contagious: true, mod: -35, short: "Max HP −1 every rest; only 1d3 HP regained when resting.", text: "Also known as the red pox. Every time the hero rests, max HP drops by 1, and the hero only regains 1d3 HP when resting (anywhere). When cured the max HP is restored; lost HP must still be healed normally." },
@@ -692,7 +694,7 @@ function diseaseRestFlags(h) {
   return flags;
 }
 // One rest's worth of disease processing for a hero: cure test first, then symptoms, then contagion tests.
-function diseaseRestStep(h0, all) {
+function diseaseRestStepCore(h0, all) {
   const none = { hero: h0, lines: [], flags: { hpDie: 6, noHp: false, noEnergy: false } };
   if (!EXP.diseases) return none;
   const hasAny = (h0.diseases || []).length > 0 || (h0.diseaseExposure || []).length > 0;
@@ -856,6 +858,69 @@ function lastingQuestComplete(h) {
   return { hero: nh, lines };
 }
 
+
+// ---------- The False Prophet: the Knight's Squire ----------
+const SQUIRE_HIRE_TABLE = { silver: [4, 3, 3, 2, 1, 0], other: [3, 2, 1, 1, 0, 0] };
+const GEAR_SLOTS = ["head", "arms", "torso", "legs", "shield"];
+// Runs fn(piece, label, index) on every equipped weapon/armour piece that has durability (or carries a squire penalty marker).
+function mapGear(hero, fn) {
+  let i = 0;
+  const wrap = (p) => (p && p.name && p.dur && (p.dur.max > 0 || p.sqPen) ? fn(p, p.name, i++) : p);
+  const armour = {};
+  GEAR_SLOTS.forEach((k) => {
+    const a = hero.armour?.[k];
+    if (!a) return;
+    let n = wrap(a);
+    if (a.stacked) n = { ...n, stacked: wrap(a.stacked) };
+    armour[k] = n;
+  });
+  return { ...hero, weapon: wrap(hero.weapon), offhandWeapon: wrap(hero.offhandWeapon), armour: { ...hero.armour, ...armour } };
+}
+function listGear(hero) {
+  const out = [];
+  mapGear(hero, (p, label, i) => { out.push({ i, label, piece: p }); return p; });
+  return out;
+}
+// A Knight without a squire: -1 Energy, and -1 max durability on everything equipped. Right after the squire
+// dies the durability max stays normal until the next rest or until the party is back in a settlement.
+function squireSyncHero(hero, dungeonState) {
+  const knight = EXP.squire && hero.profession === "Knight" && !hero.squire;
+  const wantGear = knight && !(hero.squireGrace && dungeonState !== "settlement");
+  let h = hero;
+  if (h.squireGrace && dungeonState === "settlement") h = { ...h, squireGrace: false };
+  if (knight && !h.squireEnergyPen) {
+    const max = Math.max(0, h.energy.max - 1);
+    h = { ...h, squireEnergyPen: true, energy: { ...h.energy, max, cur: Math.min(h.energy.cur, max) } };
+  } else if (!knight && h.squireEnergyPen) {
+    h = { ...h, squireEnergyPen: false, energy: { ...h.energy, max: h.energy.max + 1, cur: h.energy.cur + 1 } };
+  }
+  const gear = listGear(h);
+  if (wantGear && gear.some((g) => !g.piece.sqPen)) {
+    h = mapGear(h, (p) => (p.sqPen ? p : { ...p, sqPen: true, dur: { cur: Math.min(p.dur.cur, Math.max(0, p.dur.max - 1)), max: Math.max(0, p.dur.max - 1) } }));
+  } else if (!wantGear && gear.some((g) => g.piece.sqPen)) {
+    h = mapGear(h, (p) => { if (!p.sqPen) return p; const { sqPen, ...rest } = p; return { ...rest, dur: { ...p.dur, max: p.dur.max + 1 } }; });
+  }
+  return h;
+}
+// On a dungeon rest (or a rest while travelling) the squire takes 1 point of durability damage off each piece the knight uses.
+function squireRest(h, ctx) {
+  if (!EXP.squire || h.profession !== "Knight" || ctx?.inn) return { hero: h, lines: [] };
+  let n = h;
+  if (n.squireGrace || n.squireTended) n = { ...n, squireGrace: false, squireTended: false };
+  if (!n.squire) return { hero: n, lines: [] };
+  const fixed = [];
+  n = mapGear(n, (p) => { if (p.dur.cur < p.dur.max) { fixed.push(p.name); return { ...p, dur: { ...p.dur, cur: p.dur.cur + 1 } }; } return p; });
+  const lines = [fixed.length
+    ? `${h.name}'s squire ${n.squire.name} tends the gear: +1 DUR on ${fixed.join(", ")}.`
+    : `${h.name}'s gear is in pristine shape, so ${n.squire.name} can fix 1 DUR on another hero's armour or weapon (Squire panel on the hero card).`];
+  return { hero: n, lines };
+}
+function diseaseRestStep(h0, all, ctx) {
+  const r = diseaseRestStepCore(h0, all);
+  const sq = squireRest(r.hero, ctx);
+  return sq.hero === r.hero && sq.lines.length === 0 ? r : { ...r, hero: sq.hero, lines: [...r.lines, ...sq.lines] };
+}
+
 const defaultParty = () => ({
   threat: 2, threatFloor: 2, morale: 0, food: 4,
   coins: 0, // Party Pot — shared coins, built up via "Pool to Party" from a hero's personal pouch; starts empty since new heroes now start with their own 150c
@@ -865,7 +930,7 @@ const defaultParty = () => ({
   dungeonRestCount: 0, // completed (uninterrupted) Short Rests taken since entering the current dungeon — drives the Ambush risk escalation; resets to 0 on Exit Dungeon, never per level
   simplified: { encumbrance: false, morale: false, durability: false, sanity: false, scenario: false }, // Simplified Game (p21): true = system removed
   optionalRules: { lootMode: "hardcore", dungeonEvents: false, simplifiedAlchemy: false, newBeginning: false, manualTracking: false, alchemyOnly: false },
-  expansions: { falseProphet: false, fpDiseases: true, fpLasting: false }, // Expansions tab: The False Prophet master switch + its parts
+  expansions: { falseProphet: false, fpDiseases: true, fpLasting: false, fpSquire: true }, // Expansions tab: The False Prophet master switch + its parts
   manualHero: { STR: "", DEX: "", perception: "", pickLocks: "" }, // typed numbers the Actions tools use when no hero is picked (Manual tracking)
   roomEvent: null, // current room's Dungeon Event (optional rule), persisted across tab switches
   newBeginning: { seed: "", quests: {} }, // A New Beginning expansion tracker: seed 1-12 and per-quest { name, settlement, note }
@@ -4541,6 +4606,20 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.79.0",
+    date: "2026-10-24",
+    sections: {
+      Added: [
+        "Knight's Squire (The False Prophet): a Squire panel on every Knight's hero card. Roll 1d6 for how many squires are for hire (Silver City 4/3/3/2/1/0, elsewhere 3/2/1/1/0/0), then enter the chosen squire's name and price. Hiring takes the coins from the party pot",
+        "Upkeep: the first quest is covered by the hiring fee; once a quest is completed the panel flags the upkeep as due and Pay takes it from the party coins",
+        "No squire means -1 Energy and -1 max durability on every weapon and armour piece the Knight uses; both are applied and lifted automatically as a squire is hired, killed or dismissed. After a squire dies the gear's durability stays normal until the next rest or until the party is back in a settlement",
+        "Short Rest and Make Camp: the squire takes 1 DUR damage off each piece of the Knight's gear. If it is all pristine, the panel offers to fix 1 DUR on another hero's gear",
+        "Squire killed lists the squire as fallen so you remember to remove their cards from the deck. Switch the whole thing off with the Knight's Squire tick in the Expansions tab",
+        "Not automated: moving the squire, their hits and special abilities, and the items they carry",
+      ],
+    },
+  },
   {
     version: "1.78.1",
     date: "2026-10-24",
@@ -8888,6 +8967,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
           </div>
           <HeroDiseasePanel hero={hero} update={update} otherHeroes={otherHeroes} allHeroes={[hero, ...(otherHeroes || [])]} addLog={addLog} pushToast={pushToast} />
           <HeroWoundsPanel hero={hero} update={update} addLog={addLog} pushToast={pushToast} />
+          <HeroSquirePanel hero={hero} update={update} party={party} setParty={setParty} otherHeroes={otherHeroes} updateHero={updateHero} addLog={addLog} pushToast={pushToast} />
 
           {/* Basic stats */}
           <div className="flex items-center justify-between mb-2 mt-3 pb-1" style={HERO_HEADING_ROW}>
@@ -10401,7 +10481,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
     const canAfford = freeStay || party.innCostPerNight <= party.coins;
     const summary = [];
     selected.forEach((hero0) => {
-      const dz = diseaseRestStep(hero0, heroes);
+      const dz = diseaseRestStep(hero0, heroes, { inn: true });
       const hero = dz.hero;
       dz.lines.forEach((t) => { summary.push(t); addLog(t); });
       let newHp, newMana, newEnergy, newLuck;
@@ -18932,7 +19012,7 @@ function HeroDiseasePanel({ hero, update, otherHeroes, addLog, pushToast, allHer
     update({ ...hero, diseaseExposure: [...exposed, { key: s.key, from: s.name }] });
   };
   const processRest = () => {
-    const r = diseaseRestStep(hero, allHeroes || [hero]);
+    const r = diseaseRestStep(hero, allHeroes || [hero], { inn: true });
     update(r.hero);
     say(r.lines.length ? r.lines : [`${hero.name}: nothing to process — no disease, exposure or immunity to check.`], "Rest processed");
   };
@@ -19051,6 +19131,100 @@ function HeroWoundsPanel({ hero, update, addLog, pushToast }) {
   );
 }
 
+function HeroSquirePanel({ hero, update, party, setParty, otherHeroes, updateHero, addLog, pushToast }) {
+  const [silver, setSilver] = useState(false);
+  const [offers, setOffers] = useState(null);
+  const [name, setName] = useState("");
+  const [cost, setCost] = useState("");
+  if (!EXP.squire || hero.profession !== "Knight") return null;
+  const cycle = party?.questCycle || 0;
+  const sq = hero.squire;
+  const coins = party?.coins || 0;
+  const soft = { background: "#00000010", color: palette.ink };
+  const note = { color: palette.ink, fontFamily: "Crimson Pro, serif" };
+  const spend = (n) => setParty && setParty((prev) => ({ ...prev, coins: prev.coins - n }));
+  const rollOffers = () => {
+    const r = rollDie(6);
+    const n = SQUIRE_HIRE_TABLE[silver ? "silver" : "other"][r - 1];
+    setOffers(n);
+    addLog && addLog(`${hero.name} looks for a squire (${silver ? "Silver City" : "other settlement"}): rolled ${r} - ${n} squire${n === 1 ? "" : "s"} available. Shuffle the Squire Deck and draw ${n}.`);
+  };
+  const hire = () => {
+    const c = Math.max(0, Number(cost) || 0);
+    if (!name.trim()) return;
+    if (c > coins) { pushToast && pushToast("Can't afford the squire", `${c} c needed, the party has ${coins} c.`); return; }
+    spend(c);
+    update({ ...hero, squire: { name: name.trim(), cost: c, hiredCycle: cycle, paidCycle: cycle } });
+    addLog && addLog(`${hero.name} hires the squire ${name.trim()} for ${c} c.`);
+    setName(""); setCost(""); setOffers(null);
+  };
+  const dueNow = sq && (sq.paidCycle ?? 0) < cycle;
+  const payUpkeep = () => {
+    if (sq.cost > coins) { pushToast && pushToast("Can't pay the upkeep", `${sq.cost} c needed, the party has ${coins} c.`); return; }
+    spend(sq.cost);
+    update({ ...hero, squire: { ...sq, paidCycle: cycle } });
+    addLog && addLog(`${hero.name} pays ${sq.cost} c upkeep for ${sq.name}.`);
+  };
+  const dismiss = () => { update({ ...hero, squire: null }); addLog && addLog(`${sq.name} leaves ${hero.name}'s service.`); };
+  const killed = () => {
+    update({ ...hero, squire: null, squireGrace: true, squireDead: [...(hero.squireDead || []), sq.name] });
+    addLog && addLog(`${hero.name}'s squire ${sq.name} is dead: remove their cards from the Squire Deck for good. Energy -1 now; gear max durability stays normal until the next rest or leaving the dungeon.`);
+    pushToast && pushToast(`${sq.name} has died`, "Remove their cards from the Squire Deck. Energy -1 applied.");
+  };
+  const pristine = listGear(hero).every((g) => g.piece.dur.cur >= g.piece.dur.max);
+  const targets = [];
+  (otherHeroes || []).forEach((o) => listGear(o).forEach((g) => { if (g.piece.dur.cur < g.piece.dur.max) targets.push({ o, ...g }); }));
+  const tend = (t) => {
+    updateHero && updateHero(t.o.id, mapGear(t.o, (p, l, i) => (i === t.i ? { ...p, dur: { ...p.dur, cur: p.dur.cur + 1 } } : p)));
+    update({ ...hero, squireTended: true });
+    addLog && addLog(`${sq.name} fixes 1 DUR on ${t.o.name}'s ${t.label}.`);
+  };
+  const input = { border: `1px solid ${palette.line}`, background: "#fff", fontFamily: "Crimson Pro, serif" };
+  return (
+    <div className="mb-3 rounded p-2" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+      <p className="text-xs font-bold mb-1" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Squire (The False Prophet)</p>
+      {sq ? (
+        <>
+          <p className="text-xs" style={note}><b>{sq.name}</b> · upkeep {sq.cost} c per quest · moves with {hero.name}, within 2 squares, 2 AP, no Initiative Token of their own.</p>
+          {dueNow
+            ? <div className="mt-1 rounded p-1.5" style={{ background: `${palette.crimson}12`, border: `1px solid ${palette.crimson}55` }}>
+                <p className="text-[11px] mb-1" style={note}>Upkeep is due as the party accepts the next quest, or the squire leaves.</p>
+                <button onClick={payUpkeep} className="text-[11px] px-2 py-1 rounded font-semibold" style={{ background: palette.forestDark, color: palette.parchment }}>Pay {sq.cost} c upkeep</button>
+              </div>
+            : <p className="text-[11px] mt-1" style={{ color: palette.inkSoft }}>Upkeep paid for the current quest.</p>}
+          <p className="text-[11px] mt-1" style={note}>Dungeon and travel rests: the squire takes 1 DUR damage off each piece of gear {hero.name} uses. Short Rest and Make Camp do this for you.</p>
+          {pristine && targets.length > 0 && (
+            <div className="mt-1">
+              <p className="text-[11px]" style={note}>{hero.name}'s gear is pristine. {hero.squireTended ? "The squire has already tended another hero's gear this rest." : "Fix 1 DUR on another hero's gear:"}</p>
+              {!hero.squireTended && targets.map((t) => <button key={`${t.o.id}-${t.i}`} onClick={() => tend(t)} className="text-[11px] px-2 py-1 mr-1 mt-1 rounded font-semibold" style={soft}>{t.o.name}: {t.label} ({t.piece.dur.cur}/{t.piece.dur.max})</button>)}
+            </div>
+          )}
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <button onClick={killed} className="text-[11px] px-2 py-1 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>Squire killed</button>
+            <button onClick={dismiss} className="text-[11px] px-2 py-1 rounded font-semibold" style={soft}>Squire leaves</button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-[11px] mb-1" style={{ color: palette.crimson, fontFamily: "Crimson Pro, serif" }}>No squire: -1 Energy and -1 max durability on all weapons and armour {hero.name} uses (applied for you).{hero.squireGrace ? " Gear durability stays normal until the next rest or leaving the dungeon." : ""}</p>
+          <div className="flex flex-wrap items-center gap-1.5 mb-1">
+            <label className="text-[11px] flex items-center gap-1" style={note}><input type="checkbox" checked={silver} onChange={(e) => setSilver(e.target.checked)} /> In Silver City</label>
+            <button onClick={rollOffers} className="text-[11px] px-2 py-1 rounded font-semibold" style={soft}>Roll for squires (1d6)</button>
+            {offers != null && <span className="text-[11px]" style={note}><b>{offers}</b> available: shuffle the Squire Deck and draw {offers}.</span>}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Squire name" className="text-xs rounded px-2 py-1 flex-1 min-w-[7rem]" style={input} />
+            <input value={cost} onChange={(e) => setCost(e.target.value)} placeholder="Cost (c)" inputMode="numeric" className="text-xs rounded px-2 py-1 w-20" style={input} />
+            <button onClick={hire} className="text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: palette.forestDark, color: palette.parchment }}>Hire</button>
+          </div>
+          <p className="text-[11px] mt-1" style={{ color: palette.inkSoft }}>Enter the name and price from the squire card's lower right corner. The same amount is the upkeep each quest after the first.</p>
+        </>
+      )}
+      {(hero.squireDead || []).length > 0 && <p className="text-[11px] mt-1" style={{ color: palette.inkSoft }}>Fallen squires (cards removed from the deck): {(hero.squireDead || []).join(", ")}.</p>}
+    </div>
+  );
+}
+
 function QuestCompletePanel({ party, heroes, updateHero, addLog, pushToast }) {
   const [done, setDone] = useState(null);
   if (!EXP.lasting) return null;
@@ -19099,11 +19273,12 @@ function ExpansionsTab({ party, setParty, heroes }) {
           <div className="pl-4" style={{ borderLeft: `2px solid ${palette.line}` }}>
             {toggleRow(ex.fpDiseases !== false, (v) => setEx({ fpDiseases: v }), "Expanded Diseases", "replaces the core Disease rule with 8 named diseases.")}
             {toggleRow(ex.fpLasting === true, (v) => setEx({ fpLasting: v }), "Lasting & Permanent Wounds (optional rule)", "replaces the 1d4 permanent stat loss when a hero is knocked out.")}
+            {toggleRow(ex.fpSquire !== false, (v) => setEx({ fpSquire: v }), "Knight's Squire", "Knights hire a squire; without one they lose Energy and gear durability.")}
           </div>
         )}
         <div className="mt-2 rounded p-2 text-xs" style={{ background: "#fff", border: `1px solid ${palette.line}`, ...body }}>
           <p className="font-bold mb-1" style={{ fontFamily: "Cinzel, serif" }}>Not in the app yet</p>
-          <p>The Druid (shapeshifting, invocations, sacred grove, botany), the Knight's Squire, Druid and Knight levelling tables, and Class Specialisation. These are planned for later updates and need to be tracked by hand until then.</p>
+          <p>The Druid (shapeshifting, invocations, sacred grove, botany) and Class Specialisation. These are planned for later updates and need to be tracked by hand until then.</p>
         </div>
       </Panel>
 
@@ -19144,6 +19319,20 @@ function ExpansionsTab({ party, setParty, heroes }) {
               </p>
             ))}
           </div>
+        </Panel>
+      )}
+
+      {on && ex.fpSquire !== false && (
+        <Panel>
+          <SectionTitle icon={Shield}>Knight's Squire: what is new</SectionTitle>
+          <ul className="text-xs list-disc pl-4 space-y-1.5" style={body}>
+            <li><b>New:</b> every Knight's hero card gets a Squire panel. Roll 1d6 for how many squires are for hire (Silver City 4/3/3/2/1/0, anywhere else 3/2/1/1/0/0), draw that many from the Squire Deck, then type in the name and price from the card you choose.</li>
+            <li><b>Upkeep:</b> the first quest is covered by the hiring fee. After that the panel flags the upkeep as due once a quest has been completed; Pay takes it from the party's coins. Skip it and the squire leaves.</li>
+            <li><b>No squire:</b> a Knight loses 1 Energy and 1 max durability on every weapon and armour piece they use. Both are applied and lifted by the app as soon as a squire is hired or lost. When a squire dies the gear's durability stays normal until the next rest or until the party is back in a settlement.</li>
+            <li><b>Resting:</b> Short Rest and Make Camp have the squire take 1 DUR damage off each piece the Knight uses. If the Knight's gear is pristine, the panel offers to fix 1 DUR on another hero's gear instead.</li>
+            <li><b>Death:</b> Squire killed removes them and lists them as fallen. Take their cards out of the deck for the rest of the career; the generic squire card never leaves.</li>
+            <li><b>Still done by hand:</b> moving the squire (2 AP, within 2 squares of the Knight), rolling their hits, the items they carry (no ENC limit, never their own gear) and their special abilities.</li>
+          </ul>
         </Panel>
       )}
 
@@ -20417,6 +20606,7 @@ export default function App() {
   EXP.on = !!party.expansions?.falseProphet;
   EXP.diseases = EXP.on && party.expansions?.fpDiseases !== false;
   EXP.lasting = EXP.on && party.expansions?.fpLasting === true;
+  EXP.squire = EXP.on && party.expansions?.fpSquire !== false;
   const [log, setLog] = useState([]);
   const [tab, setTab] = useState("party");
   const navRef = useRef(null);
@@ -20499,6 +20689,15 @@ export default function App() {
   // and drop Threat by 5 (never below the floor); a quest's "WM at Threat X" fires once per quest.
   const prevThreatRef = useRef(null);
   useEffect(() => { prevThreatRef.current = null; }, [campaignId]);
+  // The False Prophet Knight's Squire: keep the no-squire penalties (-1 Energy, -1 max DUR) in step with whether a squire is hired.
+  useEffect(() => {
+    const ds = party.dungeonState || "settlement";
+    setHeroes((prev) => {
+      let changed = false;
+      const next = prev.map((h) => { const n = squireSyncHero(h, ds); if (n !== h) changed = true; return n; });
+      return changed ? next : prev;
+    });
+  }, [heroes, party.dungeonState, party.expansions]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!campaignId || SIMP.scenario) { prevThreatRef.current = null; return; }
     const prev = prevThreatRef.current;

@@ -3,6 +3,16 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.79.0] — 2026-10-24
+
+### Added
+- Knight's Squire (The False Prophet): a Squire panel on every Knight's hero card. Roll 1d6 for how many squires are for hire (Silver City 4/3/3/2/1/0, elsewhere 3/2/1/1/0/0), then enter the chosen squire's name and price. Hiring takes the coins from the party pot
+- Upkeep: the first quest is covered by the hiring fee; once a quest is completed the panel flags the upkeep as due and Pay takes it from the party coins
+- No squire means -1 Energy and -1 max durability on every weapon and armour piece the Knight uses; both are applied and lifted automatically as a squire is hired, killed or dismissed. After a squire dies the gear's durability stays normal until the next rest or until the party is back in a settlement
+- Short Rest and Make Camp: the squire takes 1 DUR damage off each piece of the Knight's gear. If it is all pristine, the panel offers to fix 1 DUR on another hero's gear
+- Squire killed lists the squire as fallen so you remember to remove their cards from the deck. Switch the whole thing off with the Knight's Squire tick in the Expansions tab
+- Not automated: moving the squire, their hits and special abilities, and the items they carry
+
 ## [1.78.1] — 2026-10-24
 
 ### Added

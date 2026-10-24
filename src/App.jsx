@@ -308,8 +308,8 @@ const PROFESSIONS = [
   { name: "Thief", desc: "Lockpicking and perception specialist, weaker in direct combat." },
   { name: "Warrior Priest", desc: "Melee combat combined with healing and battle prayers." },
   { name: "Wizard", desc: "Magic attacks and spells — fragile but powerful at range." },
-  { name: "Knight", desc: "Heavy melee tank with a squire — never uses ranged weapons or steals.", expansion: "The False Prophet", note: "No Improvement Point cost data yet — spending IP won't work correctly until starting stats are added." },
-  { name: "Druid", desc: "Nature caster — invocations and beastforms, fragile but shapeshifts into combat forms.", expansion: "The False Prophet", note: "No Improvement Point cost data yet — spending IP won't work correctly until starting stats are added." },
+  { name: "Knight", desc: "Heavy melee tank with a squire — never uses ranged weapons or steals.", expansion: "The False Prophet", },
+  { name: "Druid", desc: "Nature caster — invocations and beastforms, fragile but shapeshifts into combat forms.", expansion: "The False Prophet", },
 ];
 
 // Which extra (RES/WIS-caster) skills a profession's sheet includes, per the official character sheets
@@ -396,6 +396,9 @@ const LEVEL_TALENT_CATEGORY = {
   Warrior: { 2: "Mental", 3: "Combat", 4: "Physical", 5: "Combat", 6: "Common", 7: "Mental", 8: "Combat", 9: "Common", 10: "Combat" },
   "Warrior Priest": { 2: "Mental", 3: "Faith", 4: "Combat", 5: "Physical", 6: "Faith", 7: "Combat", 8: "Mental", 9: "Faith", 10: "Combat" },
   Wizard: { 2: "Magic", 3: "Common", 4: "Mental", 5: "Magic", 6: "Mental", 7: "Physical", 8: "Magic", 9: "Common", 10: "Mental" },
+  // The False Prophet (p15)
+  Druid: { 2: "Mental", 3: "Common", 4: "Alchemist", 5: "Combat", 6: "Mental", 7: "Common", 8: "Combat", 9: "Mental", 10: "Common" },
+  Knight: { 2: "Combat", 3: "Mental", 4: "Common", 5: "Physical", 6: "Combat", 7: "Mental", 8: "Physical", 9: "Combat", 10: "Mental" },
 };
 const LEVEL_PERK_CATEGORY = {
   Alchemist: { 2: "Alchemist", 4: "Leader", 6: "Combat", 8: "Alchemist", 10: "Common" },
@@ -406,6 +409,8 @@ const LEVEL_PERK_CATEGORY = {
   Warrior: { 2: "Leader", 4: "Combat", 6: "Combat", 8: "Common", 10: "Combat" },
   "Warrior Priest": { 2: "Faith", 4: "Leader", 6: "Combat", 8: "Faith", 10: "Common" },
   Wizard: { 2: "Arcane", 4: "Leader", 6: "Arcane", 8: "Common", 10: "Arcane" },
+  Druid: { 2: "Common", 4: "Leader", 6: "Alchemist", 8: "Combat", 10: "Combat" },
+  Knight: { 2: "Combat", 4: "Leader", 6: "Common", 8: "Combat", 10: "Leader" },
 };
 
 // Applies exactly ONE level-up (Rulebook 2.571: a hero gains at most one level per completed
@@ -453,7 +458,7 @@ function levelsReady(hero) {
 }
 
 // Improvement Point cost table (Rulebook 2.571, p84) — cost to raise a stat/skill by +1, per
-// profession. Knight and Druid (False Prophet) aren't professions in this app, so they're omitted.
+// profession. Druid and Knight come from The False Prophet (p15).
 // A missing key means that profession can't improve it (N/A or '-' in the book).
 const IMPROVEMENT_COSTS = {
   Alchemist: { STR: 3, DEX: 3, CON: 3, WIS: 2, RES: 3, cs: 2, rs: 2, dodge: 3, pickLocks: 3, perception: 2, heal: 2, foraging: 3, barter: 2, alchemy: 1, hp: 10 },
@@ -464,6 +469,9 @@ const IMPROVEMENT_COSTS = {
   Warrior: { STR: 2, DEX: 1, CON: 2, WIS: 3, RES: 3, cs: 1, rs: 2, dodge: 3, pickLocks: 3, perception: 3, heal: 3, foraging: 3, barter: 3, alchemy: 3, hp: 5 },
   "Warrior Priest": { STR: 2, DEX: 2, CON: 2, WIS: 2, RES: 2, cs: 2, rs: 2, dodge: 2, pickLocks: 3, perception: 3, heal: 2, battlePrayers: 1, foraging: 3, barter: 2, alchemy: 3, hp: 10 },
   Wizard: { STR: 3, DEX: 3, CON: 3, WIS: 2, RES: 3, cs: 3, rs: 3, dodge: 2, pickLocks: 3, perception: 2, heal: 2, arcaneArts: 1, foraging: 3, barter: 1, alchemy: 2, hp: 10 },
+  // The False Prophet (p15): Druid / Knight. Knight has no Ranged Skill or Arcane Arts, so those keys are omitted.
+  Druid: { STR: 4, DEX: 3, CON: 3, WIS: 3, RES: 3, cs: 3, rs: 3, dodge: 3, pickLocks: 5, perception: 2, heal: 1, arcaneArts: 2, foraging: 3, barter: 5, alchemy: 2, hp: 10 },
+  Knight: { STR: 2, DEX: 3, CON: 3, WIS: 3, RES: 2, cs: 1, dodge: 3, pickLocks: 5, perception: 3, heal: 4, foraging: 5, barter: 2, alchemy: 5, hp: 5 },
 };
 const IP_STAT_SKILL_CAP_PER_LEVEL = 3; // no stat/skill may rise more than +3 through IP per level
 const IP_HP_CAP_PER_LEVEL = 1; // HP may only be bought +1 per level (separate from the automatic level-up roll)

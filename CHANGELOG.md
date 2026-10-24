@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.80.1] — 2026-10-24
+
+### Fixed
+- Summon Tree Spirit can only be cast outside: the Cast tool now refuses it inside a dungeon instead of using the card's 0 as an easy CV
+
 ## [1.80.0] — 2026-10-24
 
 ### Added

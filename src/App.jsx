@@ -939,7 +939,7 @@ const INVOCATIONS = [
   { name: "Resist Poison", cv: 0, cvInside: 5, mana: 8, upkeep: 0, special: "T", effect: "Cast on a poisoned hero: +20 CON for the sake of fighting the poison." },
   { name: "Rot", cv: 5, cvInside: 10, mana: 15, upkeep: 0, special: "", effect: "A wooden door instantly rots, taking 3d6 DMG without raising the Threat Level." },
   { name: "Summon Swarm", cv: 10, cvInside: 15, mana: 10, upkeep: 1, special: "", effect: "Summon a random swarm (1d4: Rat, Bat, Bee or Snail Swarm) in a random square of an unoccupied tile in LOS. Only one swarm at a time; they vanish after the battle. Add a hero token to the Initiative Bag as soon as it is summoned." },
-  { name: "Summon Tree Spirit", cv: 10, cvInside: 0, mana: 20, upkeep: 2, special: "", effect: "Outside only, not in the desert. Place a Tree Spirit on the closest tree or bush and add a hero token to the Initiative Bag. It vanishes if killed or if the druid casts another invocation." },
+  { name: "Summon Tree Spirit", outsideOnly: true, cv: 10, cvInside: 0, mana: 20, upkeep: 2, special: "", effect: "Outside only, not in the desert. Place a Tree Spirit on the closest tree or bush and add a hero token to the Initiative Bag. It vanishes if killed or if the druid casts another invocation." },
   { name: "Thorns", cv: 5, cvInside: 15, mana: 10, upkeep: 0, special: "", effect: "Thorns cover an open, closed or broken door. A wandering monster pushing through needs 5-6 on 1d6; enemies already on the table need 3 turns (6 AP) to clear them and are removed once through. A new Thorns invocation removes the old thorns." },
 ].map((i) => ({ ...i, lvl: 0, school: "Druidic" }));
 const invocationByName = (n) => INVOCATIONS.find((i) => i.name === n);
@@ -4679,6 +4679,15 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.80.1",
+    date: "2026-10-24",
+    sections: {
+      Fixed: [
+        "Summon Tree Spirit can only be cast outside: the Cast tool now refuses it inside a dungeon instead of using the card's 0 as an easy CV",
+      ],
+    },
+  },
   {
     version: "1.80.0",
     date: "2026-10-24",
@@ -16188,6 +16197,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
   };
   const castSpell = () => {
     if (!castHero || !chosenSpell) return;
+    if (chosenSpell.outsideOnly && party?.dungeonState === "dungeon") { setCastResult({ ok: false, lines: [`${chosenSpell.name} can only be cast outside, not inside a dungeon.`] }); return; }
     if (castHero.beastActive) { setCastResult({ ok: false, lines: [`${castHero.name} is in beastform (${castHero.beastActive.name}) and cannot use magic. Revert first.`] }); return; }
     const fAP = castIsDruid ? 0 : focusAP;
     const intenseOn = !castIsDruid && intenseFocus && (castHero.perks || []).includes("Intense Focus");
@@ -19474,7 +19484,7 @@ function HeroDruidPanel({ hero, update, party, setParty, addLog, pushToast }) {
       {known.length === 0 && <p className="text-[11px] italic mb-1" style={{ color: palette.inkSoft }}>No invocations yet: a druid starts with two.</p>}
       {known.map((n) => { const i = invocationByName(n); return (
         <div key={n} className="mb-1 rounded p-1.5" style={{ background: "#00000008" }}>
-          <button onClick={() => setOpen(open === n ? null : n)} className="w-full text-left text-xs font-semibold" style={{ color: palette.ink }}>{n} <span style={{ fontWeight: 400, color: palette.inkSoft }}>· CV {i.cv} out / {i.cvInside} in dungeon · Mana {i.mana}{i.upkeep ? ` · upkeep ${i.upkeep}` : ""}{i.special ? ` · ${i.special}` : ""}</span></button>
+          <button onClick={() => setOpen(open === n ? null : n)} className="w-full text-left text-xs font-semibold" style={{ color: palette.ink }}>{n} <span style={{ fontWeight: 400, color: palette.inkSoft }}>· CV {i.cv} out / {i.outsideOnly ? "not in dungeons" : `${i.cvInside} in dungeon`} · Mana {i.mana}{i.upkeep ? ` · upkeep ${i.upkeep}` : ""}{i.special ? ` · ${i.special}` : ""}</span></button>
           {open === n && <p className="text-[11px] mt-1" style={note}>{i.effect}</p>}
           <p className="text-[11px]" style={{ color: palette.inkSoft }}>Cast it from the Actions tab: it picks the right CV for where you are{dungeon ? " (inside a dungeon now)" : ""}.</p>
         </div>

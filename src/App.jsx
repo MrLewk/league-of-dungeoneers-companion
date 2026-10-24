@@ -4888,6 +4888,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.81.1",
+    date: "2026-10-24",
+    sections: {
+      Added: [
+        "Footer: a note that the app needs the full game, linking to von Braus Publishing (vonbraus.se)",
+      ],
+    },
+  },
+  {
     version: "1.81.0",
     date: "2026-10-24",
     sections: {
@@ -6928,6 +6937,10 @@ function Footer() {
           Found a bug? Report it here
         </a>
       </div>
+      <p className="text-xs text-center max-w-md" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
+        This companion app is a fan-made helper. To use it you'll need the full League of Dungeoneers game from{" "}
+        <a href="https://vonbraus.se/" target="_blank" rel="noopener noreferrer" className="underline font-semibold" style={{ color: palette.crimson }}>von Braus Publishing</a>.
+      </p>
       <p className="text-[11px] text-center max-w-md" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif", fontStyle: "italic", opacity: 0.8 }}>
         League of Dungeoneers and all associated game content © 2026 von Braus Publishing. All rights reserved.
         This is an unofficial fan-made companion tool, not affiliated with or endorsed by von Braus Publishing.

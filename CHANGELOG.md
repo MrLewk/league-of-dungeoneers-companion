@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.81.1] — 2026-10-24
+
+### Added
+- Footer: a note that the app needs the full game, linking to von Braus Publishing (vonbraus.se)
+
 ## [1.81.0] — 2026-10-24
 
 ### Added

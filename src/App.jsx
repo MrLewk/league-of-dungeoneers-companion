@@ -68,6 +68,9 @@ const defaultHero = () => ({
   hp: { cur: 10, max: 10 },
   diseases: [], // Expanded Diseases (The False Prophet): [{ key, pending, hpLost, strLost, wisLost, manaLost, conLost, zones }]
   diseaseExposure: [], // diseased-token reminders: [{ key, from }] — a CON test at the next rest
+  lastingWounds: [], // Lasting Wounds (The False Prophet): [{ id, key, name, text, questsLeft, effect, hpLost }]
+  permWounds: [], // Permanent Wounds: [{ key, count }]
+  koCount: 0, // knock-outs this quest (each one after the first adds +1 to wound rolls)
   diseaseImmune: [], // keys of diseases this hero was cured of while someone in the party still has them
   bleedingOutRolled: false, // has the one-time 1d4 permanent loss for this knockout been rolled?
   energy: { cur: 1, max: 1 },
@@ -555,7 +558,7 @@ function alchemistBeltSlots(hero) {
 }
 
 // ---- Expansions: The False Prophet — Expanded Diseases (replaces the core Disease rule while switched on) ----
-const EXP = { on: false, diseases: false }; // refreshed each App render from party.expansions
+const EXP = { on: false, diseases: false, lasting: false }; // refreshed each App render from party.expansions
 const HIT_ZONES = ["Head", "Arms", "Torso", "Legs"];
 const DISEASES = [
   { key: "withering", name: "Withering Plague", contagious: true, mod: -35, short: "Max HP −1 every rest; only 1d3 HP regained when resting.", text: "Also known as the red pox. Every time the hero rests, max HP drops by 1, and the hero only regains 1d3 HP when resting (anywhere). When cured the max HP is restored; lost HP must still be healed normally." },
@@ -733,6 +736,118 @@ function diseaseRestStep(h0, all) {
   return { hero: h, lines, flags: diseaseRestFlags(h) };
 }
 
+// ---- Expansions: The False Prophet — Lasting Wounds & Permanent Wounds (optional rule) ----
+const DEX_SKILLS = ["cs", "rs", "dodge", "pickLocks"];
+const WIS_SKILLS = ["barter", "heal", "alchemy", "perception", "arcaneArts", "battlePrayers"];
+const LASTING_WOUNDS = [
+  { n: 1, key: "infection", name: "Infection", text: "Max HP is reduced by 1 after each quest and again at the start of every dungeon until cured. At 0 max HP the hero dies. Cure: herbs mixed into a salve (roll twice on the Ingredients Table) by an alchemist, druid or herbalist in a settlement for 50 c; the lost max HP can then be healed back." },
+  { n: 2, key: "limp", name: "Limp", text: "The hero may only move once per turn." },
+  { n: 3, key: "concussion", name: "Concussion", text: "2d20 negative modifier to all DEX-based skills (CS, RS, Dodge, Pick Locks)." },
+  { n: 4, key: "weakened", name: "Weakened", text: "1d20 negative modifier to STR." },
+  { n: 5, key: "vision", name: "Impaired Vision", text: "−15 modifier to Perception." },
+  { n: 6, key: "bloodloss", name: "Blood Loss", text: "Max HP is decreased by 1d6 while the wound lasts." },
+  { n: 7, key: "dizzy", name: "Dizzy", text: "2d20 negative modifier to all WIS-based skills (Barter, Heal, Alchemy, Perception, Arcane Arts, Battle Prayers)." },
+  { n: 8, key: "shoulder", name: "Dislocated Shoulder", text: "The hero can only use one arm: no two-handed weapons, and no item in each hand." },
+  { n: 9, key: "trauma", name: "Traumatised", text: "An additional 1d6 Sanity is lost (regained as usual)." },
+  { n: 10, key: "permanent", name: "Permanent", text: "Roll on the Permanent Wounds table." },
+];
+const PERMANENT_WOUNDS = [
+  { from: 1, to: 40, key: "finger", name: "Loss of a Finger", text: "Fumble chance +1 each time this wound is gained. A third finger counts as the loss of a hand." },
+  { from: 41, to: 60, key: "scarred", name: "Scarred", text: "The hero loses 1 HP permanently." },
+  { from: 61, to: 80, key: "disfigured", name: "Disfigured", text: "−15 modifier to Barter." },
+  { from: 81, to: 85, key: "hand", name: "Loss of a Hand", text: "No weapons that need two hands (class 5 and 6); only one hand can hold an item, so no weapon/shield or weapon/torch combination. Losing both hands means retiring from adventuring." },
+  { from: 86, to: 90, key: "stupidity", name: "Stupidity", text: "At each activation in combat roll 1d6; on a 6 both Action Points are lost for the turn. Each further time this wound is gained, the trigger range grows by 1 (second time: 5-6)." },
+  { from: 91, to: 95, key: "eye", name: "Loss of an Eye", text: "−15 modifier to Perception and Ranged Skill. Losing a second eye means total blindness and retiring from adventuring." },
+  { from: 96, to: 100, key: "leg", name: "Loss of a Leg", text: "Cannot take part for the rest of the quest (the others carry the hero). A peg leg can be bought in a settlement for 100 c. −25 DEX from now on. Losing both legs means retiring from adventuring." },
+];
+const permByKey = (k) => PERMANENT_WOUNDS.find((w) => w.key === k);
+const lastingByKey = (k) => LASTING_WOUNDS.find((w) => w.key === k);
+const woundLenText = (q) => (q <= 1 ? "until the end of this quest" : q === 2 ? "until the end of the next quest" : "until the end of the two quests after this one");
+const permCount = (h, key) => ((h.permWounds || []).find((w) => w.key === key) || {}).count || 0;
+function permRetire(h) {
+  return [["hand", "lost both hands"], ["eye", "is completely blind"], ["leg", "lost both legs"]].filter(([k]) => permCount(h, k) >= 2).map(([, t]) => t);
+}
+// Penalties never push a stat/skill below 0, so store what was actually taken off (reversing it later then restores exactly that).
+function clampedPenalty(h, items, pen) {
+  return { multi: items.map(([kind, k]) => ({ [kind]: k, amount: -Math.min(pen, Math.max(0, Number((kind === "stat" ? h.stats : h.skills)?.[k]) || 0)) })).filter((e) => e.amount !== 0) };
+}
+// Gain a permanent wound (key optional: rolls 1d100 if omitted). Effects with numbers are applied for good.
+function gainPermanentWound(h, key) {
+  const roll = key ? null : rollDie(100);
+  let w = key ? permByKey(key) : PERMANENT_WOUNDS.find((x) => roll >= x.from && roll <= x.to);
+  const lines = [];
+  if (w.key === "finger" && permCount(h, "finger") >= 2) { lines.push(`${h.name}: a third lost finger counts as the loss of a hand.`); w = permByKey("hand"); }
+  let nh = h;
+  const eff = { disfigured: { skill: "barter", amount: -15 }, eye: { multi: [{ skill: "perception", amount: -15 }, { skill: "rs", amount: -15 }] }, leg: { stat: "DEX", amount: -25 } }[w.key];
+  if (eff) nh = { ...nh, ...applyEffectDelta(nh, eff, 1) };
+  if (w.key === "scarred") nh = { ...nh, hp: { cur: Math.min(nh.hp.cur, Math.max(1, nh.hp.max - 1)), max: Math.max(1, nh.hp.max - 1) } };
+  const count = permCount(h, w.key) + 1;
+  nh = { ...nh, permWounds: [...(h.permWounds || []).filter((x) => x.key !== w.key), { key: w.key, count }] };
+  lines.push(`${h.name}: PERMANENT WOUND${roll ? ` (1d100: ${roll})` : ""} — ${w.name}${count > 1 ? ` (x${count})` : ""}. ${w.text}`);
+  const retire = permRetire(nh);
+  if (retire.length) lines.push(`${h.name} has ${retire.join(" and ")} and must retire from adventuring.`);
+  return { hero: nh, lines };
+}
+// Roll for a Lasting Wound after a knock-out (replaces the core 1d4 permanent loss).
+function rollLastingWound(h) {
+  const ko = (h.koCount || 0) + 1;
+  const bonus = Math.max(0, ko - 1);
+  let nh = { ...h, koCount: ko };
+  const r = rollDie(6) + bonus;
+  const lines = [];
+  if (r <= 3) { lines.push(`${h.name}: Lasting Wound roll ${r}${bonus ? ` (1d6+${bonus})` : ""} — recovers completely, no complications.`); return { hero: nh, lines }; }
+  const n = rollDie(10);
+  const w = LASTING_WOUNDS[n - 1];
+  lines.push(`${h.name}: Lasting Wound roll ${r}${bonus ? ` (1d6+${bonus})` : ""} — wounded! 1d10: ${n} — ${w.name}.`);
+  if (w.key === "permanent") { const g = gainPermanentWound(nh); return { hero: g.hero, lines: [...lines, ...g.lines] }; }
+  const dur = rollDie(6) + bonus;
+  const questsLeft = dur <= 3 ? 1 : dur <= 5 ? 2 : 3;
+  const entry = { id: uid(), key: w.key, name: w.name, text: w.text, questsLeft };
+  if (w.key === "infection") { entry.hpLost = 0; delete entry.questsLeft; }
+  if (w.key === "trauma") {
+    const loss = rollDie(6);
+    if (!SIMP.sanity) { nh = { ...nh, sanity: { ...nh.sanity, cur: Math.max(0, nh.sanity.cur - loss) } }; lines.push(`${h.name}: −${loss} Sanity (now ${nh.sanity.cur}/${nh.sanity.max}).`); }
+    else lines.push(`${h.name}: Traumatised, but Sanity is removed in this campaign.`);
+    return { hero: nh, lines };
+  }
+  if (w.key === "concussion") { const x = rollDie(20) + rollDie(20); entry.effect = clampedPenalty(nh, DEX_SKILLS.map((k) => ["skill", k]), x); entry.detail = `−${x} to DEX skills`; }
+  if (w.key === "dizzy") { const x = rollDie(20) + rollDie(20); entry.effect = clampedPenalty(nh, WIS_SKILLS.filter((k) => (Number(nh.skills[k]) || 0) > 0).map((k) => ["skill", k]), x); entry.detail = `−${x} to WIS skills`; }
+  if (w.key === "weakened") { const x = rollDie(20); entry.effect = clampedPenalty(nh, [["stat", "STR"]], x); entry.detail = `−${x} STR`; }
+  if (w.key === "vision") { entry.effect = clampedPenalty(nh, [["skill", "perception"]], 15); entry.detail = "−15 Perception"; }
+  if (w.key === "bloodloss") { const x = Math.min(rollDie(6), Math.max(0, nh.hp.max - 1)); entry.hpLost = x; nh = { ...nh, hp: { cur: Math.min(nh.hp.cur, nh.hp.max - x), max: nh.hp.max - x } }; entry.detail = `−${x} max HP`; }
+  if (entry.effect) nh = { ...nh, ...applyEffectDelta(nh, entry.effect, 1) };
+  nh = { ...nh, lastingWounds: [...(nh.lastingWounds || []), entry] };
+  lines.push(`${h.name}: ${w.name}${entry.detail ? ` (${entry.detail})` : ""} — ${w.key === "infection" ? "lasts until cured" : `lasts ${woundLenText(questsLeft)}`}. ${w.text}`);
+  return { hero: nh, lines };
+}
+function removeLastingWound(h, entry) {
+  let nh = h;
+  if (entry.effect) nh = { ...nh, ...applyEffectDelta(nh, entry.effect, -1) };
+  if (entry.hpLost) nh = { ...nh, hp: { ...nh.hp, max: nh.hp.max + entry.hpLost } };
+  return { ...nh, lastingWounds: (nh.lastingWounds || []).filter((x) => x.id !== entry.id) };
+}
+// Infection costs 1 max HP at the end of a quest and at the start of each dungeon.
+function infectionHit(h, why) {
+  const inf = (h.lastingWounds || []).find((x) => x.key === "infection");
+  if (!inf) return { hero: h, lines: [] };
+  if (h.hp.max <= 1) return { hero: h, lines: [`${h.name}: Infection — max HP is already 1; another loss is fatal. Cure it now or the hero dies.`] };
+  const nh = { ...h, hp: { cur: Math.min(h.hp.cur, h.hp.max - 1), max: h.hp.max - 1 }, lastingWounds: h.lastingWounds.map((x) => (x.id === inf.id ? { ...x, hpLost: (x.hpLost || 0) + 1 } : x)) };
+  return { hero: nh, lines: [`${h.name}: Infection — max HP −1 ${why} (now ${nh.hp.max}).`] };
+}
+function lastingQuestComplete(h) {
+  let nh = h;
+  const lines = [];
+  for (const e of h.lastingWounds || []) {
+    if (e.key === "infection") continue;
+    if (e.questsLeft <= 1) { nh = removeLastingWound(nh, e); lines.push(`${h.name}: ${e.name} has healed${e.hpLost ? ` (max HP +${e.hpLost} back; lost HP must still be healed)` : ""}.`); }
+    else nh = { ...nh, lastingWounds: nh.lastingWounds.map((x) => (x.id === e.id ? { ...x, questsLeft: x.questsLeft - 1 } : x)) };
+  }
+  const inf = infectionHit(nh, "after the quest");
+  nh = inf.hero; lines.push(...inf.lines);
+  if (nh.koCount) nh = { ...nh, koCount: 0 };
+  return { hero: nh, lines };
+}
+
 const defaultParty = () => ({
   threat: 2, threatFloor: 2, morale: 0, food: 4,
   coins: 0, // Party Pot — shared coins, built up via "Pool to Party" from a hero's personal pouch; starts empty since new heroes now start with their own 150c
@@ -742,7 +857,7 @@ const defaultParty = () => ({
   dungeonRestCount: 0, // completed (uninterrupted) Short Rests taken since entering the current dungeon — drives the Ambush risk escalation; resets to 0 on Exit Dungeon, never per level
   simplified: { encumbrance: false, morale: false, durability: false, sanity: false, scenario: false }, // Simplified Game (p21): true = system removed
   optionalRules: { lootMode: "hardcore", dungeonEvents: false, simplifiedAlchemy: false, newBeginning: false, manualTracking: false, alchemyOnly: false },
-  expansions: { falseProphet: false, fpDiseases: true }, // Expansions tab: The False Prophet master switch + its parts
+  expansions: { falseProphet: false, fpDiseases: true, fpLasting: false }, // Expansions tab: The False Prophet master switch + its parts
   manualHero: { STR: "", DEX: "", perception: "", pickLocks: "" }, // typed numbers the Actions tools use when no hero is picked (Manual tracking)
   roomEvent: null, // current room's Dungeon Event (optional rule), persisted across tab switches
   newBeginning: { seed: "", quests: {} }, // A New Beginning expansion tracker: seed 1-12 and per-quest { name, settlement, note }
@@ -4418,6 +4533,19 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.78.0",
+    date: "2026-10-24",
+    sections: {
+      Added: [
+        "Lasting & Permanent Wounds (The False Prophet, optional rule): switch it on in the Expansions tab. The Bleeding Out box offers Roll Lasting Wound instead of the 1d4 permanent loss: 1d6 (+1 per knock-out after the first this quest) decides whether a wound happens, then the 1d10 wound table and a 1d6 duration are rolled for you",
+        "Wound effects are applied automatically and reversed exactly when the wound ends: Concussion and Dizzy (2d20 off DEX / WIS skills), Weakened (1d20 STR), Impaired Vision (-15 Perception), Blood Loss (max HP), Traumatised (Sanity). Infection takes 1 max HP after each quest and at each Enter Dungeon until cured, and the hero card rolls the two salve herbs from the Ingredients Table",
+        "Permanent Wounds table (1d100) applied for good: Scarred, Disfigured (-15 Barter), Loss of an Eye (-15 Perception and Ranged Skill), Loss of a Leg (-25 DEX); a third lost finger becomes a lost hand; losing both hands, eyes or legs shows a retire warning. A manual Roll a Permanent Wound button is on the hero card",
+        "New Quest Complete panel on the Party tab (shown while Lasting Wounds is on): counts wounds down or heals them, applies Infection and resets knock-out counts",
+        "Not automated: Limp, Dislocated Shoulder, hand and weapon restrictions, the Stupidity roll, fumble chance and peg legs (the hero card shows reminders)",
+      ],
+    },
+  },
   {
     version: "1.77.0",
     date: "2026-10-24",
@@ -8451,10 +8579,17 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               {!hero.bleedingOutRolled ? (
                 <>
                   <p className="text-xs mb-2" style={{ color: "#F0D8D8", fontFamily: "Crimson Pro, serif" }}>
-                    Reaching 0 HP always costs a permanent stat or HP reduction (1d4, randomised).
+                    {EXP.lasting ? "Lasting Wounds (The False Prophet) replace the 1d4 loss: roll to see whether this knock-out leaves a wound." : "Reaching 0 HP always costs a permanent stat or HP reduction (1d4, randomised)."}
                   </p>
                   <button
                     onClick={() => {
+                      if (EXP.lasting) {
+                        const r = rollLastingWound(hero);
+                        update({ ...r.hero, bleedingOutRolled: true });
+                        r.lines.forEach((l) => addLog && addLog(l));
+                        pushToast && pushToast(`${hero.name}: Lasting Wound roll`, r.lines.slice(0, 2).join(" "));
+                        return;
+                      }
                       const pool = [...STAT_KEYS, "hp"];
                       const stat = pool[rollDie(pool.length) - 1];
                       const amount = rollDie(4);
@@ -8470,7 +8605,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                     className="px-3 py-1.5 rounded text-xs font-bold"
                     style={{ background: palette.crimson, color: palette.parchment, fontFamily: "Cinzel, serif" }}
                   >
-                    Roll Permanent Loss (1d4)
+                    {EXP.lasting ? "Roll Lasting Wound" : "Roll Permanent Loss (1d4)"}
                   </button>
                 </>
               ) : (
@@ -8732,6 +8867,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
             </button>
           </div>
           <HeroDiseasePanel hero={hero} update={update} otherHeroes={otherHeroes} allHeroes={[hero, ...(otherHeroes || [])]} addLog={addLog} pushToast={pushToast} />
+          <HeroWoundsPanel hero={hero} update={update} addLog={addLog} pushToast={pushToast} />
 
           {/* Basic stats */}
           <div className="flex items-center justify-between mb-2 mt-3 pb-1" style={HERO_HEADING_ROW}>
@@ -15241,6 +15377,8 @@ function PartyPanel({ party, setParty, log, addLog, heroes, updateHero, pushToas
         </p>
       </Panel>)}
 
+      <QuestCompletePanel party={party} heroes={heroes} updateHero={updateHero} addLog={addLog} pushToast={pushToast} />
+
       <EncounterTracker party={party} setParty={setParty} heroes={heroes} addLog={addLog} />
 
       <Panel className="mb-4">
@@ -18834,6 +18972,88 @@ function HeroDiseasePanel({ hero, update, otherHeroes, addLog, pushToast, allHer
   );
 }
 
+function HeroWoundsPanel({ hero, update, addLog, pushToast }) {
+  const [hab, setHab] = useState("Woods");
+  const [salve, setSalve] = useState(null);
+  if (!EXP.lasting) return null;
+  const lw = hero.lastingWounds || [];
+  const pw = hero.permWounds || [];
+  const retire = permRetire(hero);
+  const soft = { background: "#00000010", color: palette.ink };
+  const note = { color: palette.ink, fontFamily: "Crimson Pro, serif" };
+  const rollSalve = () => {
+    const out = [];
+    let guard = 0;
+    while (out.length < 2 && guard++ < 200) { const row = ingredientsTableLookup(hab, rollDie(100)); if (row) out.push(row.name); }
+    setSalve(out);
+    addLog && addLog(`${hero.name}: Infection salve needs ${out.join(" and ")} (rolled on the Ingredients Table, ${hab}).`);
+  };
+  const cureInfection = () => {
+    const e = lw.find((x) => x.key === "infection");
+    if (!e) return;
+    update(removeLastingWound(hero, e));
+    addLog && addLog(`${hero.name}'s infection is cured${e.hpLost ? `: max HP +${e.hpLost} restored` : ""}.`);
+    setSalve(null);
+  };
+  const permRoll = () => { const g = gainPermanentWound(hero); update(g.hero); g.lines.forEach((l) => addLog && addLog(l)); pushToast && pushToast(`${hero.name}: Permanent Wound`, g.lines[0]); };
+  return (
+    <div className="mb-3 rounded p-2" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+      <p className="text-xs font-bold mb-1" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Wounds (The False Prophet)</p>
+      {lw.length === 0 && pw.length === 0 && <p className="text-xs italic mb-1" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>No lasting wounds.{(hero.koCount || 0) > 0 ? ` Knocked out ${hero.koCount}× this quest.` : ""}</p>}
+      {(hero.koCount || 0) > 0 && (lw.length > 0 || pw.length > 0) && <p className="text-[11px] mb-1" style={{ color: palette.inkSoft }}>Knocked out {hero.koCount}× this quest (+{Math.max(0, hero.koCount - 1)} to the next wound rolls).</p>}
+      {lw.map((e) => (
+        <div key={e.id} className="mb-1.5 rounded p-1.5" style={{ background: `${palette.gold}22`, border: `1px solid ${palette.gold}` }}>
+          <div className="flex items-center justify-between gap-2">
+            <b className="text-xs" style={{ color: palette.crimson, fontFamily: "Cinzel, serif" }}>{e.name}{e.detail ? ` (${e.detail})` : ""}</b>
+            <button onClick={() => { update(removeLastingWound(hero, e)); addLog && addLog(`${hero.name}: ${e.name} removed.`); }} className="text-[11px] px-2 py-1 rounded font-semibold" style={soft}>Remove</button>
+          </div>
+          <p className="text-[11px]" style={note}>{e.text}</p>
+          <p className="text-[11px]" style={{ color: palette.inkSoft }}>{e.key === "infection" ? `Lasts until cured${e.hpLost ? ` · max HP lost so far: ${e.hpLost}` : ""}.` : `Lasts ${woundLenText(e.questsLeft)}.`}</p>
+          {e.key === "infection" && (
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <select value={hab} onChange={(ev) => setHab(ev.target.value)} className="text-[11px] rounded px-1 py-0.5" style={{ border: `1px solid ${palette.line}` }}>{HABITATS.map((x) => <option key={x}>{x}</option>)}</select>
+              <button onClick={rollSalve} className="text-[11px] px-2 py-1 rounded font-semibold" style={soft}>Roll salve herbs</button>
+              <button onClick={cureInfection} className="text-[11px] px-2 py-1 rounded font-semibold" style={{ background: palette.forestDark, color: palette.parchment }}>Salve applied (50 c) — cured</button>
+              {salve && <p className="w-full text-[11px]" style={{ color: palette.ink }}>Find or buy: <b>{salve.join(" + ")}</b>, then have an alchemist, druid or herbalist mix them in a settlement.</p>}
+            </div>
+          )}
+        </div>
+      ))}
+      {pw.map((w) => { const d = permByKey(w.key); return (
+        <div key={w.key} className="mb-1.5 rounded p-1.5" style={{ background: `${palette.crimson}12`, border: `1px solid ${palette.crimson}55` }}>
+          <b className="text-xs" style={{ color: palette.crimson, fontFamily: "Cinzel, serif" }}>{d.name}{w.count > 1 ? ` ×${w.count}` : ""} <span style={{ fontWeight: 400, color: palette.inkSoft }}>(permanent)</span></b>
+          <p className="text-[11px]" style={note}>{d.text}{w.key === "stupidity" ? ` Currently triggers on ${7 - Math.min(6, w.count)}-6.` : ""}{w.key === "finger" ? ` Fumble chance +${w.count}.` : ""}</p>
+        </div>
+      ); })}
+      {retire.length > 0 && <p className="text-xs font-bold mb-1" style={{ color: palette.crimson }}>{hero.name} has {retire.join(" and ")} and must retire from adventuring.</p>}
+      <button onClick={permRoll} className="w-full text-[11px] px-2 py-1.5 rounded font-semibold" style={soft}>Roll a Permanent Wound (1d100) by hand</button>
+    </div>
+  );
+}
+
+function QuestCompletePanel({ party, heroes, updateHero, addLog, pushToast }) {
+  const [done, setDone] = useState(null);
+  if (!EXP.lasting) return null;
+  const go = () => {
+    if (!confirm("Mark the quest as complete? Lasting wounds count down (or heal), infections cost 1 max HP and knock-out counts reset.")) return;
+    const lines = [];
+    heroes.forEach((h) => { const r = lastingQuestComplete(h); if (r.hero !== h) updateHero(h.id, r.hero); lines.push(...r.lines); });
+    const out = lines.length ? lines : ["Quest complete. No wounds were affected."];
+    setDone(out);
+    addLog(`Quest complete. ${out.join(" ")}`);
+    pushToast && pushToast("Quest complete", out[0]);
+  };
+  const active = heroes.reduce((n, h) => n + (h.lastingWounds || []).length, 0);
+  return (
+    <Panel className="mb-4">
+      <SectionTitle icon={ScrollText}>Quest Complete</SectionTitle>
+      <p className="text-xs mb-2" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>Press when the party finishes a quest. Lasting Wounds count down or heal, Infections take 1 max HP, and each hero's knock-out count resets. {active} active lasting wound{active === 1 ? "" : "s"}.</p>
+      <button onClick={go} className="w-full text-xs px-2 py-2 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>Quest complete</button>
+      {done && <div className="mt-2 text-xs space-y-0.5" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>{done.map((l, i) => <p key={i}>{l}</p>)}</div>}
+    </Panel>
+  );
+}
+
 function ExpansionsTab({ party, setParty, heroes }) {
   const ex = party.expansions || {};
   const setEx = (patch) => setParty({ ...party, expansions: { ...party.expansions, ...patch } });
@@ -18858,11 +19078,12 @@ function ExpansionsTab({ party, setParty, heroes }) {
         {on && (
           <div className="pl-4" style={{ borderLeft: `2px solid ${palette.line}` }}>
             {toggleRow(ex.fpDiseases !== false, (v) => setEx({ fpDiseases: v }), "Expanded Diseases", "replaces the core Disease rule with 8 named diseases.")}
+            {toggleRow(ex.fpLasting === true, (v) => setEx({ fpLasting: v }), "Lasting & Permanent Wounds (optional rule)", "replaces the 1d4 permanent stat loss when a hero is knocked out.")}
           </div>
         )}
         <div className="mt-2 rounded p-2 text-xs" style={{ background: "#fff", border: `1px solid ${palette.line}`, ...body }}>
           <p className="font-bold mb-1" style={{ fontFamily: "Cinzel, serif" }}>Not in the app yet</p>
-          <p>Lasting and Permanent Wounds (optional rule), the Druid (shapeshifting, invocations, sacred grove, botany), the Knight's Squire, Druid and Knight levelling tables, and Class Specialisation. These are planned for later updates and need to be tracked by hand until then.</p>
+          <p>The Druid (shapeshifting, invocations, sacred grove, botany), the Knight's Squire, Druid and Knight levelling tables, and Class Specialisation. These are planned for later updates and need to be tracked by hand until then.</p>
         </div>
       </Panel>
 
@@ -18906,6 +19127,33 @@ function ExpansionsTab({ party, setParty, heroes }) {
         </Panel>
       )}
 
+      {on && ex.fpLasting === true && (
+        <Panel>
+          <SectionTitle icon={Heart}>Lasting Wounds: what is new</SectionTitle>
+          <ul className="text-xs list-disc pl-4 space-y-1.5" style={body}>
+            <li><b>Replaces</b> the core 1d4 permanent stat/HP loss at 0 HP. The red Bleeding Out box now has "Roll Lasting Wound" instead.</li>
+            <li><b>The roll:</b> 1d6, +1 for every knock-out this quest after the first (tracked per hero). 1-3 means a full recovery; 4-6 rolls 1d10 on the wound table, then 1d6 (+ the same bonus) for how long it lasts. The app applies the numbers for you and reverses them when the wound ends.</li>
+            <li><b>Duration:</b> 1-3 until the end of this quest, 4-5 until the end of the next quest, 6+ until the end of the two quests after this one. Press <b>Quest complete</b> on the Party tab at the end of each quest to count wounds down (it also resets knock-out counts).</li>
+            <li><b>Infection</b> has no timer: max HP drops by 1 at the end of each quest and at the start of every dungeon (Enter Dungeon) until cured. The hero card rolls the two salve herbs from the Ingredients Table and the Salve button cures it and restores the max HP.</li>
+            <li><b>Permanent Wounds</b> (1d10 result 10, or the manual button) are applied for good: Scarred −1 max HP, Disfigured −15 Barter, Loss of an Eye −15 Perception and Ranged Skill, Loss of a Leg −25 DEX. A third lost finger becomes a lost hand, and losing both hands, both eyes or both legs shows a retire warning.</li>
+            <li><b>Still done by hand:</b> Limp, Dislocated Shoulder, hands and weapon restrictions, the Stupidity d6 roll, fumble chance, and peg legs.</li>
+            <li><b>Interpretation:</b> the book's "until the end of the next quest" is counted as ending at the second Quest complete press, and DEX/WIS skills follow the character sheet (DEX: CS, RS, Dodge, Pick Locks; WIS: Barter, Heal, Alchemy, Perception, Arcane Arts, Battle Prayers).</li>
+          </ul>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-[11px]" style={{ ...body, borderCollapse: "collapse" }}>
+              <thead><tr style={{ background: palette.charcoal, color: palette.parchment }}><th className="text-left p-1">1d10</th><th className="text-left p-1">Wound</th></tr></thead>
+              <tbody>{LASTING_WOUNDS.map((w) => <tr key={w.key} style={{ borderBottom: `1px solid ${palette.line}` }}><td className="p-1 align-top">{w.n}</td><td className="p-1"><b>{w.name}</b><br />{w.text}</td></tr>)}</tbody>
+            </table>
+          </div>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-[11px]" style={{ ...body, borderCollapse: "collapse" }}>
+              <thead><tr style={{ background: palette.charcoal, color: palette.parchment }}><th className="text-left p-1">1d100</th><th className="text-left p-1">Permanent wound</th></tr></thead>
+              <tbody>{PERMANENT_WOUNDS.map((w) => <tr key={w.key} style={{ borderBottom: `1px solid ${palette.line}` }}><td className="p-1 align-top">{w.from}-{w.to === 100 ? "00" : w.to}</td><td className="p-1"><b>{w.name}</b><br />{w.text}</td></tr>)}</tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
+
       <Panel>
         <SectionTitle icon={Map}>A New Beginning</SectionTitle>
         {toggleRow(!!party.optionalRules?.newBeginning, (v) => setParty({ ...party, optionalRules: { ...party.optionalRules, newBeginning: v } }), "Enable A New Beginning", "adds a quest tracker to the Quests tab for the von Braus 'A New Beginning' expansion (6 starting quests, 8 follow-ups). Its Hunger rules are handled manually.")}
@@ -18945,7 +19193,7 @@ const HELP_DATA = [
     ["Dungeon Events", "Party > Optional Rules. Adds a room roll (1d10, 9-10) to the Actions tab. The app then rolls the column and event from the 24-event table and resolves what it can, saving the result so it survives tab changes."],
     ["Simplified Alchemy", "Party > Optional Rules. Potions use 4, 6 or 8 unique components (Weak, Standard, Supreme) instead of recipes. Do not switch mid-campaign."],
     ["Manual tracking", "Party > Optional Rules. Actions tools and the Dungeon Event panel just roll and explain, with no AP, hero or party changes. Automatic when a campaign has no heroes. Combat and Turn tab tools do not support it yet."],
-    ["Expansions", "Expansions tab. Switch on The False Prophet (Expanded Diseases so far) or A New Beginning. Each expansion lists what is new or changed, and switching it off hides everything it added. Expanded Diseases: use Risk of disease and Process a rest on a hero card; Short Rest, Make Camp and inn nights apply cures and symptoms automatically."],
+    ["Expansions", "Expansions tab. Switch on The False Prophet (Expanded Diseases so far) or A New Beginning. Each expansion lists what is new or changed, and switching it off hides everything it added. Expanded Diseases: use Risk of disease and Process a rest on a hero card; Short Rest, Make Camp and inn nights apply cures and symptoms automatically. Lasting & Permanent Wounds: the Bleeding Out box rolls the wound; press Quest complete on the Party tab at the end of each quest."],
     ["Simplified Game", "Party > Optional Rules. Remove Encumbrance, Party Morale, Durability, Sanity, or Scenario Die and Threat, as the rulebook allows. Their panels disappear and effects stop."],
     ["Loot mode", "Hardcore or Streamlined corpse looting is chosen on the Actions tab. Pick before play."],
     ["Advanced rules", "Combat tab > Advanced rules (all off by default): Overwatch, Limited Bleeding-Out Time, Quick Slot Damage, Quiver & Ammunition and the Darkness rule."],
@@ -19209,6 +19457,7 @@ function TravelTab({ party, setParty, heroes, addLog, updateHero }) {
         notes.push(`${h.name}'s Lingering Trauma is now active — watch for its trigger.`);
       }
       if ((next.mentalConditions || []).some((c) => c.dungeonRes)) notes.push(`${h.name} has Fear of the Dark: −20 RES while in the dungeon (applied automatically).`);
+      if (EXP.lasting) { const inf = infectionHit(next, "at the start of the dungeon"); if (inf.lines.length) { next = inf.hero; inf.lines.forEach((l) => notes.push(l)); } }
       if (next !== h) updateHero(h.id, next);
     });
     // Darkness (Advanced Rule): roll the dungeon's overall light conditions before entering (1 Lit, 2-4 Dim, 5-6 Dark).
@@ -20147,6 +20396,7 @@ export default function App() {
   MANUAL.on = !!party.optionalRules?.manualTracking || heroes.length === 0;
   EXP.on = !!party.expansions?.falseProphet;
   EXP.diseases = EXP.on && party.expansions?.fpDiseases !== false;
+  EXP.lasting = EXP.on && party.expansions?.fpLasting === true;
   const [log, setLog] = useState([]);
   const [tab, setTab] = useState("party");
   const navRef = useRef(null);

@@ -3,6 +3,15 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.78.0] — 2026-10-24
+
+### Added
+- Lasting & Permanent Wounds (The False Prophet, optional rule): switch it on in the Expansions tab. The Bleeding Out box offers Roll Lasting Wound instead of the 1d4 permanent loss: 1d6 (+1 per knock-out after the first this quest) decides whether a wound happens, then the 1d10 wound table and a 1d6 duration are rolled for you
+- Wound effects are applied automatically and reversed exactly when the wound ends: Concussion and Dizzy (2d20 off DEX / WIS skills), Weakened (1d20 STR), Impaired Vision (-15 Perception), Blood Loss (max HP), Traumatised (Sanity). Infection takes 1 max HP after each quest and at each Enter Dungeon until cured, and the hero card rolls the two salve herbs from the Ingredients Table
+- Permanent Wounds table (1d100) applied for good: Scarred, Disfigured (-15 Barter), Loss of an Eye (-15 Perception and Ranged Skill), Loss of a Leg (-25 DEX); a third lost finger becomes a lost hand; losing both hands, eyes or legs shows a retire warning. A manual Roll a Permanent Wound button is on the hero card
+- New Quest Complete panel on the Party tab (shown while Lasting Wounds is on): counts wounds down or heals them, applies Infection and resets knock-out counts
+- Not automated: Limp, Dislocated Shoulder, hand and weapon restrictions, the Stupidity roll, fumble chance and peg legs (the hero card shows reminders)
+
 ## [1.77.0] — 2026-10-24
 
 ### Added

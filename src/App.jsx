@@ -150,7 +150,7 @@ const SPECIES_DATA = [
   { name: "Halfling", hp: { base: 5, count: 1, size: 6 }, stats: { STR: 20, CON: 20, DEX: 40, WIS: 30, RES: 40 }, max: { STR: 40, CON: 60, DEX: 80, WIS: 80, RES: 80 }, note: "Cannot use Longbows or Elven bows (height). May buy Cooking Gear for 50c at the start of the game. Trait: Lucky — starts with 1 Luck Point, set automatically when you roll starting stats." },
   { name: "Dwarf", hp: { base: 8, count: 1, size: 6 }, stats: { STR: 40, CON: 30, DEX: 25, WIS: 25, RES: 30 }, max: { STR: 80, CON: 70, DEX: 60, WIS: 80, RES: 80 }, note: "Cannot use Longbows or Elven bows (height). Traits: Hate Goblins, Night Vision — Night Vision is applied automatically when you roll starting stats; Hate Goblins needs a chosen enemy, so add the Hate Talent manually from the Compendium.", subspecies: DWARF_SUBSPECIES },
   { name: "Gnome", hp: { base: 4, count: 1, size: 6 }, stats: { STR: 20, CON: 20, DEX: 30, WIS: 40, RES: 40 }, max: { STR: 40, CON: 50, DEX: 70, WIS: 80, RES: 80 }, note: "Cannot use Longbows or Elven bows (height). Cannot become Barbarians, Knights, or Warrior Priests. Artificer: once specialised, pays half cost for blacksmithing/crafting services. Traits: Linked to the Void, Slippery, Natural Illusionist, Now You See Me…, Weak with Destruction Magic — applied automatically when you roll starting stats." },
-  { name: "Duckfolk", hp: { base: 6, count: 1, size: 6 }, stats: { STR: 25, CON: 20, DEX: 40, WIS: 30, RES: 40 }, max: { STR: 55, CON: 60, DEX: 70, WIS: 80, RES: 80 }, note: "Short arms — cannot use Longbows or Elven bows. Traits: Magic Resistance, Natural Swimmer, Natural Killer — applied automatically when you roll starting stats.", expansion: "The False Prophet" },
+  { name: "Duckfolk", hp: { base: 6, count: 1, size: 6 }, stats: { STR: 25, CON: 25, DEX: 30, WIS: 30, RES: 40 }, max: { STR: 55, CON: 60, DEX: 70, WIS: 80, RES: 80 }, note: "Short arms — cannot use Longbows or Elven bows. Traits: Magic Resistance, Natural Swimmer, Natural Killer — applied automatically when you roll starting stats.", expansion: "The False Prophet" },
   { name: "Frogling", hp: { base: 4, count: 1, size: 6 }, stats: { STR: 20, CON: 35, DEX: 40, WIS: 30, RES: 25 }, max: { STR: 45, CON: 65, DEX: 80, WIS: 70, RES: 80 }, note: "Cannot use Longbows or Elven bows (height). Cannot become Barbarians, Knights, or Warrior Priests. Traits: Gatherer, Jumper, Natural Swimmer, Night Vision, Poisonous Spit, Shunned — applied automatically when you roll starting stats." },
   { name: "Half-Ogre", hp: { base: 10, count: 2, size: 6 }, stats: { STR: 50, CON: 40, DEX: 25, WIS: 15, RES: 40 }, max: { STR: 80, CON: 80, DEX: 60, WIS: 60, RES: 80 }, note: "May only take the Warrior, Barbarian, or Rogue profession. Traits: Tough Mind, Stupid — both applied automatically when you roll starting stats.", expansion: "The False Prophet" },
   { name: "Pale Goblin", hp: { base: 5, count: 1, size: 6 }, stats: { STR: 25, CON: 20, DEX: 40, WIS: 30, RES: 35 }, max: { STR: 60, CON: 65, DEX: 70, WIS: 70, RES: 80 }, note: "Cannot use Longbows or Elven bows (height). Cannot become Knights, Warrior Priests, or Wizards. Traits: Cat and Dog, Night Vision, Natural Killer, Shunned, Trapfinder — applied automatically when you roll starting stats." },
@@ -4541,6 +4541,18 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.78.1",
+    date: "2026-10-24",
+    sections: {
+      Added: [
+        "Druid and Knight (The False Prophet) now have their own Improvement Point cost tables and level-up Talent/Perk categories, so spending IP and levelling up work for both",
+      ],
+      Fixed: [
+        "Duckfolk starting stats now follow The False Prophet pages: CON 25 and DEX 30 (was CON 20, DEX 40). The expansion book wins over earlier sources",
+      ],
+    },
+  },
   {
     version: "1.78.0",
     date: "2026-10-24",

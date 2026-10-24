@@ -3,6 +3,14 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.78.1] — 2026-10-24
+
+### Added
+- Druid and Knight (The False Prophet) now have their own Improvement Point cost tables and level-up Talent/Perk categories, so spending IP and levelling up work for both
+
+### Fixed
+- Duckfolk starting stats now follow The False Prophet pages: CON 25 and DEX 30 (was CON 20, DEX 40). The expansion book wins over earlier sources
+
 ## [1.78.0] — 2026-10-24
 
 ### Added

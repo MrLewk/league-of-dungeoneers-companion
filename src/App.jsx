@@ -3378,7 +3378,44 @@ const MONSTER_TABLE_RAW = [
 [99, "Zombie", 40, 0, 12, "1d8+1", 0, 4, 10, 25, 0, "Undead", "L Undead", "Fear 2, Slow", 80, "T1"],
 [100, "Zombie Ogre", 50, 0, 40, "2", 2, 4, 15, 25, 0, "Undead", "L Undead", "Fear 7, Large, Simple weapons, Slow", 650, "T1"],
 ];
-const MONSTER_TABLE = MONSTER_TABLE_RAW.map((row) => Object.fromEntries(MONSTER_TABLE_FIELDS.map((f, i) => [f, row[i]])));
+// The False Prophet monsters (30). Hidden unless the expansion is switched on (see monstersFor). Last field = the Part dropped.
+const FP_MONSTER_RAW = [
+  [1000, "Battlewizard", 50, 65, 14, "0", 9, 4, 65, 25, 0, "King's Army", "Magic User", "Inspiring, Magic User", 160, "T5", "Human blood, 1"],
+  [1001, "Captain", 65, 50, 16, "0", 0, 4, 30, 60, -10, "King's Army", "Humanoid", "Inspiring", 160, "T4", "Human blood, 1"],
+  [1002, "Cave Spider", 55, 0, 18, "1d8+2", 1, 6, 60, 40, -10, "Beast", "Beast", "Fear 4, Jump", 150, "Part", "Spider fang, 1"],
+  [1003, "Cyclops", 50, 65, 75, "4", 3, 5, 20, 45, 0, "Beast", "Beast", "Bellow, Large, Pyrophobia, Simple Weapons, Stone Thrower, Terror 8", 1000, "T4", "Cyclops Eye, 1"],
+  [1004, "Death Knight", 70, 35, 25, "1", 1, 4, 40, 60, -10, "Undead", "Higher Undead", "Cursed weapons, Fear 7, Just bones", 300, "T4", "Bonemeal, 1"],
+  [1005, "Flesh Golem", 50, 0, 35, "2d6+2", 2, 4, 15, 25, 0, "Undead", "Lower Undead", "Fear 7, Large, Regenerate", 550, "-", "Zombie skin, 2"],
+  [1006, "Fungoid Ranger", 50, 60, 15, "0", 1, 4, 50, 55, -10, "Shroomfolk", "Humanoid", "Spores", 150, "T3", "Spores, 1"],
+  [1007, "Fungoid Warrior", 60, 45, 18, "0", 1, 4, 50, 55, -10, "Shroomfolk", "Humanoid", "Spores", 150, "T3", "Spores, 1"],
+  [1008, "Ghoul Prince", 70, 0, 25, "2d6", 2, 6, 40, 50, -10, "Undead", "Higher Undead", "Fear 5, Frenzy, Poisonous", 250, "T4", "Ghoul blood, 1"],
+  [1009, "Giant Slime", 55, 0, 25, "1d10+1", 1, 4, 25, 25, 0, "Beast", "Beast", "Corrosive", 250, "Part", "Slime, 1d6"],
+  [1010, "Gigantic Rat", 45, 0, 18, "1d12", 1, 4, 35, 40, -5, "Ratkin", "Beast", "Afraid of fire, Disease, Fear 3", 140, "Part", "Rat tail, 1"],
+  [1011, "Guardsman", 50, 50, 12, "0", 0, 4, 30, 45, -5, "King's Army", "Humanoid", "", 100, "T2", "Human blood, 1"],
+  [1012, "Lich", 50, 70, 30, "0", 1, 4, 35, 70, -5, "Undead", "Magic User", "Terror 8 (-30 RES), Magic User, Regenerate", 700, "T5", "Bonemeal, 1"],
+  [1013, "Macrobyte Titan", 55, 0, 40, "2", 3, 4, 35, 50, -5, "Shroomfolk", "Beast", "Fear 5, Large, Spores", 500, "T2", "Spores, 1d3"],
+  [1014, "Rabid Ratkin", 50, 35, 14, "0", 2, 5, 30, 45, 0, "Ratkin", "Beast", "Disease", 120, "T1", "Shapeshifter blood, 1"],
+  [1015, "Rat Demon", 60, 0, 40, "1d12+2", 3, 5, 30, 60, 0, "Ratkin", "Beast", "Afraid of fire, Demon, Disease, Fear 7, Large", 650, "-", ""],
+  [1016, "Rat Swarm", 45, 0, 10, "1d6", 0, 7, 50, 30, 0, "Ratkin", "Beast", "Acts first, Afraid of fire, Auto hit", 20, "-", "Shapeshifter blood, 1"],
+  [1017, "Ratkin Assassin", 70, 65, 11, "0", 1, 7, 60, 45, -15, "Ratkin", "Humanoid", "Perfect hearing, Poisonous", 120, "T3", "Shapeshifter blood, 1"],
+  [1018, "Ratkin Elite", 60, 50, 16, "0", 1, 6, 50, 45, -10, "Ratkin", "Humanoid", "Safety in numbers", 120, "T3", "Shapeshifter blood, 1"],
+  [1019, "Ratkin Ogre", 50, 0, 40, "1d12", 2, 4, 25, 35, -5, "Ratkin", "Beast", "Bellow, Fear 7, Ferocious charge, Large", 650, "T1", "Shapeshifter blood, 1d3"],
+  [1020, "Ratkin Packleader", 65, 50, 18, "0", 1, 7, 50, 45, -10, "Ratkin", "Humanoid", "Leader of the pack", 170, "T3", "Shapeshifter blood, 1"],
+  [1021, "Ratkin Skirmisher", 40, 60, 9, "0", 1, 7, 50, 30, -5, "Ratkin", "Humanoid", "Safety in numbers", 70, "T2", "Shapeshifter blood, 1"],
+  [1022, "Ratkin Soldier", 50, 35, 9, "0", 1, 6, 45, 30, -10, "Ratkin", "Humanoid", "Safety in numbers", 70, "T2", "Shapeshifter blood, 1"],
+  [1023, "Ratkin Summoner", 45, 45, 12, "0", 1, 6, 35, 30, -5, "Ratkin", "Magic User", "Summoner", 120, "T3", "Shapeshifter blood, 1"],
+  [1024, "Ratkin Warlock", 45, 65, 14, "0", 1, 5, 30, 60, -5, "Ratkin", "Humanoid", "Magic User, Safety in numbers", 165, "T4", "Shapeshifter blood, 1"],
+  [1025, "Sergeant", 60, 55, 13, "0", 0, 4, 35, 50, -10, "King's Army", "Humanoid", "Disciplined", 140, "T3", "Human blood, 1"],
+  [1026, "Scorpion Queen", 65, 0, 45, "1d8+2", 3, 4, 40, 60, -5, "Beast", "Beast", "Fear 6, Pincers, Poisonous", 750, "T4", "Chitin, 1d3"],
+  [1027, "Shroom Queen", 60, 70, 38, "1", 2, 4, 40, 65, -5, "Shroomfolk", "Magic User", "Fear 5, Large, Magic User, Spores", 550, "T4", "Spores, 1d3"],
+  [1028, "Shroomling", 40, 65, 12, "0", 1, 5, 60, 65, -5, "Shroomfolk", "Magic User", "Magic User, Spores", 130, "T3", "Spores, 1"],
+  [1029, "Tree Spirit", 55, 0, 36, "1d12", 3, 5, 20, 60, 0, "Magic", "Beast", "Afraid of fire, Extra DMG from Fire, Large, Regenerate", 350, "-", "Spirit wood, 1d3"],
+];
+const MONSTER_TABLE = [
+  ...MONSTER_TABLE_RAW.map((row) => Object.fromEntries(MONSTER_TABLE_FIELDS.map((f, i) => [f, row[i]]))),
+  ...FP_MONSTER_RAW.map((row) => ({ ...Object.fromEntries([...MONSTER_TABLE_FIELDS, "part"].map((f, k) => [f, row[k]])), fp: true })),
+];
+const monstersFor = () => MONSTER_TABLE.filter((m) => !m.fp || EXP.on);
 
 // Encounter Tables (Bestiary p21-40) — 1d20 + X (X = 10 per hero level above 1),
 // find the matching row, roll each entry's Number formula. Ancient Lands is its own
@@ -4675,9 +4712,10 @@ function BestiaryTab() {
   const [openMonster, setOpenMonster] = useState(null);
   const [section, setSection] = useState("monsters"); // monsters | rules
 
-  const types = Array.from(new Set(MONSTER_TABLE.map((m) => m.type))).sort();
+  const monsterList = monstersFor();
+  const types = Array.from(new Set(monsterList.map((m) => m.type))).sort();
   const q = query.trim().toLowerCase();
-  const filteredMonsters = MONSTER_TABLE.filter((m) => {
+  const filteredMonsters = monsterList.filter((m) => {
     const matchesType = typeFilter === "all" || m.type === typeFilter;
     const matchesQuery = !q || m.name.toLowerCase().includes(q);
     return matchesType && matchesQuery;
@@ -4701,7 +4739,7 @@ function BestiaryTab() {
             className="flex-1 text-xs px-2 py-1.5 rounded font-bold"
             style={{ background: section === "monsters" ? palette.crimson : "#00000010", color: section === "monsters" ? palette.parchment : palette.ink, fontFamily: "Cinzel, serif" }}
           >
-            Monsters ({MONSTER_TABLE.length})
+            Monsters ({monsterList.length})
           </button>
           <button
             onClick={() => setSection("rules")}
@@ -4761,7 +4799,7 @@ function BestiaryTab() {
                       <StatCell label="To Hit" val={m.toHit} /><StatCell label="NA" val={m.na} /><StatCell label="M" val={m.m} /><StatCell label="DEX" val={m.dex} />
                     </div>
                     <p className="text-xs mb-1" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-                      <b>Behaviour:</b> {m.behaviour} · <b>HP:</b> {m.hp} · <b>XP:</b> {m.xp} · <b>Loot:</b> {m.loot}
+                      <b>Behaviour:</b> {m.behaviour} · <b>HP:</b> {m.hp} · <b>XP:</b> {m.xp} · <b>Loot:</b> {m.loot}{m.part ? <> · <b>Part:</b> {m.part}</> : null}
                     </p>
                     {m.special && (
                       <p className="text-xs" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
@@ -4887,6 +4925,16 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.82.0",
+    date: "2026-10-24",
+    sections: {
+      Added: [
+        "The False Prophet monsters: 30 new Bestiary entries (Battlewizard, Captain, Cyclops, Death Knight, Lich, the Ratkin, the Shroomfolk, Tree Spirit and more), including the Part each one drops. They only appear while the expansion is switched on, in the Bestiary and the combat monster picker",
+        "Book quirks kept as printed: the Battlewizard really has NA 9, and the Lich's type and behaviour columns are swapped in the book, so the app lists it as Undead with the Magic User behaviour",
+      ],
+    },
+  },
   {
     version: "1.81.1",
     date: "2026-10-24",
@@ -16668,7 +16716,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
               style={{ border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", background: "#fff" }}
             >
               <option value="">Pick a monster…</option>
-              {MONSTER_TABLE.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => (
+              {monstersFor().sort((a, b) => a.name.localeCompare(b.name)).map((m) => (
                 <option key={m.name} value={m.name}>{m.name} ({m.toHit > 0 ? "+" : ""}{m.toHit})</option>
               ))}
             </select>
@@ -20063,7 +20111,7 @@ function ExpansionsTab({ party, setParty, heroes }) {
         )}
         <div className="mt-2 rounded p-2 text-xs" style={{ background: "#fff", border: `1px solid ${palette.line}`, ...body }}>
           <p className="font-bold mb-1" style={{ fontFamily: "Cinzel, serif" }}>Not in the app yet</p>
-          <p>The new monsters (their stat table is not readable from the photos yet). They need to be tracked by hand until then.</p>
+          <p>Nothing from the photos we have. Pages of the book we haven't seen (1 to 13, 20 to 24, 53 to 55 and after 58) may hold more, and the new monster table was typed up from a blurry photo, so a few values may need checking.</p>
         </div>
       </Panel>
 

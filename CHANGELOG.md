@@ -3,6 +3,12 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.82.0] — 2026-10-24
+
+### Added
+- The False Prophet monsters: 30 new Bestiary entries (Battlewizard, Captain, Cyclops, Death Knight, Lich, the Ratkin, the Shroomfolk, Tree Spirit and more), including the Part each one drops. They only appear while the expansion is switched on, in the Bestiary and the combat monster picker
+- Book quirks kept as printed: the Battlewizard really has NA 9, and the Lich's type and behaviour columns are swapped in the book, so the app lists it as Undead with the Magic User behaviour
+
 ## [1.81.1] — 2026-10-24
 
 ### Added

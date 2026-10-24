@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Plus, Minus, Trash2, Flame, Heart, Zap, Brain, Sparkles, Dice5,
+  Plus, Minus, Trash2, Flame, Heart, Zap, Brain, Sparkles, Dice5, Leaf,
   Swords, Shield, BookOpen, Users, Skull,
   RotateCcw, Coins, Wheat, ScrollText, Pencil, Check, X, FolderOpen, Loader2, Map, Download, Upload,
   Landmark, Bed, ClipboardList, CircleHelp, Timer, Flashlight, FlaskConical, Library, ChevronUp, ShieldAlert, ShoppingCart
@@ -70,6 +70,7 @@ const defaultHero = () => ({
   diseaseExposure: [], // diseased-token reminders: [{ key, from }] — a CON test at the next rest
   lastingWounds: [], // Lasting Wounds (The False Prophet): [{ id, key, name, text, questsLeft, effect, hpLost }]
   permWounds: [], // Permanent Wounds: [{ key, count }]
+  beastforms: [], beastActive: null, groveOwed: { inv: 0, form: 0 }, // Druid (The False Prophet)
   squire: null, // Knight's Squire (The False Prophet): { name, cost, hiredCycle, paidCycle }
   squireGrace: false, squireEnergyPen: false, squireTended: false, squireDead: [],
   koCount: 0, // knock-outs this quest (each one after the first adds +1 to wound rolls)
@@ -428,6 +429,12 @@ function applyOneLevelUp(hero) {
   const perkCat = LEVEL_PERK_CATEGORY[hero.profession]?.[nextLevel];
   if (talentCat) { patch.pendingTalent = talentCat; notes.push(`choose a ${talentCat} Talent`); }
   if (perkCat) { patch.pendingPerk = perkCat; notes.push(`choose a ${perkCat} Perk`); }
+  if (EXP.druid && hero.profession === "Druid") {
+    const owed = hero.groveOwed || { inv: 0, form: 0 };
+    const form = [3, 5, 7, 9].includes(nextLevel) ? 1 : 0;
+    patch.groveOwed = { inv: owed.inv + 1, form: owed.form + form };
+    notes.push(`visit your Sacred Grove to learn a new invocation${form ? " and a new beastform" : ""}`);
+  }
   if (entry) {
     if (entry.hpDie) {
       const roll = nextLevel === 2 ? rollDie(2) : rollDie(2) - 1;
@@ -568,7 +575,7 @@ function alchemistBeltSlots(hero) {
 }
 
 // ---- Expansions: The False Prophet — Expanded Diseases (replaces the core Disease rule while switched on) ----
-const EXP = { on: false, diseases: false, lasting: false, squire: false }; // refreshed each App render from party.expansions
+const EXP = { on: false, diseases: false, lasting: false, squire: false, druid: false }; // refreshed each App render from party.expansions
 const HIT_ZONES = ["Head", "Arms", "Torso", "Legs"];
 const DISEASES = [
   { key: "withering", name: "Withering Plague", contagious: true, mod: -35, short: "Max HP −1 every rest; only 1d3 HP regained when resting.", text: "Also known as the red pox. Every time the hero rests, max HP drops by 1, and the hero only regains 1d3 HP when resting (anywhere). When cured the max HP is restored; lost HP must still be healed normally." },
@@ -921,16 +928,82 @@ function diseaseRestStep(h0, all, ctx) {
   return sq.hero === r.hero && sq.lines.length === 0 ? r : { ...r, hero: sq.hero, lines: [...r.lines, ...sq.lines] };
 }
 
+// ---------- The False Prophet: the Druid ----------
+// Invocations (CV outside / CV inside a dungeon, Mana, upkeep, Q = Quick, T = Touch). Druids learn these instead of spells.
+const INVOCATIONS = [
+  { name: "Cure Hunger", cv: 0, cvInside: 5, mana: 15, upkeep: 0, special: "T", effect: "Cast on a hungry hero: they make a CON test with a +10 modifier. On success the hero no longer suffers from hunger." },
+  { name: "Entangle", cv: 5, cvInside: 10, mana: 8, upkeep: 4, special: "Q", effect: "Needs LOS. Roots grab an enemy: it must pass a DEX test to break free (one try per AP). If adjacent to a hero it fights that hero instead, and anyone striking or shooting it gets +10 CS or RS. LOS need not be kept once cast." },
+  { name: "Fireflies", cv: 0, cvInside: 5, mana: 15, upkeep: 0, special: "Q", effect: "A swarm of fireflies works like a torch while leaving both hands free. They go out as a torch would, or when the druid uses another invocation." },
+  { name: "Light Heal", cv: 5, cvInside: 10, mana: 10, upkeep: 0, special: "Q, T", effect: "Lay hands on a fellow hero or yourself to heal 1d8 HP." },
+  { name: "Resist Disease", cv: 0, cvInside: 5, mana: 8, upkeep: 0, special: "T", effect: "Cast on a diseased hero: they retake the Disease roll with a +20 CON modifier. If successful the hero is cured." },
+  { name: "Resist Poison", cv: 0, cvInside: 5, mana: 8, upkeep: 0, special: "T", effect: "Cast on a poisoned hero: +20 CON for the sake of fighting the poison." },
+  { name: "Rot", cv: 5, cvInside: 10, mana: 15, upkeep: 0, special: "", effect: "A wooden door instantly rots, taking 3d6 DMG without raising the Threat Level." },
+  { name: "Summon Swarm", cv: 10, cvInside: 15, mana: 10, upkeep: 1, special: "", effect: "Summon a random swarm (1d4: Rat, Bat, Bee or Snail Swarm) in a random square of an unoccupied tile in LOS. Only one swarm at a time; they vanish after the battle. Add a hero token to the Initiative Bag as soon as it is summoned." },
+  { name: "Summon Tree Spirit", cv: 10, cvInside: 0, mana: 20, upkeep: 2, special: "", effect: "Outside only, not in the desert. Place a Tree Spirit on the closest tree or bush and add a hero token to the Initiative Bag. It vanishes if killed or if the druid casts another invocation." },
+  { name: "Thorns", cv: 5, cvInside: 15, mana: 10, upkeep: 0, special: "", effect: "Thorns cover an open, closed or broken door. A wandering monster pushing through needs 5-6 on 1d6; enemies already on the table need 3 turns (6 AP) to clear them and are removed once through. A new Thorns invocation removes the old thorns." },
+].map((i) => ({ ...i, lvl: 0, school: "Druidic" }));
+const invocationByName = (n) => INVOCATIONS.find((i) => i.name === n);
+// The spell the Cast tool uses: invocations take the CV for where they are cast (outside / inside a dungeon).
+function castableSpell(name, dungeonState) {
+  const inv = invocationByName(name);
+  if (inv) return { ...inv, cv: dungeonState === "dungeon" ? inv.cvInside : inv.cv };
+  return SPELLS.find((s) => s.name === name);
+}
+const SWARMS = [
+  { name: "Rat Swarm", text: "Use the Rat Swarm Monster Card." },
+  { name: "Bat Swarm", text: "Use the Bat Swarm Monster Card." },
+  { name: "Bee Swarm", text: "Attacks a random enemy in LOS: 1 HP DMG per turn and that enemy's To Hit is 0 until the swarm goes. It cannot be attacked and disappears after five turns. Undead are immune." },
+  { name: "Snail Swarm", text: "Cannot attack. Moves one square a turn; each square passed is slimed (anyone entering is targeted by the Slip spell, enemies don't avoid it). The snails cannot be killed and vanish after the battle." },
+];
+// Shapeshifter forms (The False Prophet p16). Stats default from the Bestiary; the Energy cost is on each Beastform card.
+const BEASTFORMS = [
+  { name: "Cave Bear", monster: "Cave Bear", note: "" },
+  { name: "Giant Scorpion", monster: "Giant Scorpion", sanity: true, note: "Costs the druid 1d3 Sanity." },
+  { name: "Giant Snake", monster: "Giant Snake", note: "" },
+  { name: "Giant Spider", monster: "Giant Spider", sanity: true, note: "Costs the druid 1d3 Sanity." },
+  { name: "Giant Wolf", monster: "Giant Wolf", note: "" },
+  { name: "Falcon", monster: "", note: "Flies at all times, so it passes chasms and water/lava features." },
+  { name: "Raptor", monster: "Raptor", note: "" },
+  { name: "Rat", monster: "", rat: true, note: "A small rat that cannot fight and is ignored by enemies. Cannot be taken with enemies in LOS. Moves 6 squares a turn and passes under doors. Place the new tile, roll encounters and place enemies as usual; if there are enemies the rat must return to the previous tile, and battle does not start unless the heroes open the door. Back in druid form, a locked door may be tried from the other side: roll the door table again, 1-5 opens, 6-10 stays locked." },
+  { name: "Werewolf", monster: "Werewolf", note: "" },
+];
+const beastformByName = (n) => BEASTFORMS.find((b) => b.name === n);
+function beastDefaultHp(name) {
+  const f = beastformByName(name);
+  const m = f?.monster ? MONSTER_TABLE.find((x) => x.name === f.monster) : null;
+  return m ? m.hp : "";
+}
+// Reverting: the druid loses 1 HP of their own for every 3 HP lost as the animal (rounded down).
+function revertBeast(hero) {
+  const b = hero.beastActive;
+  if (!b) return { hero, lines: [] };
+  const lost = Math.max(0, b.hpMax - b.hpCur);
+  const loss = Math.floor(lost / 3);
+  const hp = Math.max(0, hero.hp.cur - loss);
+  const lines = [`${hero.name} returns to druid form after losing ${lost} HP as the ${b.name}: ${loss} HP lost${loss ? ` (${hero.hp.cur} to ${hp}/${hero.hp.max})` : ""}.`];
+  if (hp === 0 && hero.hp.cur > 0) lines.push(`${hero.name} is knocked out while changing back.`);
+  return { hero: { ...hero, hp: { ...hero.hp, cur: hp }, beastActive: null }, lines };
+}
+// Resting inside a dungeon: a RES test to regain full Mana; failing refills only half of the pool.
+function druidDungeonMana(h) {
+  const res = Number(h.stats.RES) || 0;
+  const roll = rollPercent();
+  const ok = roll <= res || roll <= 5;
+  const gain = ok ? h.mana.max - h.mana.cur : Math.min(h.mana.max - h.mana.cur, Math.floor(h.mana.max / 2));
+  return { cur: Math.min(h.mana.max, h.mana.cur + gain), line: `Druid Mana: RES test ${roll} vs ${res} - ${ok ? "passed, Mana fully regained" : `failed, half the Mana pool refilled (+${gain})`}.` };
+}
+
 const defaultParty = () => ({
   threat: 2, threatFloor: 2, morale: 0, food: 4,
   coins: 0, // Party Pot — shared coins, built up via "Pool to Party" from a hero's personal pouch; starts empty since new heroes now start with their own 150c
   coinsMigrated: true, // marks that this party has already gone through the one-time party-pot -> per-hero coins split (new parties don't need it)
   settlementName: "",
+  grove: { place: "", estate: false }, // Druid's Sacred Grove (The False Prophet)
   dungeonState: "settlement", // "settlement" | "travel" | "dungeon" — drives the Travel tab status badge and the auto-clear of tempEffects on dungeon exit
   dungeonRestCount: 0, // completed (uninterrupted) Short Rests taken since entering the current dungeon — drives the Ambush risk escalation; resets to 0 on Exit Dungeon, never per level
   simplified: { encumbrance: false, morale: false, durability: false, sanity: false, scenario: false }, // Simplified Game (p21): true = system removed
   optionalRules: { lootMode: "hardcore", dungeonEvents: false, simplifiedAlchemy: false, newBeginning: false, manualTracking: false, alchemyOnly: false },
-  expansions: { falseProphet: false, fpDiseases: true, fpLasting: false, fpSquire: true }, // Expansions tab: The False Prophet master switch + its parts
+  expansions: { falseProphet: false, fpDiseases: true, fpLasting: false, fpSquire: true, fpDruid: true }, // Expansions tab: The False Prophet master switch + its parts
   manualHero: { STR: "", DEX: "", perception: "", pickLocks: "" }, // typed numbers the Actions tools use when no hero is picked (Manual tracking)
   roomEvent: null, // current room's Dungeon Event (optional rule), persisted across tab switches
   newBeginning: { seed: "", quests: {} }, // A New Beginning expansion tracker: seed 1-12 and per-quest { name, settlement, note }
@@ -4606,6 +4679,22 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.80.0",
+    date: "2026-10-24",
+    sections: {
+      Added: [
+        "Druid (The False Prophet): a Druid panel on the hero card, with its own tick in the Expansions tab. Shapeshifter: learn beastforms (type in the Energy cost from the card; HP fills in from the Bestiary), Shift spends the Energy and starts a separate HP pool for the animal, and Giant Scorpion / Giant Spider cost 1d3 Sanity",
+        "Beastform HP: Beast takes damage tracks the animal. At 0 HP the Druid reverts at once; reverting costs the Druid 1 HP for every 3 lost as the animal, and a Druid who reaches 0 changing back is knocked out. The Cast tool refuses spells while shifted",
+        "Druidic Invocations: all 10 with outside and dungeon CVs, Mana, upkeep, Quick/Touch and effects. A Druid picks two to start, and the Cast tool uses the right CV for outside or inside a dungeon and never allows Focus",
+        "Short Rest inside a dungeon: the Druid's RES test decides full Mana (pass) or half the pool (fail). Camp and inn nights still refill fully",
+        "Sacred Grove: every level-up adds an invocation to learn, and levels 3, 5, 7 and 9 also add a beastform. Learning takes a day and one ration (taken from the party for you). Add a grove to the Bergmeister Estate for 400 c, and tick Sacred Grove on the Alchemy Gather page for +30 Alchemy and 1d3 of each ingredient",
+        "Summon Swarm roll (1d4) with each swarm's rules, and a Botany reference (Wintercress, Ember Bark, Salty Wyrmwood, Bitterweed)",
+        "Book conflict: page 16 says a beastform can be learned every level, page 18 says levels 3, 5, 7 and 9 only. The app follows page 18",
+        "Not automated: placing and moving swarms, Tree Spirit and thorns on the board, the five-turn beastform timer, and Botany herb effects",
+      ],
+    },
+  },
   {
     version: "1.79.0",
     date: "2026-10-24",
@@ -8967,6 +9056,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
           </div>
           <HeroDiseasePanel hero={hero} update={update} otherHeroes={otherHeroes} allHeroes={[hero, ...(otherHeroes || [])]} addLog={addLog} pushToast={pushToast} />
           <HeroWoundsPanel hero={hero} update={update} addLog={addLog} pushToast={pushToast} />
+          <HeroDruidPanel hero={hero} update={update} party={party} setParty={setParty} addLog={addLog} pushToast={pushToast} />
           <HeroSquirePanel hero={hero} update={update} party={party} setParty={setParty} otherHeroes={otherHeroes} updateHero={updateHero} addLog={addLog} pushToast={pushToast} />
 
           {/* Basic stats */}
@@ -9930,7 +10020,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                 }}
               />
               <AttachedItemList label="Perks" names={hero.perks} dataset={PERKS} color={palette.gold} groupKey={(i) => i.type} onRemove={(t) => set({ perks: hero.perks.filter((x) => x !== t) })} />
-              <AttachedItemList label="Spells" names={hero.spells} dataset={SPELLS} color="#5B6FA8" groupKey={(i) => i.school} onRemove={(t) => set({ spells: hero.spells.filter((x) => x !== t) })} />
+              <AttachedItemList label="Spells" names={hero.spells} dataset={[...SPELLS, ...INVOCATIONS]} color="#5B6FA8" groupKey={(i) => i.school} onRemove={(t) => set({ spells: hero.spells.filter((x) => x !== t) })} />
               <AttachedItemList label="Prayers" names={hero.prayers} dataset={PRAYERS} color={palette.crimson} groupKey={(i) => `Level ${i.lvl}`} onRemove={(t) => set({ prayers: hero.prayers.filter((x) => x !== t) })} />
               <AttachedItemList label="Special Rules" names={hero.specialRules} dataset={SPECIAL_RULES} color={palette.ember} groupKey={(i) => i.type} onRemove={(t) => set({ specialRules: hero.specialRules.filter((x) => x !== t) })} />
               <AttachedItemList
@@ -13518,10 +13608,12 @@ function AlchemyTab({ heroes, updateHero, addLog, party, setParty }) {
   // ---------- Gather & Harvest ----------
   const [habitat, setHabitat] = useState("Roadside");
   const [gatherResult, setGatherResult] = useState(null);
+  const [inGrove, setInGrove] = useState(false);
+  const groveOn = EXP.druid && !!activeHero && activeHero.profession === "Druid" && inGrove;
   const gatherIngredients = () => {
     if (!activeHero) return;
     const roll = rollPercent();
-    const target = Number(activeHero.skills.alchemy) || 0;
+    const target = (Number(activeHero.skills.alchemy) || 0) + (groveOn ? 30 : 0);
     if (roll > target) {
       setGatherResult({ ok: false, lines: [`Rolled ${roll} vs ${target} — nothing found.`] });
       addLog(`${activeHero.name} searches for ingredients (${habitat}): rolled ${roll} vs ${target} — nothing found.`);
@@ -13535,11 +13627,13 @@ function AlchemyTab({ heroes, updateHero, addLog, party, setParty }) {
       const entry = ingredientsTableLookup(habitat, tableRoll);
       if (entry) {
         found.push(entry.name);
-        const next = addComponent(hero, entry.name, "Ingredient", 1, exquisite);
+        const qty = groveOn ? rollDie(3) : 1;
+        const next = addComponent(hero, entry.name, "Ingredient", qty, exquisite);
         hero = { ...hero, alchemyComponents: next };
+        if (groveOn) found[found.length - 1] = `${qty} x ${entry.name}`;
       }
     }
-    const line = `Rolled ${roll} vs ${target} — found ${found.join(" and ") || "nothing usable"}${exquisite ? " (Exquisite!)" : ""}.`;
+    const line = `${groveOn ? "(Sacred Grove: +30 Alchemy, 1d3 each) " : ""}Rolled ${roll} vs ${target} — found ${found.join(" and ") || "nothing usable"}${exquisite ? " (Exquisite!)" : ""}.`;
     setGatherResult({ ok: true, lines: [line] });
     addLog(`${activeHero.name} gathers ingredients (${habitat}): ${line}`);
   };
@@ -13868,6 +13962,9 @@ function AlchemyTab({ heroes, updateHero, addLog, party, setParty }) {
             <select value={habitat} onChange={(e) => setHabitat(e.target.value)} className="w-full text-xs rounded px-2 py-1.5 mb-2" style={{ background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif" }}>
               {HABITATS.map((h) => <option key={h} value={h}>{h}</option>)}
             </select>
+            {EXP.druid && activeHero?.profession === "Druid" && (
+              <label className="flex items-center gap-1.5 text-xs mb-2" style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}><input type="checkbox" checked={inGrove} onChange={(e) => setInGrove(e.target.checked)} /> Sacred Grove (+30 Alchemy, 1d3 of each find)</label>
+            )}
             <button onClick={gatherIngredients} className="w-full text-sm px-3 py-2 rounded font-bold active:scale-95 transition-transform" style={{ background: palette.crimsonDark, color: palette.parchment, fontFamily: "Cinzel, serif" }}>
               Gather ({activeHero?.skills.alchemy ?? 0})
             </button>
@@ -14700,7 +14797,13 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
         energyLine = missing > 0 ? `+${regained}/${missing} Energy.` : "Energy already full.";
       }
       const isCaster = h.mana.max > 0;
-      const newMana = isCaster ? Math.min(h.mana.max, h.mana.cur + half(h.mana.max - h.mana.cur)) : h.mana.cur;
+      let druidLine = "";
+      let newMana = isCaster ? Math.min(h.mana.max, h.mana.cur + half(h.mana.max - h.mana.cur)) : h.mana.cur;
+      if (EXP.druid && h.profession === "Druid" && isCaster && party.dungeonState === "dungeon") {
+        const dm = druidDungeonMana(h);
+        newMana = agitated ? Math.min(h.mana.max, h.mana.cur + half(dm.cur - h.mana.cur)) : dm.cur;
+        druidLine = ` ${dm.line}`;
+      }
       let nextHero = {
         ...h,
         hp: { ...h.hp, cur: newHp },
@@ -14715,7 +14818,7 @@ function TurnTab({ party, setParty, heroes, updateHero, addLog, pushToast }) {
         trauma = ` Lingering Trauma is triggered by the rest: −10 RES and −10 CS until the party leaves the dungeon.`;
       }
       updateHero(h.id, nextHero);
-      lines.push({ text: `${h.name}: +${hpGain} HP (${newHp}/${h.hp.max}).${agitated ? " (Agitated: half recovery.)" : ""} ${energyLine}${isCaster ? (agitated ? " Mana: half regained." : " Mana fully regained.") : ""}${trauma}` });
+      lines.push({ text: `${h.name}: +${hpGain} HP (${newHp}/${h.hp.max}).${agitated ? " (Agitated: half recovery.)" : ""} ${energyLine}${isCaster ? (agitated ? " Mana: half regained." : " Mana fully regained.") : ""}${druidLine}${trauma}` });
     });
 
     const restNumber = (party.dungeonRestCount || 0) + 1;
@@ -16025,7 +16128,8 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
   const [canDispel, setCanDispel] = useState(false);
   const [enemyRS, setEnemyRS] = useState(0);
   const castHero = heroes.find((h) => h.id === castHeroPick);
-  const chosenSpell = SPELLS.find((s) => s.name === castSpellPick);
+  const chosenSpell = castableSpell(castSpellPick, party?.dungeonState);
+  const castIsDruid = !!castHero && castHero.profession === "Druid" && EXP.druid;
   const chosenSpellType = chosenSpell ? spellTypeOf(chosenSpell) : null;
   const powerAllowedFor = chosenSpell && (chosenSpell.school === "Restoration" || chosenSpell.school === "Destruction");
   const maxPower = castHero ? Math.min(5, castHero.level || 1) : 5;
@@ -16084,10 +16188,12 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
   };
   const castSpell = () => {
     if (!castHero || !chosenSpell) return;
-    const intenseOn = intenseFocus && (castHero.perks || []).includes("Intense Focus");
-    if (intenseOn && focusAP > 1) { setCastResult({ ok: false, lines: ["Intense Focus counts as one Focus level — at most 1 ordinary Focus AP can be added (2 levels maximum)."] }); return; }
+    if (castHero.beastActive) { setCastResult({ ok: false, lines: [`${castHero.name} is in beastform (${castHero.beastActive.name}) and cannot use magic. Revert first.`] }); return; }
+    const fAP = castIsDruid ? 0 : focusAP;
+    const intenseOn = !castIsDruid && intenseFocus && (castHero.perks || []).includes("Intense Focus");
+    if (intenseOn && fAP > 1) { setCastResult({ ok: false, lines: ["Intense Focus counts as one Focus level — at most 1 ordinary Focus AP can be added (2 levels maximum)."] }); return; }
     if (intenseOn && castHero.energy.cur < 1) { setCastResult({ ok: false, lines: [`${castHero.name} has no Energy left for Intense Focus.`] }); return; }
-    const r = resolveSpellCast(castHero, chosenSpell, { focusAP, intenseFocus: intenseOn, wounded, increasedPower, hasLOS, enemyAdjacent, inSettlement, canDispel, enemyRS });
+    const r = resolveSpellCast(castHero, chosenSpell, { focusAP: fAP, intenseFocus: intenseOn, wounded, increasedPower, hasLOS, enemyAdjacent, inSettlement, canDispel, enemyRS });
     if (r.blocked) { setCastResult({ ok: false, lines: [r.msg] }); return; }
     const cur = Math.max(0, castHero.mana.cur + r.manaDelta); // Perfect Cast may briefly exceed max — don't clamp the top.
     updateHero({ ...castHero, mana: { ...castHero.mana, cur }, ...(intenseOn ? { energy: { ...castHero.energy, cur: castHero.energy.cur - 1 } } : {}) });
@@ -16773,7 +16879,7 @@ function CombatCalc({ heroes, updateHero, addLog, pushToast, setParty, party }) 
                   <div className="grid grid-cols-2 gap-2">
                     <label className="text-xs" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
                       Focus (AP spent)
-                      <select value={focusAP} onChange={(e) => setFocusAP(Number(e.target.value))} className="w-full text-xs rounded px-2 py-1 mt-0.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+                      <select value={castIsDruid ? 0 : focusAP} disabled={castIsDruid} onChange={(e) => setFocusAP(Number(e.target.value))} className="w-full text-xs rounded px-2 py-1 mt-0.5" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
                         <option value={0}>0</option>
                         <option value={1}>1</option>
                         <option value={2}>2</option>
@@ -19225,6 +19331,184 @@ function HeroSquirePanel({ hero, update, party, setParty, otherHeroes, updateHer
   );
 }
 
+const BOTANY = [
+  { name: "Wintercress", text: "Eat to gain a temporary +15 Arcane Arts on the next invocation cast, but a miscast now happens on 90-100. Eating it from a Quick Slot can be done in the same action as the cast." },
+  { name: "Ember Bark", text: "1 AP to eat: NA 2 until the end of the next battle, or for five turns if not in battle." },
+  { name: "Salty Wyrmwood", text: "A druid who succeeds with a Heal roll can apply it to a poisoned hero, who is freed of the poison." },
+  { name: "Bitterweed", text: "During a rest the druid may eat it, or let party members eat it: anyone who does regains 1d3 HP." },
+];
+function HeroDruidPanel({ hero, update, party, setParty, addLog, pushToast }) {
+  const [shiftPick, setShiftPick] = useState("");
+  const [learnForm, setLearnForm] = useState("");
+  const [formCost, setFormCost] = useState("");
+  const [formHp, setFormHp] = useState("");
+  const [invPick, setInvPick] = useState("");
+  const [atGrove, setAtGrove] = useState(false);
+  const [dmg, setDmg] = useState("");
+  const [swarm, setSwarm] = useState(null);
+  const [open, setOpen] = useState(null);
+  if (!EXP.druid || hero.profession !== "Druid") return null;
+  const forms = hero.beastforms || [];
+  const known = (hero.spells || []).filter((n) => invocationByName(n));
+  const owed = hero.groveOwed || { inv: 0, form: 0 };
+  const b = hero.beastActive;
+  const ration = party?.food || 0;
+  const soft = { background: "#00000010", color: palette.ink };
+  const note = { color: palette.ink, fontFamily: "Crimson Pro, serif" };
+  const inp = { border: `1px solid ${palette.line}`, background: "#fff", fontFamily: "Crimson Pro, serif" };
+  const dungeon = party?.dungeonState === "dungeon";
+  const logAll = (lines) => lines.forEach((l) => addLog && addLog(l));
+  const shift = () => {
+    const f = forms.find((x) => x.name === shiftPick);
+    if (!f || b) return;
+    const cost = Number(f.energy) || 0;
+    if (hero.energy.cur < cost) { pushToast && pushToast("Not enough Energy", `${f.name} costs ${cost} Energy, ${hero.name} has ${hero.energy.cur}.`); return; }
+    let patch = { energy: { ...hero.energy, cur: hero.energy.cur - cost }, beastActive: { name: f.name, hpMax: Number(f.hp) || 1, hpCur: Number(f.hp) || 1 } };
+    const lines = [`${hero.name} shifts into a ${f.name} (${cost} Energy). Lasts one battle, or five turns outside battle. No magic or equipment while shifted.`];
+    if (beastformByName(f.name)?.sanity && !SIMP.sanity) {
+      const loss = rollDie(3);
+      patch.sanity = { ...hero.sanity, cur: Math.max(0, hero.sanity.cur - loss) };
+      lines.push(`Taking the shape of a ${f.name} costs ${loss} Sanity.`);
+    }
+    update({ ...hero, ...patch });
+    logAll(lines);
+    setShiftPick("");
+  };
+  const revert = () => {
+    const r = revertBeast(hero);
+    update(r.hero);
+    logAll(r.lines);
+    pushToast && pushToast(`${hero.name} reverts`, r.lines[0]);
+  };
+  const takeDamage = () => {
+    const n = Math.max(0, Math.floor(Number(dmg) || 0));
+    if (!b || !n) return;
+    const nb = { ...b, hpCur: Math.max(0, b.hpCur - n) };
+    setDmg("");
+    if (nb.hpCur <= 0) {
+      const r = revertBeast({ ...hero, beastActive: nb });
+      update(r.hero);
+      logAll([`The ${b.name} form drops to 0 HP: ${hero.name} reverts before being knocked out.`, ...r.lines]);
+      pushToast && pushToast(`${hero.name} reverts`, r.lines[0]);
+    } else update({ ...hero, beastActive: nb });
+  };
+  const spendDay = () => {
+    if (ration < 1) { pushToast && pushToast("No rations", "Learning in the grove takes a day and one ration."); return false; }
+    setParty((prev) => ({ ...prev, food: Math.max(0, prev.food - 1) }));
+    return true;
+  };
+  const free = forms.length === 0;
+  const canLearnForm = free || (atGrove && owed.form > 0);
+  const learnBeast = () => {
+    const f = beastformByName(learnForm);
+    const cost = Math.max(0, Number(formCost));
+    if (!f || formCost === "" || !canLearnForm) return;
+    if (!free && cost >= hero.energy.max) { pushToast && pushToast("Too costly", `A form must cost less Energy to shift into than ${hero.name} has (${hero.energy.max}).`); return; }
+    if (!free && !spendDay()) return;
+    update({ ...hero, beastforms: [...forms, { name: f.name, energy: cost, hp: Number(formHp) || 1 }], groveOwed: free ? owed : { ...owed, form: owed.form - 1 } });
+    addLog && addLog(`${hero.name} learns the ${f.name} beastform (${cost} Energy)${free ? " as a starting form" : " in the Sacred Grove (1 day, 1 ration)"}.`);
+    setLearnForm(""); setFormCost(""); setFormHp("");
+  };
+  const freeInv = known.length < 2;
+  const canLearnInv = freeInv || (atGrove && owed.inv > 0);
+  const learnInv = () => {
+    if (!invPick || !canLearnInv) return;
+    if (!freeInv && !spendDay()) return;
+    update({ ...hero, spells: [...(hero.spells || []), invPick], groveOwed: freeInv ? owed : { ...owed, inv: owed.inv - 1 } });
+    addLog && addLog(`${hero.name} learns the invocation ${invPick}${freeInv ? " (starting invocation)" : " in the Sacred Grove (1 day, 1 ration)"}.`);
+    setInvPick("");
+  };
+  const buildGrove = () => {
+    if ((party?.coins || 0) < 400) { pushToast && pushToast("Can't afford it", "A grove on the Bergmeister Estate costs 400 c."); return; }
+    setParty((prev) => ({ ...prev, coins: prev.coins - 400, grove: { ...(prev.grove || {}), estate: true, place: "Bergmeister Estate" } }));
+    addLog && addLog("The party adds a Sacred Grove to the Bergmeister Estate for 400 c.");
+  };
+  const rollSwarm = () => {
+    const r = rollDie(4);
+    setSwarm({ r, ...SWARMS[r - 1] });
+    addLog && addLog(`${hero.name} summons a swarm: rolled ${r}, ${SWARMS[r - 1].name}.`);
+  };
+  const grove = party?.grove || {};
+  return (
+    <div className="mb-3 rounded p-2" style={{ background: "#fff", border: `1px solid ${palette.line}` }}>
+      <p className="text-xs font-bold mb-1" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Druid (The False Prophet)</p>
+      <p className="text-[11px] mb-1.5" style={{ color: palette.inkSoft }}>Mana {hero.mana.cur}/{hero.mana.max} (WIS x1.5). Resting inside a dungeon: RES test for full Mana, a fail refills half. Short Rest does this for you. No focusing.</p>
+
+      <p className="text-xs font-bold" style={{ color: palette.crimson, fontFamily: "Cinzel, serif" }}>Shapeshifter</p>
+      {b ? (
+        <div className="rounded p-1.5 mb-1.5" style={{ background: `${palette.gold}22`, border: `1px solid ${palette.gold}` }}>
+          <p className="text-xs" style={note}><b>{b.name}</b> · {b.hpCur}/{b.hpMax} HP · no magic or equipment, no dodge or parry (enemies roll against the beast's To Hit). Lasts one battle, or five turns outside battle.</p>
+          {beastformByName(b.name)?.note && <p className="text-[11px] mt-1" style={note}>{beastformByName(b.name).note}</p>}
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <input value={dmg} onChange={(e) => setDmg(e.target.value)} inputMode="numeric" placeholder="Damage" className="text-xs rounded px-2 py-1 w-20" style={inp} />
+            <button onClick={takeDamage} className="text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: palette.crimsonDark, color: palette.parchment }}>Beast takes damage</button>
+            <button onClick={revert} className="text-[11px] px-2 py-1.5 rounded font-semibold" style={soft}>Revert (1 action)</button>
+          </div>
+          <p className="text-[11px] mt-1" style={{ color: palette.inkSoft }}>Reverting costs {hero.name} 1 HP for every 3 lost as the animal (now {Math.floor((b.hpMax - b.hpCur) / 3)}).</p>
+        </div>
+      ) : forms.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+          <select value={shiftPick} onChange={(e) => setShiftPick(e.target.value)} className="text-xs rounded px-2 py-1 flex-1 min-w-[8rem]" style={inp}>
+            <option value="">Shift into…</option>
+            {forms.map((f) => <option key={f.name} value={f.name}>{f.name} ({f.energy} Energy, {f.hp} HP)</option>)}
+          </select>
+          <button onClick={shift} disabled={!shiftPick} className="text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: shiftPick ? palette.forestDark : "#00000020", color: palette.parchment }}>Shift (1 action)</button>
+          {shiftPick === "Rat" && <p className="w-full text-[11px]" style={{ color: palette.crimson }}>The Rat form can't be taken with enemies in LOS.</p>}
+        </div>
+      ) : <p className="text-[11px] mb-1.5 italic" style={{ color: palette.inkSoft }}>No beastform yet. A druid learns one at the start of their career.</p>}
+      {forms.length > 0 && <p className="text-[11px] mb-1.5" style={note}>Known: {forms.map((f) => `${f.name} (${f.energy}E, ${f.hp}HP)`).join(", ")}.</p>}
+      <details className="mb-2"><summary className="text-[11px] font-semibold cursor-pointer" style={{ color: palette.ink }}>Learn a beastform{free ? " (starting form)" : ` (${owed.form} owed)`}</summary>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          <select value={learnForm} onChange={(e) => { setLearnForm(e.target.value); setFormHp(String(beastDefaultHp(e.target.value))); }} className="text-xs rounded px-2 py-1 flex-1 min-w-[8rem]" style={inp}>
+            <option value="">Choose a form…</option>
+            {BEASTFORMS.filter((f) => !forms.some((k) => k.name === f.name)).map((f) => <option key={f.name} value={f.name}>{f.name}</option>)}
+          </select>
+          <input value={formCost} onChange={(e) => setFormCost(e.target.value)} inputMode="numeric" placeholder="Energy" className="text-xs rounded px-2 py-1 w-16" style={inp} />
+          <input value={formHp} onChange={(e) => setFormHp(e.target.value)} inputMode="numeric" placeholder="HP" className="text-xs rounded px-2 py-1 w-14" style={inp} />
+          <button onClick={learnBeast} disabled={!canLearnForm || !learnForm || formCost === ""} className="text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: canLearnForm && learnForm && formCost !== "" ? palette.forestDark : "#00000020", color: palette.parchment }}>Learn</button>
+        </div>
+        <p className="text-[11px] mt-1" style={{ color: palette.inkSoft }}>Enter the Energy cost from the Beastform card. HP is filled in from the Bestiary, so change it if your card differs. {free ? "" : "Later forms are learned in your Sacred Grove (tick the box in the Grove section) and cost 1 day and 1 ration."}</p>
+      </details>
+
+      <p className="text-xs font-bold" style={{ color: palette.crimson, fontFamily: "Cinzel, serif" }}>Invocations</p>
+      {known.length === 0 && <p className="text-[11px] italic mb-1" style={{ color: palette.inkSoft }}>No invocations yet: a druid starts with two.</p>}
+      {known.map((n) => { const i = invocationByName(n); return (
+        <div key={n} className="mb-1 rounded p-1.5" style={{ background: "#00000008" }}>
+          <button onClick={() => setOpen(open === n ? null : n)} className="w-full text-left text-xs font-semibold" style={{ color: palette.ink }}>{n} <span style={{ fontWeight: 400, color: palette.inkSoft }}>· CV {i.cv} out / {i.cvInside} in dungeon · Mana {i.mana}{i.upkeep ? ` · upkeep ${i.upkeep}` : ""}{i.special ? ` · ${i.special}` : ""}</span></button>
+          {open === n && <p className="text-[11px] mt-1" style={note}>{i.effect}</p>}
+          <p className="text-[11px]" style={{ color: palette.inkSoft }}>Cast it from the Actions tab: it picks the right CV for where you are{dungeon ? " (inside a dungeon now)" : ""}.</p>
+        </div>
+      ); })}
+      <details className="mb-2"><summary className="text-[11px] font-semibold cursor-pointer" style={{ color: palette.ink }}>Learn an invocation{freeInv ? ` (starting pick ${known.length + 1} of 2)` : ` (${owed.inv} owed)`}</summary>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          <select value={invPick} onChange={(e) => setInvPick(e.target.value)} className="text-xs rounded px-2 py-1 flex-1 min-w-[8rem]" style={inp}>
+            <option value="">Choose an invocation…</option>
+            {INVOCATIONS.filter((i) => !known.includes(i.name)).map((i) => <option key={i.name} value={i.name}>{i.name}</option>)}
+          </select>
+          <button onClick={learnInv} disabled={!canLearnInv || !invPick} className="text-[11px] px-2 py-1.5 rounded font-semibold" style={{ background: canLearnInv && invPick ? palette.forestDark : "#00000020", color: palette.parchment }}>Learn</button>
+        </div>
+      </details>
+
+      <p className="text-xs font-bold" style={{ color: palette.crimson, fontFamily: "Cinzel, serif" }}>Sacred Grove</p>
+      <p className="text-[11px] mb-1" style={note}>{grove.place ? `Grove: ${grove.place}.` : "No grove chosen yet: pick a village and roll as if for a quest location."} Owed after level-ups: {owed.inv} invocation{owed.inv === 1 ? "" : "s"}, {owed.form} beastform{owed.form === 1 ? "" : "s"} (new forms at levels 3, 5, 7 and 9).</p>
+      <div className="flex flex-wrap items-center gap-1.5 mb-1">
+        <input value={grove.place || ""} onChange={(e) => setParty((prev) => ({ ...prev, grove: { ...(prev.grove || {}), place: e.target.value } }))} placeholder="Grove village" className="text-xs rounded px-2 py-1 flex-1 min-w-[7rem]" style={inp} />
+        {!grove.estate && <button onClick={buildGrove} className="text-[11px] px-2 py-1.5 rounded font-semibold" style={soft}>Add to Estate (400 c)</button>}
+        <label className="text-[11px] flex items-center gap-1" style={note}><input type="checkbox" checked={atGrove} onChange={(e) => setAtGrove(e.target.checked)} /> I am in the grove</label>
+      </div>
+      <p className="text-[11px] mb-2" style={{ color: palette.inkSoft }}>Learning a form or invocation takes a day and one ration (taken for you; the party camps nearby and shares the druid's rations). Collecting ingredients in the grove: tick "Sacred Grove" on the Alchemy tab's Gather page for +30 Alchemy and 1d3 of each.</p>
+
+      <div className="flex flex-wrap items-center gap-1.5 mb-1">
+        <button onClick={rollSwarm} className="text-[11px] px-2 py-1.5 rounded font-semibold" style={soft}>Roll swarm (Summon Swarm, 1d4)</button>
+        {swarm && <p className="w-full text-[11px]" style={note}><b>{swarm.r}: {swarm.name}.</b> {swarm.text}</p>}
+      </div>
+      <details><summary className="text-[11px] font-semibold cursor-pointer" style={{ color: palette.ink }}>Botany (druid herbs)</summary>
+        {BOTANY.map((x) => <p key={x.name} className="text-[11px] mt-1" style={note}><b>{x.name}.</b> {x.text}</p>)}
+      </details>
+    </div>
+  );
+}
+
 function QuestCompletePanel({ party, heroes, updateHero, addLog, pushToast }) {
   const [done, setDone] = useState(null);
   if (!EXP.lasting) return null;
@@ -19273,12 +19557,13 @@ function ExpansionsTab({ party, setParty, heroes }) {
           <div className="pl-4" style={{ borderLeft: `2px solid ${palette.line}` }}>
             {toggleRow(ex.fpDiseases !== false, (v) => setEx({ fpDiseases: v }), "Expanded Diseases", "replaces the core Disease rule with 8 named diseases.")}
             {toggleRow(ex.fpLasting === true, (v) => setEx({ fpLasting: v }), "Lasting & Permanent Wounds (optional rule)", "replaces the 1d4 permanent stat loss when a hero is knocked out.")}
+            {toggleRow(ex.fpDruid !== false, (v) => setEx({ fpDruid: v }), "Druid", "beastforms, invocations, Sacred Grove and botany for Druids.")}
             {toggleRow(ex.fpSquire !== false, (v) => setEx({ fpSquire: v }), "Knight's Squire", "Knights hire a squire; without one they lose Energy and gear durability.")}
           </div>
         )}
         <div className="mt-2 rounded p-2 text-xs" style={{ background: "#fff", border: `1px solid ${palette.line}`, ...body }}>
           <p className="font-bold mb-1" style={{ fontFamily: "Cinzel, serif" }}>Not in the app yet</p>
-          <p>The Druid (shapeshifting, invocations, sacred grove, botany) and Class Specialisation. These are planned for later updates and need to be tracked by hand until then.</p>
+          <p>Class Specialisation at Level 5 (all the new Talents, Perks and cost tables) and the new monsters. These are planned for later updates and need to be tracked by hand until then.</p>
         </div>
       </Panel>
 
@@ -19319,6 +19604,21 @@ function ExpansionsTab({ party, setParty, heroes }) {
               </p>
             ))}
           </div>
+        </Panel>
+      )}
+
+      {on && ex.fpDruid !== false && (
+        <Panel>
+          <SectionTitle icon={Leaf}>Druid: what is new</SectionTitle>
+          <ul className="text-xs list-disc pl-4 space-y-1.5" style={body}>
+            <li><b>Shapeshifter:</b> a Druid's hero card lists known beastforms. Shift spends the form's Energy (typed in from the Beastform card when learned), starts a separate HP pool for the animal and takes 1d3 Sanity for Giant Scorpion and Giant Spider. "Beast takes damage" tracks the animal's HP. At 0 the Druid reverts at once; reverting costs the Druid 1 HP for every 3 lost as the animal, and a Druid who drops to 0 changing back is knocked out. No magic is allowed while shifted (the Cast tool blocks it).</li>
+            <li><b>Invocations:</b> 10 druid invocations with both CVs, Mana, upkeep and effects. A Druid starts with two; the Cast tool uses the outside or dungeon CV for you, and never allows Focus. Druid Mana is WIS x1.5.</li>
+            <li><b>Resting in a dungeon:</b> Short Rest rolls the Druid's RES test for full Mana; a failure refills half the pool. A camp or inn night refills it fully.</li>
+            <li><b>Sacred Grove:</b> every level-up adds one invocation to learn, and levels 3, 5, 7 and 9 also add a beastform. Tick "I am in the grove" to learn them; each takes one day and one ration, taken from the party for you. The grove can be added to the Bergmeister Estate for 400 c (taken from the party). Gathering ingredients there gives +30 Alchemy and 1d3 of each find.</li>
+            <li><b>Summon Swarm</b> rolls the 1d4 swarm for you, and Botany lists Wintercress, Ember Bark, Salty Wyrmwood and Bitterweed.</li>
+            <li><b>Still done by hand:</b> placing and moving the swarm, Tree Spirit and thorns on the board, the five-turn timer for beastforms, Botany herb effects, rolling for the grove's village, and the Hexmaster's extra invocations (arriving with Class Specialisation).</li>
+            <li><b>Book conflict:</b> page 16 says a new beastform may be learned at every level-up, page 18 says only at levels 3, 5, 7 and 9. The app follows page 18.</li>
+          </ul>
         </Panel>
       )}
 
@@ -20607,6 +20907,7 @@ export default function App() {
   EXP.diseases = EXP.on && party.expansions?.fpDiseases !== false;
   EXP.lasting = EXP.on && party.expansions?.fpLasting === true;
   EXP.squire = EXP.on && party.expansions?.fpSquire !== false;
+  EXP.druid = EXP.on && party.expansions?.fpDruid !== false;
   const [log, setLog] = useState([]);
   const [tab, setTab] = useState("party");
   const navRef = useRef(null);

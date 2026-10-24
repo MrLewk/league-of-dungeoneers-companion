@@ -3,6 +3,18 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.80.0] — 2026-10-24
+
+### Added
+- Druid (The False Prophet): a Druid panel on the hero card, with its own tick in the Expansions tab. Shapeshifter: learn beastforms (type in the Energy cost from the card; HP fills in from the Bestiary), Shift spends the Energy and starts a separate HP pool for the animal, and Giant Scorpion / Giant Spider cost 1d3 Sanity
+- Beastform HP: Beast takes damage tracks the animal. At 0 HP the Druid reverts at once; reverting costs the Druid 1 HP for every 3 lost as the animal, and a Druid who reaches 0 changing back is knocked out. The Cast tool refuses spells while shifted
+- Druidic Invocations: all 10 with outside and dungeon CVs, Mana, upkeep, Quick/Touch and effects. A Druid picks two to start, and the Cast tool uses the right CV for outside or inside a dungeon and never allows Focus
+- Short Rest inside a dungeon: the Druid's RES test decides full Mana (pass) or half the pool (fail). Camp and inn nights still refill fully
+- Sacred Grove: every level-up adds an invocation to learn, and levels 3, 5, 7 and 9 also add a beastform. Learning takes a day and one ration (taken from the party for you). Add a grove to the Bergmeister Estate for 400 c, and tick Sacred Grove on the Alchemy Gather page for +30 Alchemy and 1d3 of each ingredient
+- Summon Swarm roll (1d4) with each swarm's rules, and a Botany reference (Wintercress, Ember Bark, Salty Wyrmwood, Bitterweed)
+- Book conflict: page 16 says a beastform can be learned every level, page 18 says levels 3, 5, 7 and 9 only. The app follows page 18
+- Not automated: placing and moving swarms, Tree Spirit and thorns on the board, the five-turn beastform timer, and Botany herb effects
+
 ## [1.79.0] — 2026-10-24
 
 ### Added

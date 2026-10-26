@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.83.2] — 2026-10-26
+
+### Fixed
+- A New Home: Bergmeister Estate upgrades now cost 75% of the listed price rounded down, as the book says (the Shrine and Smithy show 1012c instead of 1013c)
+
 ## [1.83.1] — 2026-10-26
 
 ### Fixed

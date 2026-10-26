@@ -272,7 +272,7 @@ const BACKGROUNDS_DATA = [
   },
   {
     id: "a-new-home", roll: 17, name: "A New Home",
-    text: "Personal Quest: Acquire the Bergmeister Estate. Once you have, you may buy upgrades to it for 75% of the listed price — the Settlement tab applies this discount automatically while this hero is in the party.",
+    text: "Personal Quest: Acquire the Bergmeister Estate. Once you have, you may buy upgrades to it for 75% (rounded down) of the listed price — the Settlement tab applies this discount automatically while this hero is in the party.",
     estateDiscount: 0.75,
   },
   {
@@ -4980,6 +4980,15 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.83.2",
+    date: "2026-10-26",
+    sections: {
+      Fixed: [
+        "A New Home: Bergmeister Estate upgrades now cost 75% of the listed price rounded down, as the book says (the Shrine and Smithy show 1012c instead of 1013c)",
+      ],
+    },
+  },
   {
     version: "1.83.1",
     date: "2026-10-26",
@@ -11446,7 +11455,7 @@ function SettlementTab({ party, setParty, heroes, updateHero, addLog, goToGuilds
   // ---------- Estate: Furnishing the Manor resolvers ----------
   // A New Home (background 17): Bergmeister Estate upgrades cost 75% while such a hero is in the party.
   const estateRate = heroes.some((h) => getBackgroundData(h)?.estateDiscount) ? 0.75 : 1;
-  const roomPrice = (room) => Math.round(room.cost * estateRate);
+  const roomPrice = (room) => (estateRate < 1 ? Math.floor((room.cost * 3) / 4) : room.cost); // A New Home: 75% (RDD) of the listed price
   const buyRoom = (rawRoom) => {
     const room = { ...rawRoom, cost: roomPrice(rawRoom) };
     if (party.estate.pendingRoom) { setEstateMsg({ ok: false, line: "Only one thing may be commissioned between quests — activate the pending room first (once you've returned from your next dungeon trip)." }); return; }

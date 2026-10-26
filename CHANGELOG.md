@@ -3,6 +3,12 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.83.0] — 2026-10-26
+
+### Changed
+- A New Beginning quest tracker now has the real quest names: Captured (shown only with The False Prophet switched on), Protecting the caravan, The Locket, Prisoners, Axes and Roots, Woodcutters and Raids, each with its follow-up quests beneath it (Revenge on the beast, End Destination, Finding Meredith, Grak's Lair, Darkstone Keep, Queenslayer, Retribution, Orknag's lair). Each quest keeps a settlement and note field
+- The old numbered Starting Quest 1 to 6 and Follow-up Quest 1 to 8 rows are replaced, so ticks and renames made on them don't carry over
+
 ## [1.82.0] — 2026-10-24
 
 ### Added

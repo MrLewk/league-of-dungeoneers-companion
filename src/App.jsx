@@ -4926,6 +4926,16 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.83.0",
+    date: "2026-10-26",
+    sections: {
+      Changed: [
+        "A New Beginning quest tracker now has the real quest names: Captured (shown only with The False Prophet switched on), Protecting the caravan, The Locket, Prisoners, Axes and Roots, Woodcutters and Raids, each with its follow-up quests beneath it (Revenge on the beast, End Destination, Finding Meredith, Grak's Lair, Darkstone Keep, Queenslayer, Retribution, Orknag's lair). Each quest keeps a settlement and note field",
+        "The old numbered Starting Quest 1 to 6 and Follow-up Quest 1 to 8 rows are replaced, so ticks and renames made on them don't carry over",
+      ],
+    },
+  },
+  {
     version: "1.82.0",
     date: "2026-10-24",
     sections: {
@@ -19000,11 +19010,20 @@ function ActionsTray({ party, setParty, heroes, updateHero, addLog }) {
   );
 }
 
-const NB_START_QUESTS = [1, 2, 3, 4, 5, 6].map((n) => ({ id: `start${n}`, label: `Starting Quest ${n}` }));
-const NB_FOLLOW_QUESTS = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ id: `follow${n}`, label: `Follow-up Quest ${n}` }));
+// A New Beginning (von Braus expansion): the real quest names, each starting quest with the follow-ups it leads to.
+// "Captured" needs The False Prophet, so it (and its follow-up) only appears while that expansion is switched on.
+const NB_QUESTS = [
+  { id: "captured", name: "Captured", fp: true, follow: ["Revenge on the beast"] },
+  { id: "caravan", name: "Protecting the caravan", follow: ["End Destination"] },
+  { id: "locket", name: "The Locket", follow: ["Finding Meredith", "Grak's Lair"] },
+  { id: "prisoners", name: "Prisoners", follow: ["Darkstone Keep"] },
+  { id: "axes", name: "Axes and Roots", follow: ["Queenslayer", "Retribution"] },
+  { id: "woodcutters", name: "Woodcutters", follow: [] },
+  { id: "raids", name: "Raids", follow: ["Orknag's lair"] },
+];
+const nbFollowId = (parent, name) => `${parent.id}:${name.toLowerCase().replace(/[^a-z]+/g, "-")}`;
 
-// Quest tracker for the paid von Braus expansion "A New Beginning". Quest names aren't built in (the content is
-// the publisher's), so every row is renameable and carries a settlement and a note.
+// Quest tracker for the paid von Braus expansion "A New Beginning". Each quest keeps a settlement and a note you fill in.
 function NewBeginningPanel({ party, setParty, addLog }) {
   const nb = party.newBeginning || { seed: "", quests: {} };
   const quests = party.quests || { completed: {} };
@@ -19017,29 +19036,35 @@ function NewBeginningPanel({ party, setParty, addLog }) {
     if (!isDone) addLog && addLog(`Quest complete: ${label}.`);
   };
   const inputStyle = { background: "#fff", border: `1px solid ${palette.line}`, fontFamily: "Crimson Pro, serif", color: palette.ink };
-  const row = (q) => {
-    const d = nb.quests[q.id] || {};
-    const label = d.name || q.label;
-    const done = !!quests.completed?.[`nb:${q.id}`];
+  const isDone = (id) => !!quests.completed?.[`nb:${id}`];
+  const row = (id, label, indent, parentDone, parentName) => {
+    const d = nb.quests[id] || {};
+    const done = isDone(id);
     return (
-      <div key={q.id} className="py-2" style={{ borderTop: `1px solid ${palette.line}` }}>
+      <div key={id} className="py-2" style={{ borderTop: `1px solid ${palette.line}`, marginLeft: indent ? 20 : 0, opacity: indent && !parentDone && !done ? 0.55 : 1 }}>
         <div className="flex items-center gap-2">
-          <input type="checkbox" checked={done} onChange={() => toggle(q.id, label)} />
-          <input type="text" value={d.name || ""} placeholder={q.label} onChange={(e) => setQ(q.id, { name: e.target.value })} className={`flex-1 min-w-0 px-2 py-1 rounded text-sm font-semibold ${done ? "line-through opacity-60" : ""}`} style={inputStyle} />
+          <input type="checkbox" checked={done} onChange={() => toggle(id, label)} />
+          <span className={`flex-1 min-w-0 text-sm font-semibold ${done ? "line-through opacity-60" : ""}`} style={{ fontFamily: "Crimson Pro, serif", color: palette.ink }}>
+            {indent ? "\u21B3 " : ""}{label}
+          </span>
         </div>
+        {indent && !parentDone && !done && <p className="text-[11px] ml-6" style={{ color: palette.inkSoft }}>Follows {parentName}.</p>}
         <div className="grid grid-cols-2 gap-2 mt-1.5">
-          <input type="text" value={d.settlement || ""} placeholder="Settlement" onChange={(e) => setQ(q.id, { settlement: e.target.value })} className="min-w-0 px-2 py-1 rounded text-xs" style={inputStyle} />
-          <input type="text" value={d.note || ""} placeholder="Note" onChange={(e) => setQ(q.id, { note: e.target.value })} className="min-w-0 px-2 py-1 rounded text-xs" style={inputStyle} />
+          <input type="text" value={d.settlement || ""} placeholder="Settlement" onChange={(e) => setQ(id, { settlement: e.target.value })} className="min-w-0 px-2 py-1 rounded text-xs" style={inputStyle} />
+          <input type="text" value={d.note || ""} placeholder="Note" onChange={(e) => setQ(id, { note: e.target.value })} className="min-w-0 px-2 py-1 rounded text-xs" style={inputStyle} />
         </div>
       </div>
     );
   };
-  const count = (list) => list.filter((q) => quests.completed?.[`nb:${q.id}`]).length;
+  const list = NB_QUESTS.filter((q) => !q.fp || EXP.on);
+  const startDone = list.filter((q) => isDone(q.id)).length;
+  const follows = list.flatMap((q) => q.follow.map((f) => nbFollowId(q, f)));
+  const followDone = follows.filter(isDone).length;
   return (
     <Panel>
       <SectionTitle icon={BookOpen}>A New Beginning (expansion)</SectionTitle>
       <p className="text-xs mb-2 italic" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
-        Replaces First Blood. Rename each quest, and note its settlement, once you have the expansion. Its expanded Hunger rules aren't automated: follow them from the expansion rulebook.
+        Replaces First Blood. Tick quests off as you finish them, and note each one's settlement. Follow-up quests sit under the quest they follow. Its expanded Hunger rules aren't automated: follow them from the expansion rulebook.
       </p>
       <label className="text-xs block mb-3" style={{ fontFamily: "Crimson Pro, serif", color: palette.inkSoft }}>
         Seed (which of the 12 quest distributions)
@@ -19048,10 +19073,14 @@ function NewBeginningPanel({ party, setParty, addLog }) {
           {[...Array(12)].map((_, i) => <option key={i + 1} value={String(i + 1)}>Seed {i + 1}</option>)}
         </select>
       </label>
-      <p className="text-sm font-bold mb-1" style={{ color: palette.crimson, fontFamily: "Cinzel, serif" }}>Starting Quests <span className="text-xs font-normal" style={{ color: palette.inkSoft }}>({count(NB_START_QUESTS)}/{NB_START_QUESTS.length})</span></p>
-      {NB_START_QUESTS.map(row)}
-      <p className="text-sm font-bold mt-4 mb-1" style={{ color: palette.crimson, fontFamily: "Cinzel, serif" }}>Follow-up Quests <span className="text-xs font-normal" style={{ color: palette.inkSoft }}>({count(NB_FOLLOW_QUESTS)}/{NB_FOLLOW_QUESTS.length})</span></p>
-      {NB_FOLLOW_QUESTS.map(row)}
+      <p className="text-sm font-bold mb-1" style={{ color: palette.crimson, fontFamily: "Cinzel, serif" }}>Quests <span className="text-xs font-normal" style={{ color: palette.inkSoft }}>({startDone}/{list.length} starting, {followDone}/{follows.length} follow-up)</span></p>
+      {list.map((q) => (
+        <div key={q.id}>
+          {row(q.id, q.name, false)}
+          {q.follow.map((f) => row(nbFollowId(q, f), f, true, isDone(q.id), q.name))}
+        </div>
+      ))}
+      {!EXP.on && <p className="text-[11px] mt-2 italic" style={{ color: palette.inkSoft }}>"Captured" and its follow-up "Revenge on the beast" need The False Prophet: switch it on in the Expansions tab to show them.</p>}
     </Panel>
   );
 }
@@ -20229,7 +20258,7 @@ function ExpansionsTab({ party, setParty, heroes }) {
 
       <Panel>
         <SectionTitle icon={Map}>A New Beginning</SectionTitle>
-        {toggleRow(!!party.optionalRules?.newBeginning, (v) => setParty({ ...party, optionalRules: { ...party.optionalRules, newBeginning: v } }), "Enable A New Beginning", "adds a quest tracker to the Quests tab for the von Braus 'A New Beginning' expansion (6 starting quests, 8 follow-ups). Its Hunger rules are handled manually.")}
+        {toggleRow(!!party.optionalRules?.newBeginning, (v) => setParty({ ...party, optionalRules: { ...party.optionalRules, newBeginning: v } }), "Enable A New Beginning", "adds a quest tracker to the Quests tab for the von Braus 'A New Beginning' expansion (7 starting quests, 8 follow-ups, with Captured needing The False Prophet). Its Hunger rules are handled manually.")}
       </Panel>
     </div>
   );

@@ -4981,6 +4981,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.83.3",
+    date: "2026-10-26",
+    sections: {
+      Changed: [
+        "New link-preview (share) image that mentions The False Prophet and A New Beginning expansions",
+      ],
+    },
+  },
+  {
     version: "1.83.2",
     date: "2026-10-26",
     sections: {

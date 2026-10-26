@@ -3,6 +3,14 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.83.1] — 2026-10-26
+
+### Fixed
+- Half-Ogres can now only pick the Warrior, Barbarian or Rogue profession (Gnomes, Froglings, Pale Orcs and Pale Goblins also have their banned professions removed from the picker, as their notes say)
+- Halflings, Dwarves, Gnomes, Duckfolk, Froglings and Pale Goblins no longer see the Longbow or Elven Bow in the starting-weapon, weapon and spare-weapon pickers
+- The Pudoa'ii only appears in the weapon pickers for Elves
+- The Bestiary now shows each monster's harvestable Part (for example Cave Bear: Fur, 2), and the new False Prophet monsters' parts can be harvested too
+
 ## [1.83.0] — 2026-10-26
 
 ### Changed

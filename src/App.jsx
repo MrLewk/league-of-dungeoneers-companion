@@ -2027,6 +2027,29 @@ const NIGHTSTALKER_ARMOUR_NAMES = ["Nightstalker Cap", "Nightstalker Vest", "Nig
 // guild's special-equipment list. Neither table carries its own `dur` field (durability is
 // tracked separately once equipped), so it's added here at the rulebook default of 6, except
 // where an entry already specifies a higher value (e.g. Nightstalker's High Quality DUR 8).
+// Species rules (Advanced Bestiary): Halflings, Dwarves, Gnomes, Duckfolk, Froglings and Pale Goblins can't use Longbows or Elven Bows;
+// the Pudoa'ii is an Elf-only weapon.
+const NO_LONGBOW_SPECIES = ["Halfling", "Dwarf", "Gnome", "Duckfolk", "Frogling", "Pale Goblin"];
+function weaponAllowed(hero, w) {
+  const name = typeof w === "string" ? w : w.name;
+  if (name === "Pudoa'ii" && hero?.species !== "Elf") return false;
+  if ((name === "Longbow" || name === "Elven Bow") && NO_LONGBOW_SPECIES.includes(hero?.species)) return false;
+  return true;
+}
+const weaponsFor = (hero) => WEAPONS.filter((w) => weaponAllowed(hero, w));
+// Professions a species may take. `only` = the whole list; `not` = banned ones.
+const SPECIES_PROFESSION_RULES = {
+  "Half-Ogre": { only: ["Warrior", "Barbarian", "Rogue"] },
+  Gnome: { not: ["Barbarian", "Knight", "Warrior Priest"] },
+  Frogling: { not: ["Barbarian", "Knight", "Warrior Priest"] },
+  "Pale Orc": { not: ["Knight", "Warrior Priest", "Wizard"] },
+  "Pale Goblin": { not: ["Knight", "Warrior Priest", "Wizard"] },
+};
+const professionAllowed = (species, prof) => {
+  const r = SPECIES_PROFESSION_RULES[species];
+  if (!r) return true;
+  return r.only ? r.only.includes(prof) : !r.not.includes(prof);
+};
 const BUYABLE_WEAPONS = WEAPONS.map((w) => ({ ...w, dur: w.dur || 6 }));
 const BUYABLE_ARMOUR = ARMOUR_AND_SHIELDS.map((a) => ({ ...a, dur: a.dur || 6 }));
 
@@ -2253,6 +2276,38 @@ const MONSTER_PARTS_TABLE = {
   "Wraiths": { part: "Ectoplasm", qty: 1 }, "Wyvern": { part: "Scales", qty: "1d4" },
   "Zombie": { part: "Zombie skin", qty: 1 }, "Zombie Ogre": { part: "Zombie skin", qty: "1d4" },
 };
+// The False Prophet monsters
+Object.assign(MONSTER_PARTS_TABLE, {
+  "Battlewizard": { part: "Human blood", qty: 1 },
+  "Captain": { part: "Human blood", qty: 1 },
+  "Cave Spider": { part: "Spider fang", qty: 1 },
+  "Cyclops": { part: "Cyclops eye", qty: 1 },
+  "Death Knight": { part: "Bonemeal", qty: 1 },
+  "Flesh Golem": { part: "Zombie skin", qty: 2 },
+  "Fungoid Ranger": { part: "Spores", qty: 1 },
+  "Fungoid Warrior": { part: "Spores", qty: 1 },
+  "Ghoul Prince": { part: "Ghoul blood", qty: 1 },
+  "Giant Slime": { part: "Slime", qty: "1d6" },
+  "Gigantic Rat": { part: "Rat tail", qty: 1 },
+  "Guardsman": { part: "Human blood", qty: 1 },
+  "Lich": { part: "Bonemeal", qty: 1 },
+  "Macrobyte Titan": { part: "Spores", qty: "1d3" },
+  "Rabid Ratkin": { part: "Shapeshifter blood", qty: 1 },
+  "Rat Swarm": { part: "Shapeshifter blood", qty: 1 },
+  "Ratkin Assassin": { part: "Shapeshifter blood", qty: 1 },
+  "Ratkin Elite": { part: "Shapeshifter blood", qty: 1 },
+  "Ratkin Ogre": { part: "Shapeshifter blood", qty: "1d3" },
+  "Ratkin Packleader": { part: "Shapeshifter blood", qty: 1 },
+  "Ratkin Skirmisher": { part: "Shapeshifter blood", qty: 1 },
+  "Ratkin Soldier": { part: "Shapeshifter blood", qty: 1 },
+  "Ratkin Summoner": { part: "Shapeshifter blood", qty: 1 },
+  "Ratkin Warlock": { part: "Shapeshifter blood", qty: 1 },
+  "Sergeant": { part: "Human blood", qty: 1 },
+  "Scorpion Queen": { part: "Chitin", qty: "1d3" },
+  "Shroom Queen": { part: "Spores", qty: "1d3" },
+  "Shroomling": { part: "Spores", qty: 1 },
+  "Tree Spirit": { part: "Spirit wood", qty: "1d3" },
+});
 const ALCHEMY_PART_NAMES = [...new Set(Object.values(MONSTER_PARTS_TABLE).map((p) => p.part))].sort();
 
 // Ingredients Table (p71) — for Gather Ingredients. Roll 1d100 against the column
@@ -3383,7 +3438,7 @@ const FP_MONSTER_RAW = [
   [1000, "Battlewizard", 50, 65, 14, "0", 9, 4, 65, 25, 0, "King's Army", "Magic User", "Inspiring, Magic User", 160, "T5", "Human blood, 1"],
   [1001, "Captain", 65, 50, 16, "0", 0, 4, 30, 60, -10, "King's Army", "Humanoid", "Inspiring", 160, "T4", "Human blood, 1"],
   [1002, "Cave Spider", 55, 0, 18, "1d8+2", 1, 6, 60, 40, -10, "Beast", "Beast", "Fear 4, Jump", 150, "Part", "Spider fang, 1"],
-  [1003, "Cyclops", 50, 65, 75, "4", 3, 5, 20, 45, 0, "Beast", "Beast", "Bellow, Large, Pyrophobia, Simple Weapons, Stone Thrower, Terror 8", 1000, "T4", "Cyclops Eye, 1"],
+  [1003, "Cyclops", 50, 65, 75, "4", 3, 5, 20, 45, 0, "Beast", "Beast", "Bellow, Large, Pyrophobia, Simple Weapons, Stone Thrower, Terror 8", 1000, "T4", "Cyclops eye, 1"],
   [1004, "Death Knight", 70, 35, 25, "1", 1, 4, 40, 60, -10, "Undead", "Higher Undead", "Cursed weapons, Fear 7, Just bones", 300, "T4", "Bonemeal, 1"],
   [1005, "Flesh Golem", 50, 0, 35, "2d6+2", 2, 4, 15, 25, 0, "Undead", "Lower Undead", "Fear 7, Large, Regenerate", 550, "-", "Zombie skin, 2"],
   [1006, "Fungoid Ranger", 50, 60, 15, "0", 1, 4, 50, 55, -10, "Shroomfolk", "Humanoid", "Spores", 150, "T3", "Spores, 1"],
@@ -4799,7 +4854,7 @@ function BestiaryTab() {
                       <StatCell label="To Hit" val={m.toHit} /><StatCell label="NA" val={m.na} /><StatCell label="M" val={m.m} /><StatCell label="DEX" val={m.dex} />
                     </div>
                     <p className="text-xs mb-1" style={{ color: palette.inkSoft, fontFamily: "Crimson Pro, serif" }}>
-                      <b>Behaviour:</b> {m.behaviour} · <b>HP:</b> {m.hp} · <b>XP:</b> {m.xp} · <b>Loot:</b> {m.loot}{m.part ? <> · <b>Part:</b> {m.part}</> : null}
+                      <b>Behaviour:</b> {m.behaviour} · <b>HP:</b> {m.hp} · <b>XP:</b> {m.xp} · <b>Loot:</b> {m.loot}{(() => { const pt = m.part || (MONSTER_PARTS_TABLE[m.name] ? `${MONSTER_PARTS_TABLE[m.name].part}, ${MONSTER_PARTS_TABLE[m.name].qty}` : ""); return pt ? <> · <b>Part:</b> {pt}</> : null; })()}
                     </p>
                     {m.special && (
                       <p className="text-xs" style={{ color: palette.ink, fontFamily: "Crimson Pro, serif" }}>
@@ -4925,6 +4980,18 @@ function BuyMeACoffeeButton() {
 
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
+  {
+    version: "1.83.1",
+    date: "2026-10-26",
+    sections: {
+      Fixed: [
+        "Half-Ogres can now only pick the Warrior, Barbarian or Rogue profession (Gnomes, Froglings, Pale Orcs and Pale Goblins also have their banned professions removed from the picker, as their notes say)",
+        "Halflings, Dwarves, Gnomes, Duckfolk, Froglings and Pale Goblins no longer see the Longbow or Elven Bow in the starting-weapon, weapon and spare-weapon pickers",
+        "The Pudoa'ii only appears in the weapon pickers for Elves",
+        "The Bestiary now shows each monster's harvestable Part (for example Cave Bear: Fur, 2), and the new False Prophet monsters' parts can be harvested too",
+      ],
+    },
+  },
   {
     version: "1.83.0",
     date: "2026-10-26",
@@ -8650,10 +8717,10 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
             >
               <option value="">Profession…</option>
               <optgroup label="Core">
-                {PROFESSIONS.filter((p) => !p.expansion).map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
+                {PROFESSIONS.filter((p) => !p.expansion && (professionAllowed(hero.species, p.name) || p.name === hero.profession)).map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
               </optgroup>
               <optgroup label="The False Prophet Expansion">
-                {PROFESSIONS.filter((p) => p.expansion).map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
+                {PROFESSIONS.filter((p) => p.expansion && (professionAllowed(hero.species, p.name) || p.name === hero.profession)).map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
               </optgroup>
             </select>
             <div className="flex items-center gap-1 text-xs" style={{ fontFamily: "JetBrains Mono, monospace", color: palette.inkSoft }}>
@@ -8819,7 +8886,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
           {startingCfg && (
             <div className="mt-2 rounded p-2" style={{ background: "#00000008" }}>
               <p className="text-xs font-semibold mb-1.5" style={{ fontFamily: "Cinzel, serif", color: palette.ink }}>Starting Equipment</p>
-              {(startingCfg.weaponOptions === "any" || (Array.isArray(startingCfg.weaponOptions) && startingCfg.weaponOptions.length > 1)) && (
+              {(startingCfg.weaponOptions === "any" || (Array.isArray(startingCfg.weaponOptions) && startingCfg.weaponOptions.filter((w) => weaponAllowed(hero, w)).length > 1)) && (
                 <select
                   value={startWeaponChoice}
                   onChange={(e) => setStartWeaponChoice(e.target.value)}
@@ -8828,8 +8895,8 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                 >
                   <option value="">Choose starting weapon…</option>
                   {startingCfg.weaponOptions === "any"
-                    ? WEAPONS.map((w) => <option key={w.name} value={w.name}>{w.name}</option>)
-                    : startingCfg.weaponOptions.map((w) => <option key={w} value={w}>{w}</option>)}
+                    ? weaponsFor(hero).map((w) => <option key={w.name} value={w.name}>{w.name}</option>)
+                    : startingCfg.weaponOptions.filter((w) => weaponAllowed(hero, w)).map((w) => <option key={w} value={w}>{w}</option>)}
                 </select>
               )}
               {startingCfg.backpackChoice && (
@@ -9744,7 +9811,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
               <option value="">Pick from table…</option>
               {(() => {
                 const ownedNames = new Set((hero.backpack || []).map((b) => b.name));
-                const owned = WEAPONS.filter((w) => ownedNames.has(w.name));
+                const owned = weaponsFor(hero).filter((w) => ownedNames.has(w.name));
                 return (
                   <>
                     {owned.length > 0 && (
@@ -9755,7 +9822,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                       </optgroup>
                     )}
                     <optgroup label="All Items (reference)">
-                      {WEAPONS.map((w) => (
+                      {weaponsFor(hero).map((w) => (
                         <option key={w.name} value={w.name}>{w.name} ({w.dmg}, Class {w.class})</option>
                       ))}
                     </optgroup>
@@ -10153,7 +10220,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
             >
               <option value="">Add from table…</option>
               <optgroup label="Weapons (spare, not equipped)">
-                {WEAPONS.map((w) => (
+                {weaponsFor(hero).map((w) => (
                   <option key={w.name} value={w.name}>{w.name} — {w.cost}c</option>
                 ))}
               </optgroup>

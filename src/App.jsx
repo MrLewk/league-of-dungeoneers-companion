@@ -150,7 +150,7 @@ const ELF_SUBSPECIES = [
 ];
 const SPECIES_DATA = [
   { name: "Human", hp: { base: 7, count: 1, size: 6 }, stats: { STR: 30, CON: 30, DEX: 30, WIS: 30, RES: 30 }, max: { STR: 70, CON: 65, DEX: 70, WIS: 80, RES: 80 }, note: "Jack of All Trades: roll a random Talent from a chosen category at creation (pick manually from the Compendium)." },
-  { name: "Elf", hp: { base: 6, count: 1, size: 6 }, stats: { STR: 25, CON: 20, DEX: 40, WIS: 35, RES: 30 }, max: { STR: 60, CON: 65, DEX: 80, WIS: 80, RES: 80 }, note: "Traits: Perfect Hearing, Night Vision — both applied automatically when you roll starting stats. May take a Pudoa'ii instead of the usual profession starting weapon — available in the Weapon picker like any other weapon.", subspecies: ELF_SUBSPECIES },
+  { name: "Elf", hp: { base: 6, count: 1, size: 6 }, stats: { STR: 25, CON: 20, DEX: 40, WIS: 35, RES: 30 }, max: { STR: 60, CON: 65, DEX: 80, WIS: 80, RES: 80 }, note: "Traits: Perfect Hearing, Night Vision — both applied automatically when you roll starting stats.", subspecies: ELF_SUBSPECIES },
   { name: "Halfling", hp: { base: 5, count: 1, size: 6 }, stats: { STR: 20, CON: 20, DEX: 40, WIS: 30, RES: 40 }, max: { STR: 40, CON: 60, DEX: 80, WIS: 80, RES: 80 }, note: "Cannot use Longbows or Elven bows (height). May buy Cooking Gear for 50c at the start of the game. Trait: Lucky — starts with 1 Luck Point, set automatically when you roll starting stats." },
   { name: "Dwarf", hp: { base: 8, count: 1, size: 6 }, stats: { STR: 40, CON: 30, DEX: 25, WIS: 25, RES: 30 }, max: { STR: 80, CON: 70, DEX: 60, WIS: 80, RES: 80 }, note: "Cannot use Longbows or Elven bows (height). Traits: Hate Goblins, Night Vision — Night Vision is applied automatically when you roll starting stats; Hate Goblins needs a chosen enemy, so add the Hate Talent manually from the Compendium.", subspecies: DWARF_SUBSPECIES },
   { name: "Gnome", hp: { base: 4, count: 1, size: 6 }, stats: { STR: 20, CON: 20, DEX: 30, WIS: 40, RES: 40 }, max: { STR: 40, CON: 50, DEX: 70, WIS: 80, RES: 80 }, note: "Cannot use Longbows or Elven bows (height). Cannot become Barbarians, Knights, or Warrior Priests. Artificer: once specialised, pays half cost for blacksmithing/crafting services. Traits: Linked to the Void, Slippery, Natural Illusionist, Now You See Me…, Weak with Destruction Magic — applied automatically when you roll starting stats." },
@@ -1928,7 +1928,7 @@ function repairCostPerPoint(price) {
 // unless otherwise noted in the book — none of these are noted otherwise.
 const WEAPONS = [
   { name: "Dagger", dmg: "1d6", enc: 5, class: 1, wtype: "E", special: "Dual Wield +1, Bleed", cost: 10, avail: 4, reload: null },
-  { name: "Pudoa'ii", dmg: "2d4+2", enc: 10, class: 3, special: "Reach, AP (1). Elf-only alternate starting weapon.", cost: 350, avail: 2, reload: null },
+  { name: "Pudoa'ii", dmg: "2d4+2", enc: 10, class: 3, special: "Reach, AP (1). The False Prophet treasure card only: it can't be bought or chosen at creation.", cost: 350, avail: 2, reload: null },
   { name: "Rapier", dmg: "1d6+1", enc: 5, class: 1, wtype: "P", special: "Fast, Dual Wield +2", cost: 130, avail: 3, reload: null },
   { name: "Javelin", dmg: "1d10", enc: 10, class: 2, wtype: "P", special: "Reach, BFO, AP(1)", cost: 100, avail: 4, reload: null },
   { name: "Shortsword", dmg: "1d6+2", enc: 7, class: 2, wtype: "E", special: "Dual Wield +2, Bleed", cost: 70, avail: 4, reload: null },
@@ -2028,11 +2028,11 @@ const NIGHTSTALKER_ARMOUR_NAMES = ["Nightstalker Cap", "Nightstalker Vest", "Nig
 // tracked separately once equipped), so it's added here at the rulebook default of 6, except
 // where an entry already specifies a higher value (e.g. Nightstalker's High Quality DUR 8).
 // Species rules (Advanced Bestiary): Halflings, Dwarves, Gnomes, Duckfolk, Froglings and Pale Goblins can't use Longbows or Elven Bows;
-// the Pudoa'ii is an Elf-only weapon.
+// the Pudoa'ii is only found as a False Prophet treasure card.
 const NO_LONGBOW_SPECIES = ["Halfling", "Dwarf", "Gnome", "Duckfolk", "Frogling", "Pale Goblin"];
 function weaponAllowed(hero, w) {
   const name = typeof w === "string" ? w : w.name;
-  if (name === "Pudoa'ii" && hero?.species !== "Elf") return false;
+  if (name === "Pudoa'ii" && !EXP.on) return false; // a False Prophet treasure card, never bought or chosen at creation
   if ((name === "Longbow" || name === "Elven Bow") && NO_LONGBOW_SPECIES.includes(hero?.species)) return false;
   return true;
 }
@@ -2050,7 +2050,7 @@ const professionAllowed = (species, prof) => {
   if (!r) return true;
   return r.only ? r.only.includes(prof) : !r.not.includes(prof);
 };
-const BUYABLE_WEAPONS = WEAPONS.map((w) => ({ ...w, dur: w.dur || 6 }));
+const BUYABLE_WEAPONS = WEAPONS.filter((w) => w.name !== "Pudoa'ii").map((w) => ({ ...w, dur: w.dur || 6 }));
 const BUYABLE_ARMOUR = ARMOUR_AND_SHIELDS.map((a) => ({ ...a, dur: a.dur || 6 }));
 
 // Stacking Armour special rule (rulebook, unreleased update page shared by the designer):
@@ -4981,6 +4981,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.83.4",
+    date: "2026-10-27",
+    sections: {
+      Fixed: [
+        "The Pudoa'ii is now a treasure-only weapon from The False Prophet: it is no longer a starting-weapon choice (for Elves or anyone else) or buyable, and only appears in the weapon pickers while the expansion is switched on, so it can be added once found",
+      ],
+    },
+  },
+  {
     version: "1.83.3",
     date: "2026-10-26",
     sections: {
@@ -7339,7 +7348,7 @@ function StorageBox({ items, onChange, cap }) {
       >
         <option value="">Add from table…</option>
         <optgroup label="Weapons">
-          {WEAPONS.map((w) => <option key={w.name} value={w.name}>{w.name} — {w.cost}c</option>)}
+          {WEAPONS.filter((w) => w.name !== "Pudoa'ii" || EXP.on).map((w) => <option key={w.name} value={w.name}>{w.name} — {w.cost}c</option>)}
         </optgroup>
         <optgroup label="Armour & Shields">
           {ARMOUR_AND_SHIELDS.map((a) => <option key={a.name} value={a.name}>{a.name} — {a.cost}c</option>)}
@@ -8913,7 +8922,7 @@ function HeroCard({ hero, update, remove, addLog, pushToast, party, setParty, go
                 >
                   <option value="">Choose starting weapon…</option>
                   {startingCfg.weaponOptions === "any"
-                    ? weaponsFor(hero).map((w) => <option key={w.name} value={w.name}>{w.name}</option>)
+                    ? weaponsFor(hero).filter((w) => w.name !== "Pudoa'ii").map((w) => <option key={w.name} value={w.name}>{w.name}</option>)
                     : startingCfg.weaponOptions.filter((w) => weaponAllowed(hero, w)).map((w) => <option key={w} value={w}>{w}</option>)}
                 </select>
               )}
@@ -17905,7 +17914,7 @@ function DungeonEventPanel({ party, setParty, heroes, updateHero, addLog, grantT
     let note = d.title;
     if (d.key === "trap") { dt.victim = heroes.length ? heroes[Math.floor(Math.random() * heroes.length)].name : ""; note += dt.victim ? ` — ${dt.victim} triggers it` : ""; }
     if (d.key === "potions") dt.n = rollDie(3) + 1;
-    if (d.key === "lostWeapon") { const w = WEAPONS[Math.floor(Math.random() * WEAPONS.length)]; dt.weapon = { name: w.name, cost: w.cost, enc: w.enc }; dt.loss = rollDie(3) - 1; }
+    if (d.key === "lostWeapon") { const lostPool = WEAPONS.filter((x) => x.name !== "Pudoa'ii"); const w = lostPool[Math.floor(Math.random() * lostPool.length)]; dt.weapon = { name: w.name, cost: w.cost, enc: w.enc }; dt.loss = rollDie(3) - 1; }
     if (d.key === "mushrooms") dt.uses = rollDie(3);
     if (d.key === "caveIn") dt.squares = rollDie(6);
     if (d.key === "cloak") dt.loss = rollDie(4);

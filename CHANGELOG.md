@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.83.4] — 2026-10-27
+
+### Fixed
+- The Pudoa'ii is now a treasure-only weapon from The False Prophet: it is no longer a starting-weapon choice (for Elves or anyone else) or buyable, and only appears in the weapon pickers while the expansion is switched on, so it can be added once found
+
 ## [1.83.3] — 2026-10-26
 
 ### Changed

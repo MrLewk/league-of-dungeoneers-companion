@@ -3,6 +3,11 @@
 All notable changes to this project are documented here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
+## [1.83.5] — 2026-10-31
+
+### Removed
+- The "Not in the app yet" note on the Expansions tab (The False Prophet section)
+
 ## [1.83.4] — 2026-10-27
 
 ### Fixed

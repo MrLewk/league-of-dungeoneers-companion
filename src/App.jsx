@@ -4981,6 +4981,15 @@ function BuyMeACoffeeButton() {
 // ---------- Changelog ----------
 const CHANGELOG_DATA = [
   {
+    version: "1.83.5",
+    date: "2026-10-31",
+    sections: {
+      Removed: [
+        "The \"Not in the app yet\" note on the Expansions tab (The False Prophet section)",
+      ],
+    },
+  },
+  {
     version: "1.83.4",
     date: "2026-10-27",
     sections: {
@@ -20232,10 +20241,6 @@ function ExpansionsTab({ party, setParty, heroes }) {
             {toggleRow(ex.fpSquire !== false, (v) => setEx({ fpSquire: v }), "Knight's Squire", "Knights hire a squire; without one they lose Energy and gear durability.")}
           </div>
         )}
-        <div className="mt-2 rounded p-2 text-xs" style={{ background: "#fff", border: `1px solid ${palette.line}`, ...body }}>
-          <p className="font-bold mb-1" style={{ fontFamily: "Cinzel, serif" }}>Not in the app yet</p>
-          <p>Nothing from the photos we have. Pages of the book we haven't seen (1 to 13, 20 to 24, 53 to 55 and after 58) may hold more, and the new monster table was typed up from a blurry photo, so a few values may need checking.</p>
-        </div>
       </Panel>
 
       {on && ex.fpDiseases !== false && (
